@@ -1,0 +1,72 @@
+export type IconName =
+  | "dashboard"
+  | "coins"
+  | "wallet"
+  | "lock"
+  | "activity"
+  | "withdraw"
+  | "receipt"
+  | "user"
+  | "support"
+  | "users"
+  | "chart"
+  | "settings";
+
+export type NavItem = {
+  label: string;
+  href: string;
+  icon: IconName;
+  badge?: number;
+};
+
+export type NavGroup = {
+  label?: string;
+  items: NavItem[];
+};
+
+export const investorNav: NavGroup[] = [
+  {
+    items: [
+      { label: "Dashboard", href: "/dashboard", icon: "dashboard" },
+      { label: "My plans", href: "/plans", icon: "coins" },
+      { label: "Wallet", href: "/wallet", icon: "wallet" },
+      { label: "Vault", href: "/vault", icon: "lock" },
+      { label: "Activity", href: "/activity", icon: "activity" },
+      { label: "Withdrawals", href: "/withdrawals", icon: "withdraw" },
+      { label: "Transactions", href: "/transactions", icon: "receipt" },
+    ],
+  },
+  {
+    items: [
+      { label: "Profile", href: "/profile", icon: "user" },
+      { label: "Support", href: "/support", icon: "support" },
+    ],
+  },
+];
+
+export const adminNav: NavGroup[] = [
+  {
+    label: "Admin",
+    items: [
+      { label: "Dashboard", href: "/admin", icon: "dashboard" },
+      { label: "Investors", href: "/admin/investors", icon: "users" },
+      { label: "Plans", href: "/admin/plans", icon: "coins" },
+      { label: "Withdrawals", href: "/admin/withdrawals", icon: "withdraw", badge: 7 },
+      { label: "Vault accounts", href: "/admin/vault", icon: "lock" },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { label: "Transactions", href: "/admin/transactions", icon: "receipt" },
+      { label: "Activity log", href: "/admin/activity", icon: "activity" },
+    ],
+  },
+  {
+    label: "System",
+    items: [
+      { label: "Reports", href: "/admin/reports", icon: "chart" },
+      { label: "Settings", href: "/admin/settings", icon: "settings" },
+    ],
+  },
+];
