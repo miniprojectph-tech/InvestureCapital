@@ -1,14 +1,19 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowUpRight, RefreshCw, ArrowDownRight } from "lucide-react";
 import { Bar, BarChart, Cell, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
+import { WithdrawModal } from "@/components/WithdrawModal";
 import { formatPHP } from "@/lib/utils";
 import { mockBalances, mockActivity, getTotalDailyIncome } from "@/lib/mock-data";
 
 export default function WalletPage() {
   const daily = getTotalDailyIncome();
+  const router = useRouter();
+  const [withdrawOpen, setWithdrawOpen] = useState(false);
 
   const chartData = Array.from({ length: 30 }, (_, i) => ({
     day: i,
@@ -36,10 +41,16 @@ export default function WalletPage() {
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="px-3.5 py-2.5 bg-transparent border border-border-strong rounded-lg text-[11px] flex items-center gap-1.5 hover:bg-card-elev transition">
+            <button
+              onClick={() => setWithdrawOpen(true)}
+              className="px-3.5 py-2.5 bg-transparent border border-border-strong rounded-lg text-[11px] flex items-center gap-1.5 hover:bg-card-elev transition"
+            >
               <ArrowUpRight className="w-3 h-3" /> Withdraw
             </button>
-            <button className="px-3.5 py-2.5 bg-gold text-gold-dark rounded-lg text-[11px] font-medium flex items-center gap-1.5 hover:brightness-110 transition">
+            <button
+              onClick={() => router.push(`/plans?prefill=${mockBalances.wallet}`)}
+              className="px-3.5 py-2.5 bg-gold text-gold-dark rounded-lg text-[11px] font-medium flex items-center gap-1.5 hover:brightness-110 transition"
+            >
               <RefreshCw className="w-3 h-3" /> Reinvest
             </button>
           </div>
@@ -121,6 +132,12 @@ export default function WalletPage() {
           ))}
         </div>
       </Card>
+
+      <WithdrawModal
+        open={withdrawOpen}
+        onClose={() => setWithdrawOpen(false)}
+        availableBalance={mockBalances.wallet}
+      />
     </div>
   );
 }

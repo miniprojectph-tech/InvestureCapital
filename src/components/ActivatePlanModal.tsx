@@ -1,0 +1,130 @@
+"use client";
+
+import { useState } from "react";
+import { ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { Modal } from "./Modal";
+import { formatPHP, cn } from "@/lib/utils";
+import { type Plan, VAULT_365_MULTIPLIER } from "@/lib/mock-data";
+
+type Props = {
+  open: boolean;
+  onClose: () => void;
+  plan: Plan | null;
+  amount: number;
+};
+
+type Stage = "form" | "processing" | "success";
+
+export function ActivatePlanModal({ open, onClose, plan, amount }: Props) {
+  const [stage, setStage] = useState<Stage>("form");
+
+  function close() {
+    onClose();
+    setTimeout(() => setStage("form"), 250);
+  }
+
+  function confirm() {
+    setStage("processing");
+    setTimeout(() => setStage("success"), 1400);
+  }
+
+  if (!plan) return null;
+
+  const dailyIncome = amount * (plan.dailyRate / 100);
+  const walletIncome = dailyIncome * plan.durationDays;
+  const vaultCredit = walletIncome;
+  const after365 = vaultCredit * VAULT_365_MULTIPLIER;
+  const total = walletIncome + after365;
+
+  return (
+    <Modal open={open} onClose={close} title={`Activate — ${plan.name}`}>
+      {stage === "form" && (
+        <div className="flex flex-col gap-4">
+          <div className="bg-canvas rounded-lg p-3 border border-border">
+            <div className="flex justify-between mb-1">
+              <span className="text-[10px] text-text-muted uppercase tracking-wider">Investment</span>
+              <span className="text-[11px] text-text-muted">
+                {plan.durationDays}d · {plan.dailyRate}%/day
+              </span>
+            </div>
+            <p className="text-[24px] font-medium font-mono m-0">{formatPHP(amount)}</p>
+          </div>
+
+          <div className="bg-canvas rounded-lg p-3 border border-border">
+            <p className="text-[10px] text-text-muted uppercase tracking-wider m-0 mb-2">What you&apos;ll earn</p>
+            <div className="flex flex-col gap-1.5">
+              <Row label="Daily income to wallet" value={formatPHP(dailyIncome)} />
+              <Row label={`Total wallet income (${plan.durationDays}d)`} value={formatPHP(walletIncome)} />
+              <Row label="Vault credit at plan end" value={formatPHP(vaultCredit)} />
+              <div className="border-t border-dashed border-gold/25 mt-1.5 pt-1.5">
+                <Row label="Vault after 365d (1% daily)" value={formatPHP(after365)} gold />
+                <div className="flex justify-between text-[11px] mt-1">
+                  <span className="text-gold-muted">Total return</span>
+                  <span className="font-mono font-medium text-gold">{formatPHP(total)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-text-subtle m-0">
+            By activating, {formatPHP(amount)} will be deployed for {plan.durationDays} days.
+            Daily payouts go to your wallet; total earnings auto-credit to your Future Growth Vault on completion.
+          </p>
+
+          <div className="flex gap-2">
+            <button
+              onClick={close}
+              className="flex-1 py-2.5 border border-border-strong rounded-lg text-[12px] text-text-muted hover:bg-card-elev transition"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirm}
+              className="flex-1 py-2.5 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center justify-center gap-1.5 hover:brightness-110 transition"
+            >
+              Confirm activation <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {stage === "processing" && (
+        <div className="py-8 flex flex-col items-center gap-3">
+          <Loader2 className="w-7 h-7 text-gold animate-spin" />
+          <p className="text-[12px] text-text-muted m-0">Activating plan…</p>
+        </div>
+      )}
+
+      {stage === "success" && (
+        <div className="py-6 flex flex-col items-center text-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-green/15 flex items-center justify-center">
+            <CheckCircle2 className="w-6 h-6 text-green" />
+          </div>
+          <div>
+            <p className="text-[14px] font-medium m-0">Plan activated</p>
+            <p className="text-[11px] text-text-muted mt-1 m-0">
+              {plan.name} · {formatPHP(amount)} · payouts start tomorrow
+            </p>
+          </div>
+          <button
+            onClick={close}
+            className="mt-2 px-5 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium"
+          >
+            Done
+          </button>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function Row({ label, value, gold }: { label: string; value: string; gold?: boolean }) {
+  return (
+    <div className={cn("flex justify-between text-[11px]", gold ? "text-gold-muted" : "text-text-muted")}>
+      <span>{label}</span>
+      <span className={cn("font-mono", gold ? "text-gold font-medium" : "text-text")}>
+        {value}
+      </span>
+    </div>
+  );
+}

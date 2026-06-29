@@ -1,26 +1,52 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ArrowRight } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { ArrowRight, RefreshCw } from "lucide-react";
 import { cn, formatPHP } from "@/lib/utils";
 import {
   mockPlans,
   type Plan,
   VAULT_365_MULTIPLIER,
-  calcVaultCredit,
   calcReinvestmentVault,
 } from "@/lib/mock-data";
+import { ActivatePlanModal } from "./ActivatePlanModal";
 
 type Mode = "single" | "monthly";
 
 const presets = [500, 1000, 5000, 10000];
 
 export function PlansCalculator() {
-  const [amount, setAmount] = useState(1000);
+  const searchParams = useSearchParams();
+  const prefillRaw = searchParams.get("prefill");
+  const prefillAmount = prefillRaw ? Math.max(0, parseInt(prefillRaw, 10) || 0) : null;
+
+  const [amount, setAmount] = useState(prefillAmount ?? 1000);
   const [mode, setMode] = useState<Mode>("single");
+  const [activePlan, setActivePlan] = useState<Plan | null>(null);
+
+  useEffect(() => {
+    if (prefillAmount !== null) setAmount(prefillAmount);
+  }, [prefillAmount]);
 
   return (
     <div>
+      {prefillAmount !== null && (
+        <div className="bg-gold/10 border border-border-gold rounded-xl p-3 mb-3 flex items-center gap-2.5">
+          <div className="w-7 h-7 rounded-full bg-gold/20 flex items-center justify-center shrink-0">
+            <RefreshCw className="w-3.5 h-3.5 text-gold" />
+          </div>
+          <div className="flex-1">
+            <p className="text-[12px] font-medium m-0 text-text">
+              Reinvesting <span className="font-mono text-gold">{formatPHP(prefillAmount)}</span> from your wallet
+            </p>
+            <p className="text-[10px] text-gold-muted m-0 mt-0.5">
+              Pick a plan below — earnings will compound back into your vault.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-gradient-to-br from-card to-[#1F1A2C] border border-border-gold rounded-xl p-4 mb-4">
         <div className="flex items-end justify-between gap-4">
           <div className="flex-1 min-w-0">
@@ -101,14 +127,37 @@ export function PlansCalculator() {
 
       <div className="grid grid-cols-2 gap-3">
         {mockPlans.map((plan) => (
-          <PlanCard key={plan.id} plan={plan} amount={amount} mode={mode} />
+          <PlanCard
+            key={plan.id}
+            plan={plan}
+            amount={amount}
+            mode={mode}
+            onActivate={() => setActivePlan(plan)}
+          />
         ))}
       </div>
+
+      <ActivatePlanModal
+        open={activePlan !== null}
+        onClose={() => setActivePlan(null)}
+        plan={activePlan}
+        amount={amount}
+      />
     </div>
   );
 }
 
-function PlanCard({ plan, amount, mode }: { plan: Plan; amount: number; mode: Mode }) {
+function PlanCard({
+  plan,
+  amount,
+  mode,
+  onActivate,
+}: {
+  plan: Plan;
+  amount: number;
+  mode: Mode;
+  onActivate: () => void;
+}) {
   const featured = plan.featured;
 
   const stats = useMemo(() => {
@@ -181,6 +230,7 @@ function PlanCard({ plan, amount, mode }: { plan: Plan; amount: number; mode: Mo
 
       <button
         disabled={!inRange}
+        onClick={onActivate}
         className={cn(
           "w-full py-2 rounded-md text-[11px] font-medium transition flex items-center justify-center gap-1.5",
           featured
