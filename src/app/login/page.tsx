@@ -44,7 +44,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-canvas grid grid-cols-1 md:grid-cols-[1fr_1.15fr]">
-      <div className="p-10 flex flex-col">
+      <div className="p-6 sm:p-10 flex flex-col">
         <div className="flex items-center gap-2 mb-10">
           <TrendingUp className="w-5 h-5 text-gold" strokeWidth={2.25} />
           <span className="font-medium text-[16px]">Investure</span>
@@ -170,7 +170,7 @@ export default function LoginPage() {
         </div>
       </div>
 
-      <div className="relative p-10 flex flex-col justify-between bg-gradient-to-br from-[#0E1428] via-[#1A1A2E] to-[#2A1D1F] overflow-hidden">
+      <div className="hidden md:flex relative p-10 flex-col justify-between bg-gradient-to-br from-[#0E1428] via-[#1A1A2E] to-[#2A1D1F] overflow-hidden">
         <div className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-green" />
           <span className="text-[10px] font-medium text-text-muted tracking-wider">

@@ -57,7 +57,7 @@ export default function RegisterPage() {
 
   return (
     <div className="min-h-screen bg-canvas grid grid-cols-1 md:grid-cols-[1fr_1.15fr]">
-      <div className="p-10 flex flex-col">
+      <div className="p-6 sm:p-10 flex flex-col">
         <div className="flex items-center gap-2 mb-10">
           <TrendingUp className="w-5 h-5 text-gold" strokeWidth={2.25} />
           <span className="font-medium text-[16px]">Investure</span>
@@ -204,7 +204,7 @@ export default function RegisterPage() {
         </div>
       </div>
 
-      <div className="relative p-10 flex flex-col justify-center bg-gradient-to-br from-[#0E1428] via-[#1A1A2E] to-[#2A1D1F] overflow-hidden">
+      <div className="hidden md:flex relative p-10 flex-col justify-center bg-gradient-to-br from-[#0E1428] via-[#1A1A2E] to-[#2A1D1F] overflow-hidden">
         <div>
           <p className="text-[11px] text-gold-muted tracking-wider m-0 mb-3">
             WHAT YOU GET ON DAY 1

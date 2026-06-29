@@ -31,14 +31,14 @@ export default function AdminDashboard() {
     <div>
       <TopHeader title="Admin overview" subtitle="Last refreshed 2 minutes ago" />
 
-      <div className="grid grid-cols-4 gap-2 mb-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
         <KpiCard label="Total investors" value="1,284" sub="+12.4%" subTone="green" icon={Users} iconTone="blue" />
         <KpiCard label="Capital in" value="₱4.82M" sub="+8.1%" subTone="green" icon={ArrowDownRight} iconTone="green" />
         <KpiCard label="Daily payouts" value="₱124.5K" sub="+3.2%" subTone="green" icon={Coins} iconTone="gold" />
         <KpiCard label="Pending withdrawals" value="₱48.2K" sub="7 new" subTone="red" icon={Clock} iconTone="red" />
       </div>
 
-      <div className="grid grid-cols-[1.5fr_1fr] gap-3 mb-3">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-3 mb-3">
         <Card>
           <CardHeader
             title="Capital flow"
@@ -88,7 +88,7 @@ export default function AdminDashboard() {
         {pendingWithdrawals.map((w, i) => (
           <div
             key={i}
-            className={`flex items-center gap-2.5 py-1.5 ${i < pendingWithdrawals.length - 1 ? "border-b border-border" : ""}`}
+            className={`flex flex-wrap items-center gap-2 py-2 ${i < pendingWithdrawals.length - 1 ? "border-b border-border" : ""}`}
           >
             <div className="w-[22px] h-[22px] rounded-full bg-card-elev text-[9px] font-medium flex items-center justify-center shrink-0">
               {w.initials}
@@ -98,8 +98,10 @@ export default function AdminDashboard() {
               <p className="text-[9px] text-text-subtle mt-0.5 m-0">{w.type} · {w.time}</p>
             </div>
             <span className="text-[11px] font-medium font-mono">{formatPHP(w.amount, { short: true })}</span>
-            <button className="text-[10px] px-2.5 py-1 bg-green/15 text-green rounded-md">Approve</button>
-            <button className="text-[10px] px-2.5 py-1 text-text-muted hover:bg-card-elev rounded-md">Reject</button>
+            <div className="flex gap-1.5 ml-auto sm:ml-0">
+              <button className="text-[10px] px-2.5 py-1 bg-green/15 text-green rounded-md">Approve</button>
+              <button className="text-[10px] px-2.5 py-1 text-text-muted hover:bg-card-elev rounded-md">Reject</button>
+            </div>
           </div>
         ))}
       </Card>
@@ -109,7 +111,8 @@ export default function AdminDashboard() {
           title="Latest investors"
           right={<span className="text-[10px] text-gold">View all</span>}
         />
-        <table className="w-full text-[11px] table-fixed">
+        <div className="overflow-x-auto -mx-1">
+        <table className="w-full text-[11px] table-fixed min-w-[500px]">
           <thead>
             <tr className="text-text-subtle text-left">
               <th className="font-normal py-1" style={{ width: "32%" }}>Investor</th>
@@ -153,6 +156,7 @@ export default function AdminDashboard() {
             ))}
           </tbody>
         </table>
+        </div>
       </Card>
     </div>
   );

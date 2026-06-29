@@ -90,7 +90,7 @@ export default function VaultPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-2 mb-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
         <div className="bg-card border border-border rounded-lg p-3">
           <p className="text-[9px] text-text-subtle tracking-wider m-0 mb-1">TODAY&apos;S COMPOUND</p>
           <p className="text-[13px] font-medium font-mono text-green m-0">+{formatPHP(todayCompound)}</p>
@@ -133,7 +133,7 @@ export default function VaultPage() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <Card>
           <p className="text-[12px] font-medium m-0 mb-2.5">Vault sources</p>
           {sources.map((s, i) => (

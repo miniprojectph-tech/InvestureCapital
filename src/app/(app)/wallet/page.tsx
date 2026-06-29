@@ -29,7 +29,7 @@ export default function WalletPage() {
       />
 
       <div className="bg-card border border-border rounded-xl p-5 mb-3">
-        <div className="flex justify-between items-end gap-4">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
           <div className="flex-1 min-w-0">
             <p className="text-[10px] text-text-subtle tracking-wider m-0 mb-1">AVAILABLE BALANCE</p>
             <p className="text-[32px] font-medium font-mono m-0 leading-none tracking-tight">
@@ -57,7 +57,7 @@ export default function WalletPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-2 mb-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
         {[
           ["Today", daily],
           ["This week", 875],

@@ -34,7 +34,7 @@ export default function DashboardPage() {
         vault={mockBalances.vault}
       />
 
-      <div className="grid grid-cols-4 gap-2 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         <KpiCard
           label="Active plans"
           value={String(mockActivePlans.length)}
@@ -67,7 +67,7 @@ export default function DashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-[1.4fr_1fr] gap-3 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3 mb-4">
         <GrowthChart startingVault={mockBalances.vault} currentDay={mockBalances.vaultLockDay} />
         <ActivePlansList />
       </div>

@@ -48,7 +48,7 @@ export function PlansCalculator() {
       )}
 
       <div className="bg-gradient-to-br from-card to-[#1F1A2C] border border-border-gold rounded-xl p-4 mb-4">
-        <div className="flex items-end justify-between gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
           <div className="flex-1 min-w-0">
             <div className="flex items-center justify-between mb-2">
               <p className="text-[10px] text-gold-muted tracking-wider m-0">
@@ -125,7 +125,7 @@ export function PlansCalculator() {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {mockPlans.map((plan) => (
           <PlanCard
             key={plan.id}
