@@ -20,7 +20,6 @@ export default function DashboardPage() {
   const deployed = getTotalDeployed();
   const dailyIncome = getTotalDailyIncome();
   const pendingVault = getPendingVaultCredits();
-  const total = mockBalances.wallet + deployed + mockBalances.vault;
 
   return (
     <div>
@@ -30,7 +29,6 @@ export default function DashboardPage() {
       />
 
       <HeroBalance
-        total={total}
         wallet={mockBalances.wallet}
         deployed={deployed}
         vault={mockBalances.vault}

@@ -4,6 +4,7 @@ import { Lock, TrendingUp } from "lucide-react";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
+import { TickingBalance } from "@/components/TickingBalance";
 import { formatPHP } from "@/lib/utils";
 import { mockBalances, VAULT_DAILY_RATE, VAULT_365_MULTIPLIER } from "@/lib/mock-data";
 
@@ -62,10 +63,11 @@ export default function VaultPage() {
               <span className="text-[9px] text-green">Compounding live</span>
             </div>
             <p className="text-[36px] font-medium font-mono m-0 leading-none tracking-tight text-gold">
-              {formatPHP(balance)}
+              <TickingBalance base={balance} decimals={4} />
             </p>
             <p className="text-[11px] text-gold-muted mt-2 m-0 font-mono">
-              +{formatPHP(todayCompound)} today · +₱0.0011 / sec
+              +{formatPHP(todayCompound)} today · +₱
+              {(balance * (Math.pow(1 + VAULT_DAILY_RATE, 1 / 86400) - 1)).toFixed(4)} / sec
             </p>
           </div>
           <div className="text-right">
