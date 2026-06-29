@@ -1,7 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
+import { RegisterSW } from "@/components/RegisterSW";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -14,8 +15,34 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Investure Capital",
-  description: "Smart capital growth powered by AI trading — simulation platform demonstrating compounding.",
+  title: {
+    default: "Investure Capital",
+    template: "%s · Investure",
+  },
+  description:
+    "Smart capital growth powered by AI trading — simulation platform demonstrating compounding.",
+  manifest: "/manifest.json",
+  applicationName: "Investure",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Investure",
+  },
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/icon.svg" }],
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0B1020",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -30,6 +57,7 @@ export default function RootLayout({
     >
       <body className="min-h-full">
         <AuthProvider>{children}</AuthProvider>
+        <RegisterSW />
       </body>
     </html>
   );
