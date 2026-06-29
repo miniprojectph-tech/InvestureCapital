@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/AppShell";
+import { AuthGate } from "@/components/AuthGate";
 import { investorNav } from "@/lib/nav";
 
 export default function InvestorAppLayout({
@@ -6,5 +7,9 @@ export default function InvestorAppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <AppShell nav={investorNav}>{children}</AppShell>;
+  return (
+    <AuthGate>
+      <AppShell nav={investorNav}>{children}</AppShell>
+    </AuthGate>
+  );
 }
