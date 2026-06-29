@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, CheckCircle2, Loader2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import { Modal } from "./Modal";
 import { formatPHP, cn } from "@/lib/utils";
 import { type Plan, VAULT_365_MULTIPLIER } from "@/lib/mock-data";
@@ -11,21 +11,38 @@ type Props = {
   onClose: () => void;
   plan: Plan | null;
   amount: number;
+  onSubmit?: (plan: Plan, amount: number) => Promise<void>;
 };
 
-type Stage = "form" | "processing" | "success";
+type Stage = "form" | "processing" | "success" | "error";
 
-export function ActivatePlanModal({ open, onClose, plan, amount }: Props) {
+export function ActivatePlanModal({ open, onClose, plan, amount, onSubmit }: Props) {
   const [stage, setStage] = useState<Stage>("form");
+  const [error, setError] = useState<string | null>(null);
 
   function close() {
     onClose();
-    setTimeout(() => setStage("form"), 250);
+    setTimeout(() => {
+      setStage("form");
+      setError(null);
+    }, 250);
   }
 
-  function confirm() {
+  async function confirm() {
+    if (!plan) return;
     setStage("processing");
-    setTimeout(() => setStage("success"), 1400);
+    setError(null);
+    try {
+      if (onSubmit) {
+        await onSubmit(plan, amount);
+      } else {
+        await new Promise((r) => setTimeout(r, 1200));
+      }
+      setStage("success");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Activation failed");
+      setStage("error");
+    }
   }
 
   if (!plan) return null;
@@ -111,6 +128,24 @@ export function ActivatePlanModal({ open, onClose, plan, amount }: Props) {
             className="mt-2 px-5 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium"
           >
             Done
+          </button>
+        </div>
+      )}
+
+      {stage === "error" && (
+        <div className="py-6 flex flex-col items-center text-center gap-3">
+          <div className="w-12 h-12 rounded-full bg-red/15 flex items-center justify-center">
+            <AlertCircle className="w-6 h-6 text-red" />
+          </div>
+          <div>
+            <p className="text-[14px] font-medium m-0">Activation failed</p>
+            <p className="text-[11px] text-text-muted mt-1 m-0">{error}</p>
+          </div>
+          <button
+            onClick={() => setStage("form")}
+            className="mt-2 px-5 py-2 bg-card-elev border border-border-strong rounded-lg text-[12px]"
+          >
+            Try again
           </button>
         </div>
       )}

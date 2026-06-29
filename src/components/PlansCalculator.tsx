@@ -11,6 +11,9 @@ import {
   calcReinvestmentVault,
 } from "@/lib/mock-data";
 import { ActivatePlanModal } from "./ActivatePlanModal";
+import { useAuth } from "@/lib/auth";
+import { getFirebase } from "@/lib/firebase";
+import { activatePlanFor } from "@/lib/userState";
 
 type Mode = "single" | "monthly";
 
@@ -24,6 +27,14 @@ export function PlansCalculator() {
   const [amount, setAmount] = useState(prefillAmount ?? 1000);
   const [mode, setMode] = useState<Mode>("single");
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
+  const { user, demoMode } = useAuth();
+
+  async function handleActivate(plan: Plan, capitalAmount: number) {
+    if (demoMode || !user) return; // demo: show success animation only
+    const { db } = getFirebase();
+    if (!db) return;
+    await activatePlanFor(db, user.uid, plan.id, plan.name, capitalAmount);
+  }
 
   useEffect(() => {
     if (prefillAmount !== null) setAmount(prefillAmount);
@@ -142,6 +153,7 @@ export function PlansCalculator() {
         onClose={() => setActivePlan(null)}
         plan={activePlan}
         amount={amount}
+        onSubmit={handleActivate}
       />
     </div>
   );

@@ -2,18 +2,41 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, RefreshCw, ArrowDownRight } from "lucide-react";
+import { ArrowUpRight, RefreshCw, ArrowDownRight, Loader2 } from "lucide-react";
 import { Bar, BarChart, Cell, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { WithdrawModal } from "@/components/WithdrawModal";
 import { formatPHP } from "@/lib/utils";
-import { mockBalances, mockActivity, getTotalDailyIncome } from "@/lib/mock-data";
+import { mockActivity, mockPlans } from "@/lib/mock-data";
+import { useUserState } from "@/lib/useUserState";
+import { computeDailyIncome, withdrawFromWallet } from "@/lib/userState";
+import { useAuth } from "@/lib/auth";
+import { getFirebase } from "@/lib/firebase";
 
 export default function WalletPage() {
-  const daily = getTotalDailyIncome();
   const router = useRouter();
+  const { state, loading } = useUserState();
+  const { user, demoMode } = useAuth();
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+
+  async function handleWithdraw(amount: number) {
+    if (demoMode || !user) return; // demo: just show success animation
+    const { db } = getFirebase();
+    if (!db) return;
+    await withdrawFromWallet(db, user.uid, amount);
+  }
+
+  if (loading || !state) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-5 h-5 text-gold animate-spin" />
+      </div>
+    );
+  }
+
+  const daily = computeDailyIncome(state.activePlans, mockPlans);
+  const walletBalance = state.balances.wallet;
 
   const chartData = Array.from({ length: 30 }, (_, i) => ({
     day: i,
@@ -33,7 +56,7 @@ export default function WalletPage() {
           <div className="flex-1 min-w-0">
             <p className="text-[10px] text-text-subtle tracking-wider m-0 mb-1">AVAILABLE BALANCE</p>
             <p className="text-[32px] font-medium font-mono m-0 leading-none tracking-tight">
-              {formatPHP(mockBalances.wallet)}
+              {formatPHP(walletBalance)}
             </p>
             <div className="flex gap-3.5 mt-2 text-[11px]">
               <span className="text-green font-mono">+{formatPHP(daily)} today</span>
@@ -48,7 +71,7 @@ export default function WalletPage() {
               <ArrowUpRight className="w-3 h-3" /> Withdraw
             </button>
             <button
-              onClick={() => router.push(`/plans?prefill=${mockBalances.wallet}`)}
+              onClick={() => router.push(`/plans?prefill=${walletBalance}`)}
               className="px-3.5 py-2.5 bg-gold text-gold-dark rounded-lg text-[11px] font-medium flex items-center gap-1.5 hover:brightness-110 transition"
             >
               <RefreshCw className="w-3 h-3" /> Reinvest
@@ -136,7 +159,8 @@ export default function WalletPage() {
       <WithdrawModal
         open={withdrawOpen}
         onClose={() => setWithdrawOpen(false)}
-        availableBalance={mockBalances.wallet}
+        availableBalance={walletBalance}
+        onSubmit={handleWithdraw}
       />
     </div>
   );

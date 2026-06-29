@@ -1,17 +1,29 @@
 "use client";
 
-import { Lock, TrendingUp } from "lucide-react";
+import { Lock, Loader2 } from "lucide-react";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { TickingBalance } from "@/components/TickingBalance";
 import { formatPHP } from "@/lib/utils";
-import { mockBalances, VAULT_DAILY_RATE, VAULT_365_MULTIPLIER } from "@/lib/mock-data";
+import { VAULT_DAILY_RATE, VAULT_365_MULTIPLIER } from "@/lib/mock-data";
+import { useUserState } from "@/lib/useUserState";
+import { computeVaultLockDay } from "@/lib/userState";
 
 export default function VaultPage() {
-  const balance = mockBalances.vault;
-  const lockDay = mockBalances.vaultLockDay;
-  const lockTotal = mockBalances.vaultLockTotal;
+  const { state, loading } = useUserState();
+
+  if (loading || !state) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-5 h-5 text-gold animate-spin" />
+      </div>
+    );
+  }
+
+  const balance = state.balances.vault;
+  const lockDay = computeVaultLockDay(state.balances.vaultLockStartedAt);
+  const lockTotal = 365;
   const lockProgress = (lockDay / lockTotal) * 100;
   const daysRemaining = lockTotal - lockDay;
   const todayCompound = balance - balance / (1 + VAULT_DAILY_RATE);

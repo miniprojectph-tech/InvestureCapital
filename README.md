@@ -43,6 +43,23 @@ NEXT_PUBLIC_FIREBASE_APP_ID=...
 Firestore rules and Auth's Authorized Domains list (settings → Authentication →
 Settings → Authorized domains).
 
+## Firestore setup (persists per-user state)
+
+1. In the Firebase Console: **Firestore Database → Create database** → start in
+   production mode → pick your region.
+2. **Rules tab** → paste the contents of `firestore.rules` from this repo →
+   Publish.
+3. Or deploy via the Firebase CLI:
+   ```bash
+   npm install -g firebase-tools
+   firebase login
+   firebase use investurecapital-37731   # or your project id
+   firebase deploy --only firestore:rules
+   ```
+
+On first sign-up, the app seeds the user's document with a starter balance and
+auto-activates one 10-day plan so the demo wow is immediate.
+
 ## Deploy to Vercel
 
 ### One-time: push to GitHub

@@ -1,4 +1,6 @@
-import { Coins, ArrowDownRight, Wallet as WalletIcon, Clock } from "lucide-react";
+"use client";
+
+import { Coins, ArrowDownRight, Wallet as WalletIcon, Clock, Loader2 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { HeroBalance } from "@/components/HeroBalance";
 import { KpiCard } from "@/components/KpiCard";
@@ -7,37 +9,47 @@ import { ActivePlansList } from "@/components/ActivePlansList";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { PlanHistoryTable } from "@/components/PlanHistoryTable";
 import { formatPHP } from "@/lib/utils";
+import { mockPlans } from "@/lib/mock-data";
+import { useUserState } from "@/lib/useUserState";
 import {
-  mockUser,
-  mockActivePlans,
-  mockBalances,
-  getTotalDailyIncome,
-  getTotalDeployed,
-  getPendingVaultCredits,
-} from "@/lib/mock-data";
+  computeDailyIncome,
+  computeDeployed,
+  computePendingVaultCredits,
+} from "@/lib/userState";
 
 export default function DashboardPage() {
-  const deployed = getTotalDeployed();
-  const dailyIncome = getTotalDailyIncome();
-  const pendingVault = getPendingVaultCredits();
+  const { state, loading } = useUserState();
+
+  if (loading || !state) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-5 h-5 text-gold animate-spin" />
+      </div>
+    );
+  }
+
+  const deployed = computeDeployed(state.activePlans);
+  const dailyIncome = computeDailyIncome(state.activePlans, mockPlans);
+  const pendingVault = computePendingVaultCredits(state.activePlans, mockPlans);
+  const firstName = state.profile.name.split(" ")[0];
 
   return (
     <div>
       <TopHeader
-        title={`Good evening, ${mockUser.name.split(" ")[0]}`}
-        subtitle={`${mockActivePlans.length} active plans · next payout in 12h 43m`}
+        title={`Good evening, ${firstName}`}
+        subtitle={`${state.activePlans.length} active plans · next payout in 12h 43m`}
       />
 
       <HeroBalance
-        wallet={mockBalances.wallet}
+        wallet={state.balances.wallet}
         deployed={deployed}
-        vault={mockBalances.vault}
+        vault={state.balances.vault}
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
         <KpiCard
           label="Active plans"
-          value={String(mockActivePlans.length)}
+          value={String(state.activePlans.length)}
           sub={`${formatPHP(deployed, { short: true })} deployed`}
           icon={Coins}
           iconTone="blue"
@@ -68,7 +80,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3 mb-4">
-        <GrowthChart startingVault={mockBalances.vault} currentDay={mockBalances.vaultLockDay} />
+        <GrowthChart startingVault={state.balances.vault} currentDay={4} />
         <ActivePlansList />
       </div>
 

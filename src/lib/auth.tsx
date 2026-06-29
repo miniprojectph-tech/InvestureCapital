@@ -16,6 +16,7 @@ import {
   type User,
 } from "firebase/auth";
 import { getFirebase } from "./firebase";
+import { ensureUserDoc } from "./userState";
 
 type AuthUser = {
   uid: string;
@@ -54,7 +55,7 @@ function toAuthUser(u: User): AuthUser {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const { auth } = getFirebase();
+  const { auth, db } = getFirebase();
   const demoMode = !auth;
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,12 +65,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    const unsub = onAuthStateChanged(auth, (fbUser) => {
-      setUser(fbUser ? toAuthUser(fbUser) : null);
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        const u = toAuthUser(fbUser);
+        setUser(u);
+        // Make sure their Firestore doc exists (idempotent — no-op if already seeded).
+        if (db) {
+          ensureUserDoc(db, u.uid, u.name, u.email).catch((err) =>
+            console.error("ensureUserDoc on auth change failed", err)
+          );
+        }
+      } else {
+        setUser(null);
+      }
       setLoading(false);
     });
     return unsub;
-  }, [auth]);
+  }, [auth, db]);
 
   async function signIn(email: string, password: string) {
     if (!auth) throw new Error("Firebase is not configured. Add your keys to .env.local.");
@@ -80,7 +92,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!auth) throw new Error("Firebase is not configured. Add your keys to .env.local.");
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     if (name) await updateProfile(cred.user, { displayName: name });
-    setUser(toAuthUser({ ...cred.user, displayName: name } as User));
+    const authUser = toAuthUser({ ...cred.user, displayName: name } as User);
+    setUser(authUser);
+    if (db) {
+      await ensureUserDoc(db, authUser.uid, authUser.name, authUser.email);
+    }
   }
 
   async function signOut() {
