@@ -49,9 +49,10 @@ export function ActivatePlanModal({ open, onClose, plan, amount, onSubmit }: Pro
 
   const dailyIncome = amount * (plan.dailyRate / 100);
   const walletIncome = dailyIncome * plan.durationDays;
+  const capitalReturn = amount;
   const vaultCredit = walletIncome;
   const after365 = vaultCredit * VAULT_365_MULTIPLIER;
-  const total = walletIncome + after365;
+  const total = capitalReturn + walletIncome + after365;
 
   return (
     <Modal open={open} onClose={close} title={`Activate — ${plan.name}`}>
@@ -72,6 +73,7 @@ export function ActivatePlanModal({ open, onClose, plan, amount, onSubmit }: Pro
             <div className="flex flex-col gap-1.5">
               <Row label="Daily income to wallet" value={formatPHP(dailyIncome)} />
               <Row label={`Total wallet income (${plan.durationDays}d)`} value={formatPHP(walletIncome)} />
+              <Row label="Capital return at plan end" value={formatPHP(capitalReturn)} />
               <Row label="Vault credit at plan end" value={formatPHP(vaultCredit)} />
               <div className="border-t border-dashed border-gold/25 mt-1.5 pt-1.5">
                 <Row label="Vault after 365d (1% daily)" value={formatPHP(after365)} gold />
@@ -85,7 +87,8 @@ export function ActivatePlanModal({ open, onClose, plan, amount, onSubmit }: Pro
 
           <p className="text-[10px] text-text-subtle m-0">
             By activating, {formatPHP(amount)} will be deployed for {plan.durationDays} days.
-            Daily payouts go to your wallet; total earnings auto-credit to your Future Growth Vault on completion.
+            Daily payouts go to your wallet, your capital returns when the plan ends, and total
+            earnings auto-credit to your Future Growth Vault.
           </p>
 
           <div className="flex gap-2">

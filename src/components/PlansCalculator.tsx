@@ -70,9 +70,10 @@ export function PlansCalculator() {
   const inRange = amount >= selected.minInvestment && amount <= selected.maxInvestment;
   const dailyIncome = amount * (selected.dailyRate / 100);
   const walletIncome = dailyIncome * selected.durationDays;
+  const capitalReturn = amount;
   const vaultCredit = walletIncome;
   const vaultAfter365 = vaultCredit * VAULT_365_MULTIPLIER;
-  const total = walletIncome + vaultAfter365;
+  const total = capitalReturn + walletIncome + vaultAfter365;
   const monthlyVault = calcReinvestmentVault(vaultCredit, 12, 365);
 
   return (
@@ -205,18 +206,19 @@ export function PlansCalculator() {
           <>
             <SpecRow label="Daily income" value={formatPHP(dailyIncome)} index={4} />
             <SpecRow label="Wallet income" value={formatPHP(walletIncome)} index={5} />
-            <SpecRow label="Vault credit" value={formatPHP(vaultCredit)} index={6} vault />
+            <SpecRow label="Capital return" value={formatPHP(capitalReturn)} index={6} />
+            <SpecRow label="Vault credit" value={formatPHP(vaultCredit)} index={7} vault />
             <SpecRow
               label="Vault after 365d"
               value={formatPHP(vaultAfter365, { short: true })}
-              index={7}
+              index={8}
               vault
               bigValue
             />
             <SpecRow
               label="Total return"
               value={formatPHP(total, { short: true })}
-              index={8}
+              index={9}
               highlight
               bigValue
             />
@@ -231,16 +233,21 @@ export function PlansCalculator() {
               index={6}
             />
             <SpecRow
+              label="Capital returned (12×)"
+              value={formatPHP(capitalReturn * 12, { short: true })}
+              index={7}
+            />
+            <SpecRow
               label="Vault · year end"
               value={formatPHP(monthlyVault, { short: true })}
-              index={7}
+              index={8}
               vault
               bigValue
             />
             <SpecRow
               label="Total year 1"
-              value={formatPHP(walletIncome * 12 + monthlyVault, { short: true })}
-              index={8}
+              value={formatPHP(walletIncome * 12 + capitalReturn * 12 + monthlyVault, { short: true })}
+              index={9}
               highlight
               bigValue
             />
