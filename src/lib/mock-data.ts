@@ -14,6 +14,14 @@ export const mockTickers: CoinTicker[] = [
   { symbol: "XRP", price: 2.41, change24h: 2.18 },
   { symbol: "ADA", price: 0.94, change24h: -0.78 },
   { symbol: "DOGE", price: 0.38, change24h: 1.12 },
+  { symbol: "AVAX", price: 38.4, change24h: 0.85 },
+  { symbol: "DOT", price: 7.92, change24h: -0.34 },
+  { symbol: "LINK", price: 18.6, change24h: 1.42 },
+  { symbol: "MATIC", price: 0.62, change24h: 2.05 },
+  { symbol: "LTC", price: 96.4, change24h: -1.12 },
+  { symbol: "UNI", price: 12.8, change24h: 0.94 },
+  { symbol: "ATOM", price: 8.45, change24h: -0.22 },
+  { symbol: "NEAR", price: 5.18, change24h: 1.66 },
 ];
 
 export type Plan = {

@@ -98,4 +98,19 @@ body {
   box-shadow: 0 0 0 1px rgba(61, 213, 152, 0.08), 0 20px 40px -24px rgba(0, 0, 0, 0.6);
 }
 
+/* Marquee scroll for the crypto ticker — duplicate content + 50% shift. */
+@keyframes ticker-marquee {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(-50%, 0, 0); }
+}
+.ticker-track {
+  display: inline-flex;
+  width: max-content;
+  animation: ticker-marquee 80s linear infinite;
+  will-change: transform;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
 :focus:not(:focus-visible) { outline: none; }

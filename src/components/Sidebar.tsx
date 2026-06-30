@@ -61,20 +61,20 @@ function NavContent({
 }) {
   return (
     <>
-      <div className="flex items-center gap-2 px-2 pb-3 mb-2 border-b border-border">
-        <TrendingUp className="w-[18px] h-[18px] text-gold" strokeWidth={2.25} />
-        <span className="font-medium text-[14px] text-text">Investure</span>
+      <div className="flex items-center gap-2.5 px-2.5 pb-4 mb-3 border-b border-border">
+        <TrendingUp className="w-[20px] h-[20px] text-gold" strokeWidth={2.25} />
+        <span className="font-medium text-[15px] text-text">Investure</span>
         {badge && (
-          <span className="ml-auto text-[9px] font-medium bg-blue/15 text-blue px-1.5 py-0.5 rounded-full">
+          <span className="ml-auto text-[10px] font-medium bg-blue/15 text-blue px-2 py-0.5 rounded-full">
             {badge}
           </span>
         )}
       </div>
 
       {groups.map((group, gi) => (
-        <div key={gi} className={gi > 0 ? "mt-3 pt-3 border-t border-border" : ""}>
+        <div key={gi} className={gi > 0 ? "mt-4 pt-4 border-t border-border" : ""}>
           {group.label && (
-            <p className="text-[9px] font-medium text-text-dim px-2 mb-1 uppercase tracking-wider">
+            <p className="text-[10px] font-medium text-text-dim px-3 mb-1.5 uppercase tracking-[0.12em]">
               {group.label}
             </p>
           )}
@@ -92,16 +92,16 @@ function NavContent({
                   href={item.href}
                   onClick={onItemClick}
                   className={cn(
-                    "flex items-center gap-2.5 px-2.5 py-1.5 text-[12px] rounded-md transition-colors",
+                    "flex items-center gap-3 px-3 py-2.5 text-[13px] rounded-lg transition-colors",
                     active
                       ? "bg-gold/10 text-gold font-medium"
                       : "text-text-muted hover:bg-card-elev hover:text-text"
                   )}
                 >
-                  <Icon className="w-[14px] h-[14px] shrink-0" strokeWidth={2} />
+                  <Icon className="w-[16px] h-[16px] shrink-0" strokeWidth={2} />
                   <span className="flex-1">{item.label}</span>
                   {item.badge && (
-                    <span className="text-[9px] font-medium bg-red/15 text-red px-1.5 py-0.5 rounded-full">
+                    <span className="text-[10px] font-medium bg-red/15 text-red px-2 py-0.5 rounded-full">
                       {item.badge}
                     </span>
                   )}
@@ -118,13 +118,11 @@ function NavContent({
 export function Sidebar({ groups, badge, mobileOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
 
-  // Close drawer when route changes
   useEffect(() => {
     if (mobileOpen) onClose();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
 
-  // Lock body scroll when drawer open
   useEffect(() => {
     if (!mobileOpen) return;
     const orig = document.body.style.overflow;
@@ -137,7 +135,7 @@ export function Sidebar({ groups, badge, mobileOpen, onClose }: SidebarProps) {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden md:block w-[180px] shrink-0 bg-card border border-border rounded-xl p-3 self-start sticky top-3">
+      <aside className="hidden md:block w-[210px] shrink-0 bg-card border border-border rounded-xl p-3.5 self-start sticky top-3">
         <NavContent groups={groups} badge={badge} pathname={pathname} />
       </aside>
 
@@ -157,7 +155,7 @@ export function Sidebar({ groups, badge, mobileOpen, onClose }: SidebarProps) {
               animate={{ x: 0 }}
               exit={{ x: "-100%" }}
               transition={{ duration: 0.22, ease: "easeOut" }}
-              className="absolute left-0 top-0 bottom-0 w-[240px] bg-card border-r border-border p-3 overflow-y-auto"
+              className="absolute left-0 top-0 bottom-0 w-[260px] bg-card border-r border-border p-3.5 overflow-y-auto"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-end mb-1">

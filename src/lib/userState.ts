@@ -43,22 +43,15 @@ export type UserState = {
   isAdmin?: boolean;
 };
 
-export const STARTER_BALANCE = 10000;
+/** Kept for backwards compatibility; new sign-ups now start with zero balance. */
+export const STARTER_BALANCE = 0;
 
 export function createStarterState(name: string, email: string): UserState {
   const now = Date.now();
   return {
     profile: { name, email, joinedAt: now, demoSeeded: true },
     balances: { wallet: 0, vault: 0, vaultLockStartedAt: null },
-    activePlans: [
-      // Auto-activate one 10-day growth plan so the demo wow is immediate.
-      {
-        id: `${now}-starter`,
-        planId: "growth-10",
-        capital: STARTER_BALANCE,
-        startedAt: now,
-      },
-    ],
+    activePlans: [],
     completedPlans: [],
     isAdmin: false,
   };

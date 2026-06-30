@@ -11,6 +11,14 @@ const COIN_MAP: Record<string, string> = {
   XRP: "ripple",
   ADA: "cardano",
   DOGE: "dogecoin",
+  AVAX: "avalanche-2",
+  DOT: "polkadot",
+  LINK: "chainlink",
+  MATIC: "matic-network",
+  LTC: "litecoin",
+  UNI: "uniswap",
+  ATOM: "cosmos",
+  NEAR: "near",
 };
 
 const ENDPOINT =
