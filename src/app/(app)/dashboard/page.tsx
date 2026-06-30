@@ -1,16 +1,19 @@
 "use client";
 
 import { motion, type Variants } from "framer-motion";
-import { Coins, ArrowDownRight, Wallet as WalletIcon, Clock, Loader2 } from "lucide-react";
+import { ArrowDownRight, Lock, Loader2 } from "lucide-react";
+import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
-import { HeroBalance } from "@/components/HeroBalance";
-import { KpiCard } from "@/components/KpiCard";
-import { GrowthChart } from "@/components/GrowthChart";
+import { Card, CardHeader } from "@/components/Card";
+import { StatStrip } from "@/components/StatStrip";
+import { PortfolioDonut } from "@/components/PortfolioDonut";
+import { SummaryThemedCard } from "@/components/SummaryThemedCard";
+import { TickingBalance } from "@/components/TickingBalance";
 import { ActivePlansList } from "@/components/ActivePlansList";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { PlanHistoryTable } from "@/components/PlanHistoryTable";
 import { formatPHP } from "@/lib/utils";
-import { mockPlans } from "@/lib/mock-data";
+import { mockPlans, VAULT_DAILY_RATE } from "@/lib/mock-data";
 import { useUserState } from "@/lib/useUserState";
 import {
   computeDailyIncome,
@@ -46,10 +49,26 @@ export default function DashboardPage() {
   const deployed = computeDeployed(state.activePlans);
   const dailyIncome = computeDailyIncome(state.activePlans, mockPlans);
   const pendingVault = computePendingVaultCredits(state.activePlans, mockPlans);
+  const total = state.balances.wallet + deployed + state.balances.vault;
+  const todayCompound =
+    state.balances.vault - state.balances.vault / (1 + VAULT_DAILY_RATE);
+  const totalEarned = state.balances.vault + state.balances.wallet;
+  const totalInvested = deployed > 0 ? deployed : 1; // avoid divide-by-zero
+  const roi = (totalEarned / totalInvested) * 100;
+
   const firstName = state.profile.name.split(" ")[0];
   const hour = new Date().getHours();
   const greeting =
     hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
+  // Investment growth — accumulating curve from past data + projection
+  const growthData = Array.from({ length: 30 }, (_, i) => ({
+    day: i,
+    value:
+      state.balances.vault *
+        Math.pow(1 + VAULT_DAILY_RATE, i - 25) +
+      deployed * 0.5,
+  }));
 
   return (
     <div>
@@ -58,58 +77,137 @@ export default function DashboardPage() {
         subtitle={`${state.activePlans.length} active plans · next payout in 12h 43m`}
       />
 
-      <HeroBalance
-        wallet={state.balances.wallet}
-        deployed={deployed}
-        vault={state.balances.vault}
-      />
-
       <motion.div variants={stagger} initial="hidden" animate="show">
-        <motion.div variants={item} className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-5">
-          <KpiCard
-            label="Active plans"
-            value={String(state.activePlans.length)}
-            sub={`${formatPHP(deployed, { short: true })} deployed`}
-            icon={Coins}
-            iconTone="blue"
-          />
-          <KpiCard
-            label="Daily income"
-            value={formatPHP(dailyIncome)}
-            sub="Across all plans"
-            subTone="green"
-            icon={ArrowDownRight}
-            iconTone="green"
-          />
-          <KpiCard
-            label="Vault pending"
-            value={`+${formatPHP(pendingVault, { short: true })}`}
-            sub="On plan completion"
-            subTone="gold"
-            icon={WalletIcon}
-            iconTone="gold"
-          />
-          <KpiCard
-            label="Next payout"
-            value="12:43:08"
-            sub={`${formatPHP(dailyIncome)} incoming`}
-            icon={Clock}
-            iconTone="red"
-          />
-        </motion.div>
-
+        {/* Main row: big left card + stacked themed cards on the right */}
         <motion.div
           variants={item}
-          className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3 mb-5"
+          className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3 mb-3"
         >
-          <GrowthChart startingVault={state.balances.vault} currentDay={4} />
+          {/* BIG LEFT CARD — stat strip on top, chart + donut below */}
+          <Card className="!p-0">
+            <StatStrip
+              stats={[
+                {
+                  label: "Total portfolio",
+                  caption: `${state.activePlans.length} plans`,
+                  value: formatPHP(total, { short: true }),
+                  trend: { delta: roi, suffix: "%" },
+                  emphasis: true,
+                },
+                {
+                  label: "Capital invested",
+                  value: formatPHP(deployed, { short: true }),
+                },
+                {
+                  label: "Current value",
+                  value: formatPHP(state.balances.vault + state.balances.wallet, { short: true }),
+                },
+                {
+                  label: "ROI",
+                  value: `+${roi.toFixed(1)}%`,
+                },
+              ]}
+            />
+
+            <div className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr] gap-4 px-4 pb-4 pt-2 border-t border-border">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-[12px] font-medium m-0">Investment growth</p>
+                  <div className="flex gap-1">
+                    {["1W", "1M", "3M", "1Y"].map((k, i) => (
+                      <span
+                        key={k}
+                        className={
+                          i === 1
+                            ? "text-[10px] px-2 py-0.5 bg-gold/15 text-gold rounded-full font-medium"
+                            : "text-[10px] px-2 py-0.5 text-text-subtle"
+                        }
+                      >
+                        {k}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="h-[150px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={growthData} margin={{ top: 6, right: 4, bottom: 0, left: 0 }}>
+                      <defs>
+                        <linearGradient id="dashGold" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#F5C66B" stopOpacity={0.32} />
+                          <stop offset="100%" stopColor="#F5C66B" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#F5C66B"
+                        strokeWidth={1.8}
+                        fill="url(#dashGold)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              <div className="md:border-l md:border-border md:pl-4">
+                <p className="text-[12px] font-medium m-0 mb-3">Your portfolio</p>
+                <PortfolioDonut
+                  slices={[
+                    { name: "Wallet", value: state.balances.wallet, color: "#4F8EF7" },
+                    { name: "Deployed", value: deployed, color: "#A78BFA" },
+                    { name: "Vault", value: state.balances.vault, color: "#F5C66B" },
+                  ]}
+                />
+              </div>
+            </div>
+          </Card>
+
+          {/* RIGHT COLUMN — Daily Income + Vault themed cards */}
+          <div className="flex flex-col gap-3">
+            <SummaryThemedCard
+              icon={ArrowDownRight}
+              theme="green"
+              title="Daily Income"
+              subtitle={`${state.activePlans.length} active plans`}
+              caption={{ label: "Today", value: formatPHP(dailyIncome, { short: true }) }}
+              valueLabel="Wallet balance"
+              value={formatPHP(state.balances.wallet, { short: true })}
+              trend={{
+                delta: deployed > 0 ? (dailyIncome / deployed) * 100 : 0,
+                suffix: "% / day",
+                label: "Avg rate",
+              }}
+              href="/wallet"
+            />
+            <SummaryThemedCard
+              icon={Lock}
+              theme="gold"
+              title="Future Growth Vault"
+              subtitle="Locked · compounding 1% daily"
+              caption={{ label: "Pending", value: `+${formatPHP(pendingVault, { short: true })}` }}
+              valueLabel="Vault balance"
+              value={<TickingBalance base={state.balances.vault} decimals={2} />}
+              trend={{
+                delta: (todayCompound / state.balances.vault) * 100 || 0,
+                suffix: "% today",
+                label: `+${formatPHP(todayCompound)}`,
+              }}
+              href="/vault"
+            />
+          </div>
+        </motion.div>
+
+        {/* Active plans full width */}
+        <motion.div variants={item} className="mb-3">
           <ActivePlansList />
         </motion.div>
 
-        <motion.div variants={item} className="mb-5">
+        {/* Activity */}
+        <motion.div variants={item} className="mb-3">
           <ActivityFeed />
         </motion.div>
 
+        {/* Plan history */}
         <motion.div variants={item}>
           <PlanHistoryTable />
         </motion.div>
