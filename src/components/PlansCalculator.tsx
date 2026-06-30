@@ -18,10 +18,10 @@ import { usePlans } from "@/lib/plans";
 type Mode = "single" | "monthly";
 
 const planTaglines: Record<string, string> = {
-  "starter-5": "Quick 5-day cycle to test the platform and seed your vault for the first time.",
-  "growth-10": "Balanced 10-day plan — solid daily income, meaningful vault seed.",
-  "momentum-15": "Our most popular plan. Stronger daily rate, larger vault credit.",
-  "premium-30": "Highest daily rate over the longest cycle. Maximum vault payoff.",
+  "starter-5": "Quick 5-day cycle to test the platform.",
+  "growth-10": "Balanced 10-day plan — solid daily income.",
+  "momentum-15": "Most popular. Stronger rate, larger vault seed.",
+  "premium-30": "Highest daily rate over the longest cycle.",
 };
 
 export function PlansCalculator() {
@@ -36,7 +36,6 @@ export function PlansCalculator() {
   const [activatePlan, setActivatePlan] = useState<Plan | null>(null);
   const { user, demoMode } = useAuth();
 
-  // Default-select the featured plan, falling back to the first active one
   useEffect(() => {
     if (selectedId !== null) return;
     if (plans.length === 0) return;
@@ -62,7 +61,7 @@ export function PlansCalculator() {
 
   if (loading || !selected) {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="bg-card border border-border rounded-2xl flex items-center justify-center py-20">
         <Loader2 className="w-5 h-5 text-gold animate-spin" />
       </div>
     );
@@ -77,221 +76,204 @@ export function PlansCalculator() {
   const monthlyVault = calcReinvestmentVault(vaultCredit, 12, 365);
 
   return (
-    <div>
-      {prefillAmount !== null && (
-        <div className="bg-gold/10 border border-border-gold rounded-xl p-3 mb-4 flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-full bg-gold/20 flex items-center justify-center shrink-0">
-            <RefreshCw className="w-3.5 h-3.5 text-gold" />
-          </div>
-          <div className="flex-1">
-            <p className="text-[12px] font-medium m-0 text-text">
-              Reinvesting <span className="font-mono text-gold">{formatPHP(prefillAmount)}</span> from your wallet
-            </p>
-            <p className="text-[10px] text-gold-muted m-0 mt-0.5">
-              Pick a plan below — earnings will compound back into your vault.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Plan selector tabs — Fxvibe radio-pill style */}
-      <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-border overflow-x-auto whitespace-nowrap">
-          <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
-            {plans.map((p) => {
-              const active = p.id === selected.id;
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => setSelectedId(p.id)}
-                  className={cn(
-                    "flex items-center gap-2 px-3.5 py-2 rounded-full text-[12px] transition shrink-0",
-                    active
-                      ? "bg-card-elev text-text font-medium"
-                      : "text-text-muted hover:text-text"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "w-3 h-3 rounded-full ring-2 transition",
-                      active ? "bg-green ring-green/30" : "bg-transparent ring-text-subtle/40"
-                    )}
-                  />
-                  {p.name}
-                  {p.featured && (
-                    <Sparkles className="w-3 h-3 text-gold ml-0.5" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Mode toggle */}
-          <div className="flex items-center gap-1 bg-canvas border border-border rounded-full p-0.5 shrink-0">
-            <button
-              onClick={() => setMode("single")}
-              className={cn(
-                "text-[10px] px-2.5 py-1 rounded-full transition",
-                mode === "single"
-                  ? "bg-gold text-gold-dark font-medium"
-                  : "text-text-muted hover:text-text"
-              )}
-            >
-              Single
-            </button>
-            <button
-              onClick={() => setMode("monthly")}
-              className={cn(
-                "text-[10px] px-2.5 py-1 rounded-full transition",
-                mode === "monthly"
-                  ? "bg-gold text-gold-dark font-medium"
-                  : "text-text-muted hover:text-text"
-              )}
-            >
-              Monthly reinvest
-            </button>
-          </div>
-        </div>
-
-        {/* Main card body — LEFT personality / RIGHT specs */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.4fr]">
-          {/* LEFT */}
-          <div className="p-6 sm:p-8 border-b lg:border-b-0 lg:border-r border-border flex flex-col">
-            <div className="mb-4">
-              <GrowthIllustration featured={selected.featured} />
-            </div>
-
-            <p className="text-[10px] text-text-subtle uppercase tracking-[0.18em] m-0 mb-2">
-              Investment amount
-            </p>
-            <div className="flex items-baseline gap-2 mb-1">
-              <span
-                className="text-text-subtle leading-none"
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: "36px",
-                  fontVariationSettings: '"opsz" 144, "SOFT" 30',
-                }}
+    <div className="bg-card border border-border rounded-2xl overflow-hidden flex flex-col">
+      {/* Tabs row */}
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
+        <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto">
+          {plans.map((p) => {
+            const active = p.id === selected.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => setSelectedId(p.id)}
+                className={cn(
+                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] transition shrink-0",
+                  active
+                    ? "bg-card-elev text-text font-medium"
+                    : "text-text-muted hover:text-text"
+                )}
               >
-                ₱
-              </span>
-              <input
-                type="number"
-                value={amount || ""}
-                onChange={(e) => setAmount(Math.max(0, parseInt(e.target.value) || 0))}
-                className="bg-transparent border-none outline-none w-full text-text font-medium tracking-tight tabular-nums"
-                style={{
-                  fontFamily: "var(--font-display)",
-                  fontSize: "clamp(36px, 6vw, 56px)",
-                  fontVariationSettings: '"opsz" 144, "SOFT" 30',
-                  letterSpacing: "-0.025em",
-                  lineHeight: "1",
-                }}
-                aria-label="Investment amount"
-              />
-            </div>
-            <div className="flex gap-1.5 mb-5 flex-wrap">
-              {[500, 1000, 5000, 10000].map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setAmount(p)}
+                <span
                   className={cn(
-                    "text-[10px] px-2.5 py-1 rounded-full transition",
-                    amount === p
-                      ? "bg-gold/15 text-gold font-medium"
-                      : "bg-card-elev text-text-muted hover:text-text"
+                    "w-2.5 h-2.5 rounded-full ring-2 transition",
+                    active ? "bg-green ring-green/30" : "bg-transparent ring-text-subtle/40"
                   )}
-                >
-                  ₱{p >= 1000 ? `${p / 1000}K` : p}
-                </button>
-              ))}
-            </div>
-
-            <p className="text-[11px] text-text-muted leading-relaxed m-0 mb-5">
-              {planTaglines[selected.id] ??
-                `${selected.durationDays}-day plan paying ${selected.dailyRate}% daily. Earnings auto-credit to your Future Growth Vault on completion.`}
-            </p>
-
-            <button
-              onClick={() => setActivatePlan(selected)}
-              disabled={!inRange}
-              className={cn(
-                "mt-auto w-full py-3 rounded-xl text-[13px] font-medium flex items-center justify-center gap-2 transition",
-                inRange
-                  ? "bg-gold text-gold-dark hover:brightness-110"
-                  : "bg-card-elev text-text-subtle cursor-not-allowed"
-              )}
-            >
-              {inRange ? (
-                <>
-                  Activate {selected.name} <ArrowRight className="w-4 h-4" />
-                </>
-              ) : amount < selected.minInvestment ? (
-                `Minimum ${formatPHP(selected.minInvestment, { short: true })}`
-              ) : (
-                `Maximum ${formatPHP(selected.maxInvestment, { short: true })}`
-              )}
-            </button>
-          </div>
-
-          {/* RIGHT — spec rows */}
-          <div className="flex flex-col">
-            <SpecRow label="Daily rate" value={`${selected.dailyRate}% / day`} index={0} />
-            <SpecRow label="Duration" value={`${selected.durationDays} days`} index={1} />
-            <SpecRow label="Min investment" value={formatPHP(selected.minInvestment)} index={2} />
-            <SpecRow label="Max investment" value={formatPHP(selected.maxInvestment)} index={3} />
-            <SpecRow label="Vault compound" value="1.0% daily" index={4} />
-            <SpecRow label="Vault lock" value="365 days" index={5} />
-
-            <SectionHeader label={mode === "monthly" ? "Monthly reinvest projection" : `For ₱${amount.toLocaleString()}`} />
-
-            {mode === "single" ? (
-              <>
-                <SpecRow label="Daily income" value={formatPHP(dailyIncome)} index={6} />
-                <SpecRow label="Wallet income" value={formatPHP(walletIncome)} index={7} />
-                <SpecRow label="Vault credit" value={formatPHP(vaultCredit)} index={8} vault />
-                <SpecRow
-                  label="Vault after 365d"
-                  value={formatPHP(vaultAfter365, { short: true })}
-                  index={9}
-                  vault
-                  bigValue
                 />
-                <SpecRow
-                  label="Total return"
-                  value={formatPHP(total, { short: true })}
-                  index={10}
-                  highlight
-                  bigValue
-                />
-              </>
-            ) : (
-              <>
-                <SpecRow label="Per cycle wallet income" value={formatPHP(walletIncome)} index={6} />
-                <SpecRow label="Per cycle vault credit" value={formatPHP(vaultCredit)} index={7} vault />
-                <SpecRow
-                  label="Wallet after 12 cycles"
-                  value={formatPHP(walletIncome * 12, { short: true })}
-                  index={8}
-                />
-                <SpecRow
-                  label="Vault after year 1"
-                  value={formatPHP(monthlyVault, { short: true })}
-                  index={9}
-                  vault
-                  bigValue
-                />
-                <SpecRow
-                  label="Total year 1"
-                  value={formatPHP(walletIncome * 12 + monthlyVault, { short: true })}
-                  index={10}
-                  highlight
-                  bigValue
-                />
-              </>
+                {p.name}
+                {p.featured && <Sparkles className="w-2.5 h-2.5 text-gold" />}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center gap-0.5 bg-canvas border border-border rounded-full p-0.5 shrink-0">
+          <button
+            onClick={() => setMode("single")}
+            className={cn(
+              "text-[9px] px-2 py-0.5 rounded-full transition",
+              mode === "single"
+                ? "bg-gold text-gold-dark font-medium"
+                : "text-text-muted hover:text-text"
             )}
+          >
+            Single
+          </button>
+          <button
+            onClick={() => setMode("monthly")}
+            className={cn(
+              "text-[9px] px-2 py-0.5 rounded-full transition",
+              mode === "monthly"
+                ? "bg-gold text-gold-dark font-medium"
+                : "text-text-muted hover:text-text"
+            )}
+          >
+            Monthly
+          </button>
+        </div>
+      </div>
+
+      {/* Hero — illustration + amount */}
+      <div className="px-5 py-5 flex items-center gap-4 border-b border-border">
+        <div className="shrink-0">
+          <GrowthIllustration featured={selected.featured} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[9px] text-text-subtle uppercase tracking-[0.18em] m-0 mb-1">
+            Investment
+          </p>
+          <div className="flex items-baseline gap-1">
+            <span
+              className="text-text-subtle leading-none"
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: "26px",
+                fontVariationSettings: '"opsz" 144, "SOFT" 30',
+              }}
+            >
+              ₱
+            </span>
+            <input
+              type="number"
+              value={amount || ""}
+              onChange={(e) => setAmount(Math.max(0, parseInt(e.target.value) || 0))}
+              className="bg-transparent border-none outline-none w-full text-text font-medium tracking-tight tabular-nums"
+              style={{
+                fontFamily: "var(--font-display)",
+                fontSize: "clamp(28px, 4.5vw, 38px)",
+                fontVariationSettings: '"opsz" 144, "SOFT" 30',
+                letterSpacing: "-0.025em",
+                lineHeight: "1",
+              }}
+              aria-label="Investment amount"
+            />
+          </div>
+          <div className="flex gap-1 mt-2 flex-wrap">
+            {[500, 1000, 5000, 10000].map((p) => (
+              <button
+                key={p}
+                onClick={() => setAmount(p)}
+                className={cn(
+                  "text-[9px] px-2 py-0.5 rounded-full transition",
+                  amount === p
+                    ? "bg-gold/15 text-gold font-medium"
+                    : "bg-card-elev text-text-muted hover:text-text"
+                )}
+              >
+                ₱{p >= 1000 ? `${p / 1000}K` : p}
+              </button>
+            ))}
           </div>
         </div>
+      </div>
+
+      {/* Spec rows */}
+      <div className="flex flex-col flex-1">
+        <SpecRow label="Daily rate" value={`${selected.dailyRate}% / day`} index={0} />
+        <SpecRow label="Duration" value={`${selected.durationDays} days`} index={1} />
+        <SpecRow
+          label="Range"
+          value={`${formatPHP(selected.minInvestment, { short: true })} – ${formatPHP(selected.maxInvestment, { short: true })}`}
+          index={2}
+        />
+        <SpecRow label="Vault lock" value="365 days · 1% daily" index={3} />
+
+        <SectionHeader
+          label={mode === "monthly" ? "Monthly reinvest · year 1" : `For ₱${amount.toLocaleString()}`}
+        />
+
+        {mode === "single" ? (
+          <>
+            <SpecRow label="Daily income" value={formatPHP(dailyIncome)} index={4} />
+            <SpecRow label="Wallet income" value={formatPHP(walletIncome)} index={5} />
+            <SpecRow label="Vault credit" value={formatPHP(vaultCredit)} index={6} vault />
+            <SpecRow
+              label="Vault after 365d"
+              value={formatPHP(vaultAfter365, { short: true })}
+              index={7}
+              vault
+              bigValue
+            />
+            <SpecRow
+              label="Total return"
+              value={formatPHP(total, { short: true })}
+              index={8}
+              highlight
+              bigValue
+            />
+          </>
+        ) : (
+          <>
+            <SpecRow label="Per cycle wallet" value={formatPHP(walletIncome)} index={4} />
+            <SpecRow label="Per cycle vault" value={formatPHP(vaultCredit)} index={5} vault />
+            <SpecRow
+              label="Wallet · 12 cycles"
+              value={formatPHP(walletIncome * 12, { short: true })}
+              index={6}
+            />
+            <SpecRow
+              label="Vault · year end"
+              value={formatPHP(monthlyVault, { short: true })}
+              index={7}
+              vault
+              bigValue
+            />
+            <SpecRow
+              label="Total year 1"
+              value={formatPHP(walletIncome * 12 + monthlyVault, { short: true })}
+              index={8}
+              highlight
+              bigValue
+            />
+          </>
+        )}
+      </div>
+
+      {/* Tagline + CTA footer */}
+      <div className="p-4 border-t border-border">
+        <p className="text-[11px] text-text-muted m-0 mb-3 leading-relaxed">
+          {planTaglines[selected.id] ??
+            `${selected.durationDays}-day plan paying ${selected.dailyRate}% daily. Earnings auto-credit to your vault.`}
+        </p>
+        <button
+          onClick={() => setActivatePlan(selected)}
+          disabled={!inRange}
+          className={cn(
+            "w-full py-3 rounded-xl text-[13px] font-medium flex items-center justify-center gap-2 transition",
+            inRange
+              ? "bg-gold text-gold-dark hover:brightness-110"
+              : "bg-card-elev text-text-subtle cursor-not-allowed"
+          )}
+        >
+          {inRange ? (
+            <>
+              Activate {selected.name} <ArrowRight className="w-4 h-4" />
+            </>
+          ) : amount < selected.minInvestment ? (
+            `Minimum ${formatPHP(selected.minInvestment, { short: true })}`
+          ) : (
+            `Maximum ${formatPHP(selected.maxInvestment, { short: true })}`
+          )}
+        </button>
       </div>
 
       <ActivatePlanModal
@@ -324,12 +306,12 @@ function SpecRow({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-3 px-5 py-3 transition",
+        "flex items-center justify-between gap-3 px-5 py-2.5 transition",
         alt ? "bg-card-elev/40" : "bg-transparent",
         highlight && "bg-gold/5"
       )}
     >
-      <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-center gap-2 min-w-0">
         <span
           className={cn(
             "w-1.5 h-1.5 rounded-full shrink-0",
@@ -338,7 +320,7 @@ function SpecRow({
         />
         <span
           className={cn(
-            "text-[12px] truncate",
+            "text-[11px] truncate",
             vault ? "text-vault-muted" : highlight ? "text-gold-muted" : "text-text-muted"
           )}
         >
@@ -348,7 +330,7 @@ function SpecRow({
       <span
         className={cn(
           "font-mono tabular-nums shrink-0",
-          bigValue ? "text-[16px] font-medium" : "text-[13px]",
+          bigValue ? "text-[14px] font-medium" : "text-[12px]",
           vault ? "text-vault" : highlight ? "text-gold" : "text-text"
         )}
       >
@@ -360,7 +342,7 @@ function SpecRow({
 
 function SectionHeader({ label }: { label: string }) {
   return (
-    <div className="px-5 py-2.5 bg-card-elev/60 border-y border-border">
+    <div className="px-5 py-2 bg-card-elev/60 border-y border-border">
       <p className="text-[9px] uppercase tracking-[0.18em] text-text-subtle m-0">{label}</p>
     </div>
   );
@@ -368,70 +350,56 @@ function SectionHeader({ label }: { label: string }) {
 
 function GrowthIllustration({ featured }: { featured?: boolean }) {
   return (
-    <svg viewBox="0 0 200 130" className="w-full max-w-[200px]" aria-hidden>
+    <svg viewBox="0 0 140 100" className="w-[120px] h-[86px]" aria-hidden>
       <defs>
         <linearGradient id="growth-grad" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="#3DD598" stopOpacity="0.4" />
           <stop offset="100%" stopColor="#3DD598" stopOpacity="1" />
         </linearGradient>
         <linearGradient id="growth-fade" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#3DD598" stopOpacity="0.18" />
+          <stop offset="0%" stopColor="#3DD598" stopOpacity="0.22" />
           <stop offset="100%" stopColor="#3DD598" stopOpacity="0" />
         </linearGradient>
       </defs>
-
-      {/* Subtle grid */}
-      <g stroke="rgba(255,255,255,0.04)" strokeWidth="0.5">
-        <line x1="0" y1="30" x2="200" y2="30" />
-        <line x1="0" y1="60" x2="200" y2="60" />
-        <line x1="0" y1="90" x2="200" y2="90" />
+      <g stroke="rgba(255,255,255,0.05)" strokeWidth="0.5">
+        <line x1="0" y1="30" x2="140" y2="30" />
+        <line x1="0" y1="60" x2="140" y2="60" />
       </g>
-
-      {/* Filled area under curve */}
       <path
-        d="M 10 110 Q 50 100, 70 85 T 130 50 Q 150 35, 180 20 L 180 120 L 10 120 Z"
+        d="M 8 85 Q 35 80, 50 65 T 95 38 Q 110 28, 128 14 L 128 92 L 8 92 Z"
         fill="url(#growth-fade)"
       />
-
-      {/* Main curve */}
       <path
-        d="M 10 110 Q 50 100, 70 85 T 130 50 Q 150 35, 180 20"
+        d="M 8 85 Q 35 80, 50 65 T 95 38 Q 110 28, 128 14"
         stroke="url(#growth-grad)"
-        strokeWidth="2.5"
+        strokeWidth="2"
         fill="none"
         strokeLinecap="round"
       />
-
-      {/* Arrow head */}
       <path
-        d="M 175 15 L 185 22 L 178 30"
+        d="M 124 10 L 132 17 L 126 24"
         stroke="#3DD598"
-        strokeWidth="2.5"
+        strokeWidth="2"
         fill="none"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-
-      {/* Data dots */}
-      <circle cx="10" cy="110" r="3" fill="#3DD598" />
-      <circle cx="70" cy="85" r="3" fill="#3DD598" />
-      <circle cx="130" cy="50" r="3" fill="#3DD598" />
-      <circle cx="180" cy="20" r="5" fill="#3DD598">
-        <animate attributeName="r" values="5;7;5" dur="2s" repeatCount="indefinite" />
+      <circle cx="8" cy="85" r="2.5" fill="#3DD598" />
+      <circle cx="50" cy="65" r="2.5" fill="#3DD598" />
+      <circle cx="95" cy="38" r="2.5" fill="#3DD598" />
+      <circle cx="128" cy="14" r="4" fill="#3DD598">
+        <animate attributeName="r" values="4;6;4" dur="2s" repeatCount="indefinite" />
       </circle>
-
-      {/* Vault badge for featured */}
       {featured && (
-        <g transform="translate(20 35)">
-          <circle r="14" fill="#A78BFA" fillOpacity="0.18" />
-          <circle r="9" fill="#A78BFA" fillOpacity="0.6" />
+        <g transform="translate(20 28)">
+          <circle r="11" fill="#A78BFA" fillOpacity="0.18" />
+          <circle r="7" fill="#A78BFA" fillOpacity="0.7" />
           <text
             textAnchor="middle"
             dominantBaseline="central"
             fill="#fff"
-            fontSize="9"
+            fontSize="8"
             fontWeight="600"
-            fontFamily="ui-monospace, monospace"
           >
             ★
           </text>
