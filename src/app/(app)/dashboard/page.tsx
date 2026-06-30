@@ -197,18 +197,13 @@ export default function DashboardPage() {
           </div>
         </motion.div>
 
-        {/* Active plans full width */}
-        <motion.div variants={item} className="mb-3">
+        {/* 3-column bottom row: Active plans · Daily activity · Plan history */}
+        <motion.div
+          variants={item}
+          className="grid grid-cols-1 lg:grid-cols-3 gap-3"
+        >
           <ActivePlansList />
-        </motion.div>
-
-        {/* Activity */}
-        <motion.div variants={item} className="mb-3">
           <ActivityFeed />
-        </motion.div>
-
-        {/* Plan history */}
-        <motion.div variants={item}>
           <PlanHistoryTable />
         </motion.div>
       </motion.div>

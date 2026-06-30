@@ -14,47 +14,49 @@ export function PlanHistoryTable() {
           </Link>
         }
       />
-      <table className="w-full text-[11px] table-fixed">
-        <colgroup>
-          <col style={{ width: "35%" }} />
-          <col style={{ width: "18%" }} />
-          <col style={{ width: "18%" }} />
-          <col style={{ width: "18%" }} />
-          <col style={{ width: "11%" }} />
-        </colgroup>
-        <thead>
-          <tr className="text-text-subtle text-left">
-            <th className="font-normal py-1">Plan</th>
-            <th className="font-normal py-1 text-right">Capital</th>
-            <th className="font-normal py-1 text-right">Earned</th>
-            <th className="font-normal py-1 text-right">Vault</th>
-            <th className="font-normal py-1 text-right">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {mockPlanHistory.map((row) => (
-            <tr key={row.id} className="border-t border-border">
-              <td className="py-1.5">{row.name}</td>
-              <td className="py-1.5 text-right font-mono">{formatPHP(row.capital, { short: true })}</td>
-              <td className="py-1.5 text-right font-mono">{formatPHP(row.earned, { short: true })}</td>
-              <td className="py-1.5 text-right font-mono">
-                {row.vaultCredit !== null ? formatPHP(row.vaultCredit, { short: true }) : "—"}
-              </td>
-              <td className="py-1.5 text-right">
-                <span
-                  className={
-                    row.status === "active"
-                      ? "text-[9px] bg-green/15 text-green px-1.5 py-0.5 rounded-md"
-                      : "text-[9px] bg-blue/15 text-blue px-1.5 py-0.5 rounded-md"
-                  }
-                >
-                  {row.status === "active" ? "Active" : "Done"}
-                </span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div>
+        {mockPlanHistory.map((row, i) => (
+          <div
+            key={row.id}
+            className={`py-2.5 ${i < mockPlanHistory.length - 1 ? "border-b border-border" : ""}`}
+          >
+            <div className="flex justify-between items-center mb-1.5">
+              <span className="text-[12px] font-medium text-text truncate min-w-0">
+                {row.name}
+              </span>
+              <span
+                className={
+                  row.status === "active"
+                    ? "text-[9px] bg-green/15 text-green px-2 py-0.5 rounded-md shrink-0"
+                    : "text-[9px] bg-blue/15 text-blue px-2 py-0.5 rounded-md shrink-0"
+                }
+              >
+                {row.status === "active" ? "Active" : "Done"}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-[10px]">
+              <div>
+                <p className="m-0 text-text-subtle uppercase tracking-wider text-[9px]">Capital</p>
+                <p className="m-0 font-mono text-text-muted mt-0.5">
+                  {formatPHP(row.capital, { short: true })}
+                </p>
+              </div>
+              <div>
+                <p className="m-0 text-text-subtle uppercase tracking-wider text-[9px]">Earned</p>
+                <p className="m-0 font-mono text-text-muted mt-0.5">
+                  {formatPHP(row.earned, { short: true })}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="m-0 text-vault-muted uppercase tracking-wider text-[9px]">→ Vault</p>
+                <p className="m-0 font-mono text-vault mt-0.5">
+                  {row.vaultCredit !== null ? formatPHP(row.vaultCredit, { short: true }) : "—"}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }
