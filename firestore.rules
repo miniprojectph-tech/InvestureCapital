@@ -3,23 +3,57 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper — is the requesting user marked as admin in their own doc?
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
     function isAdmin() {
-      return request.auth != null
+      return isSignedIn()
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
+    // === Users ===
     match /users/{userId} {
-      // Owner can read + write their own doc
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      // Admin can read any user doc (read-only for safety)
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
       allow read: if isAdmin();
 
       match /activity/{activityId} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
         allow read: if isAdmin();
       }
+    }
+
+    // === Plans (admin-managed templates, readable by all signed-in users) ===
+    match /plans/{planId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // === Withdrawal requests ===
+    match /withdrawals/{wId} {
+      // Owner can read their own; admin can read all
+      allow read: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+
+      // Owner can create only with their own userId + pending status
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      // Only admins can change status (approve/reject)
+      allow update, delete: if isAdmin();
+    }
+
+    // === Platform settings (single doc, readable by all signed-in) ===
+    match /settings/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // collectionGroup('activity') reads — admins only across all users
+    match /{path=**}/activity/{activityId} {
+      allow read: if isAdmin();
     }
 
     // Default deny

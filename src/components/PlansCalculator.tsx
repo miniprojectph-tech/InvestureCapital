@@ -5,7 +5,6 @@ import { useSearchParams } from "next/navigation";
 import { ArrowRight, RefreshCw } from "lucide-react";
 import { cn, formatPHP } from "@/lib/utils";
 import {
-  mockPlans,
   type Plan,
   VAULT_365_MULTIPLIER,
   calcReinvestmentVault,
@@ -14,6 +13,7 @@ import { ActivatePlanModal } from "./ActivatePlanModal";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { activatePlanFor } from "@/lib/userState";
+import { usePlans } from "@/lib/plans";
 
 type Mode = "single" | "monthly";
 
@@ -28,6 +28,7 @@ export function PlansCalculator() {
   const [mode, setMode] = useState<Mode>("single");
   const [activePlan, setActivePlan] = useState<Plan | null>(null);
   const { user, demoMode } = useAuth();
+  const { plans } = usePlans({ onlyActive: true });
 
   async function handleActivate(plan: Plan, capitalAmount: number) {
     if (demoMode || !user) return; // demo: show success animation only
@@ -137,7 +138,7 @@ export function PlansCalculator() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {mockPlans.map((plan) => (
+        {plans.map((plan) => (
           <PlanCard
             key={plan.id}
             plan={plan}

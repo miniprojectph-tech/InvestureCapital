@@ -9,15 +9,9 @@ import { formatPHP, cn } from "@/lib/utils";
 import { useUserState } from "@/lib/useUserState";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
-import { withdrawFromWallet } from "@/lib/userState";
+import { requestWithdrawal, useWithdrawals } from "@/lib/withdrawals";
 
 type Filter = "all" | "approved" | "pending" | "rejected";
-
-const mockHistory = [
-  { id: "w1", amount: 500, status: "approved", at: Date.now() - 3 * 86400000, dest: "BPI ···· 3421" },
-  { id: "w2", amount: 1200, status: "approved", at: Date.now() - 12 * 86400000, dest: "BPI ···· 3421" },
-  { id: "w3", amount: 250, status: "approved", at: Date.now() - 21 * 86400000, dest: "BPI ···· 3421" },
-];
 
 const statusMeta = {
   approved: { label: "Approved", icon: CheckCircle2, color: "text-green", bg: "bg-green/15" },
@@ -26,8 +20,9 @@ const statusMeta = {
 };
 
 export default function WithdrawalsPage() {
-  const { state, loading } = useUserState();
+  const { state, loading: stateLoading } = useUserState();
   const { user, demoMode } = useAuth();
+  const { rows: history, loading: historyLoading } = useWithdrawals("me");
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -35,10 +30,15 @@ export default function WithdrawalsPage() {
     if (demoMode || !user) return;
     const { db } = getFirebase();
     if (!db) return;
-    await withdrawFromWallet(db, user.uid, amount);
+    await requestWithdrawal(db, {
+      userId: user.uid,
+      userName: user.name,
+      userEmail: user.email,
+      amount,
+    });
   }
 
-  if (loading || !state) {
+  if (stateLoading || !state) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
         <Loader2 className="w-5 h-5 text-gold animate-spin" />
@@ -47,10 +47,14 @@ export default function WithdrawalsPage() {
   }
 
   const filtered =
-    filter === "all" ? mockHistory : mockHistory.filter((h) => h.status === filter);
+    filter === "all" ? history : history.filter((h) => h.status === filter);
 
-  const totalWithdrawn = mockHistory
+  const totalApproved = history
     .filter((h) => h.status === "approved")
+    .reduce((s, h) => s + h.amount, 0);
+
+  const totalPending = history
+    .filter((h) => h.status === "pending")
     .reduce((s, h) => s + h.amount, 0);
 
   return (
@@ -65,11 +69,17 @@ export default function WithdrawalsPage() {
           <p className="text-[28px] font-mono font-medium m-0 leading-none tabular-nums">
             {formatPHP(state.balances.wallet)}
           </p>
-          <div className="flex gap-4 mt-3 text-[11px]">
+          <div className="flex gap-4 mt-3 text-[11px] flex-wrap">
             <span className="text-text-subtle">
-              All-time withdrawn{" "}
+              In escrow (pending){" "}
+              <span className="text-vault font-mono ml-1">
+                {formatPHP(totalPending, { short: true })}
+              </span>
+            </span>
+            <span className="text-text-subtle">
+              All-time approved{" "}
               <span className="text-text font-mono ml-1">
-                {formatPHP(totalWithdrawn, { short: true })}
+                {formatPHP(totalApproved, { short: true })}
               </span>
             </span>
             <span className="text-text-subtle">
@@ -111,13 +121,22 @@ export default function WithdrawalsPage() {
           }
         />
 
-        {filtered.length === 0 && (
+        {historyLoading && (
+          <div className="py-6 flex justify-center">
+            <Loader2 className="w-4 h-4 text-gold animate-spin" />
+          </div>
+        )}
+
+        {!historyLoading && filtered.length === 0 && (
           <p className="text-[11px] text-text-subtle text-center py-8 m-0">
-            No withdrawals match this filter yet.
+            {history.length === 0
+              ? "No withdrawal requests yet. Request your first one above."
+              : "No withdrawals match this filter."}
           </p>
         )}
+
         {filtered.map((row, i) => {
-          const meta = statusMeta[row.status as keyof typeof statusMeta];
+          const meta = statusMeta[row.status];
           const Icon = meta.icon;
           return (
             <div
@@ -136,14 +155,15 @@ export default function WithdrawalsPage() {
                 <Icon className={cn("w-4 h-4", meta.color)} />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-[12px] m-0">{formatPHP(row.amount)} to {row.dest}</p>
+                <p className="text-[12px] m-0">{formatPHP(row.amount)} to {row.destination}</p>
                 <p className="text-[10px] text-text-subtle m-0 mt-0.5">
-                  {new Date(row.at).toLocaleDateString("en-PH", {
+                  {new Date(row.createdAt).toLocaleDateString("en-PH", {
                     month: "short",
                     day: "numeric",
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
+                  {row.note && <span className="text-text-dim ml-2">· {row.note}</span>}
                 </p>
               </div>
               <span
