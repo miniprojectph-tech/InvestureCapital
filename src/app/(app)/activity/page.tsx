@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   RefreshCw,
   Search,
+  ArrowDownToLine,
   type LucideIcon,
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
@@ -18,11 +19,12 @@ import { mockActivity, type ActivityType, type ActivityEvent } from "@/lib/mock-
 
 const typeMeta: Record<ActivityType, { label: string; icon: LucideIcon; bg: string; color: string }> = {
   payout: { label: "Payouts", icon: ArrowDownRight, bg: "bg-green/15", color: "text-green" },
-  compound: { label: "Compounds", icon: TrendingUp, bg: "bg-blue/15", color: "text-blue" },
+  compound: { label: "Compounds", icon: TrendingUp, bg: "bg-vault/15", color: "text-vault" },
   "plan-activate": { label: "Activations", icon: Plus, bg: "bg-white/5", color: "text-text-muted" },
   "plan-complete": { label: "Completions", icon: CheckCircle2, bg: "bg-blue/15", color: "text-blue" },
   withdrawal: { label: "Withdrawals", icon: ArrowUpRight, bg: "bg-white/5", color: "text-text-muted" },
   reinvest: { label: "Reinvests", icon: RefreshCw, bg: "bg-gold/15", color: "text-gold" },
+  deposit: { label: "Top ups", icon: ArrowDownToLine, bg: "bg-green/15", color: "text-green" },
 };
 
 // Extend mock data with more rows for the full page

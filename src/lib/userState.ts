@@ -156,6 +156,33 @@ async function logActivity(
   });
 }
 
+/**
+ * Add funds to wallet. Used by the Top-up panel on /wallet. Simulated —
+ * in production this would route through a payment gateway and only credit
+ * the wallet on payment confirmation.
+ */
+export async function topUpWallet(
+  db: Firestore,
+  uid: string,
+  amount: number
+): Promise<void> {
+  if (amount <= 0) throw new Error("Amount must be greater than zero");
+  const ref = doc(db, "users", uid);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("User document not found");
+  const cur = snap.data() as UserState;
+  await updateDoc(ref, {
+    "balances.wallet": (cur.balances.wallet ?? 0) + amount,
+  });
+  await logActivity(db, uid, {
+    type: "deposit",
+    title: "Wallet topped up",
+    subtitle: "Simulated deposit · instant",
+    amount,
+    amountKind: "in",
+  });
+}
+
 export async function withdrawFromWallet(
   db: Firestore,
   uid: string,

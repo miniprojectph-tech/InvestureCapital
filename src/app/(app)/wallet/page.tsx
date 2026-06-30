@@ -2,17 +2,19 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, RefreshCw, ArrowDownRight, Loader2 } from "lucide-react";
+import { ArrowUpRight, RefreshCw, ArrowDownRight, Loader2, ArrowDownToLine } from "lucide-react";
 import { Bar, BarChart, Cell, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { WithdrawModal } from "@/components/WithdrawModal";
-import { formatPHP } from "@/lib/utils";
+import { TopUpPanel } from "@/components/TopUpPanel";
+import { formatPHP, cn } from "@/lib/utils";
 import { mockActivity, mockPlans } from "@/lib/mock-data";
 import { useUserState } from "@/lib/useUserState";
-import { computeDailyIncome, withdrawFromWallet } from "@/lib/userState";
+import { computeDailyIncome, topUpWallet } from "@/lib/userState";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
+import { requestWithdrawal } from "@/lib/withdrawals";
 
 export default function WalletPage() {
   const router = useRouter();
@@ -21,10 +23,22 @@ export default function WalletPage() {
   const [withdrawOpen, setWithdrawOpen] = useState(false);
 
   async function handleWithdraw(amount: number) {
-    if (demoMode || !user) return; // demo: just show success animation
+    if (demoMode || !user) return;
     const { db } = getFirebase();
     if (!db) return;
-    await withdrawFromWallet(db, user.uid, amount);
+    await requestWithdrawal(db, {
+      userId: user.uid,
+      userName: user.name,
+      userEmail: user.email,
+      amount,
+    });
+  }
+
+  async function handleTopUp(amount: number) {
+    if (demoMode || !user) return;
+    const { db } = getFirebase();
+    if (!db) return;
+    await topUpWallet(db, user.uid, amount);
   }
 
   if (loading || !state) {
@@ -48,36 +62,43 @@ export default function WalletPage() {
     <div>
       <TopHeader
         title="Income wallet"
-        subtitle="Daily plan payouts — withdrawable or reinvest into a new plan"
+        subtitle="Daily plan payouts — withdrawable, reinvestable, or top up to fund new plans"
       />
 
-      <div className="bg-card border border-border rounded-xl p-5 mb-3">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
-          <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-text-subtle tracking-wider m-0 mb-1">AVAILABLE BALANCE</p>
-            <p className="text-[32px] font-medium font-mono m-0 leading-none tracking-tight">
-              {formatPHP(walletBalance)}
-            </p>
-            <div className="flex gap-3.5 mt-2 text-[11px]">
-              <span className="text-green font-mono">+{formatPHP(daily)} today</span>
-              <span className="text-text-subtle">Next payout in 12h 43m</span>
-            </div>
+      {/* Split: Available balance + Top up */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+        {/* LEFT — Available balance + actions */}
+        <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
+          <p className="text-[10px] text-text-subtle uppercase tracking-wider m-0 mb-1.5">
+            Available balance
+          </p>
+          <p className="text-[32px] font-mono font-medium m-0 leading-none tracking-tight tabular-nums">
+            {formatPHP(walletBalance)}
+          </p>
+          <div className="flex gap-3.5 mt-2.5 text-[11px] flex-wrap">
+            <span className="text-green font-mono">+{formatPHP(daily)} today</span>
+            <span className="text-text-subtle">Next payout in 12h 43m</span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 mt-auto pt-5">
             <button
               onClick={() => setWithdrawOpen(true)}
-              className="px-3.5 py-2.5 bg-transparent border border-border-strong rounded-lg text-[11px] flex items-center gap-1.5 hover:bg-card-elev transition"
+              disabled={walletBalance <= 0}
+              className="flex-1 px-3.5 py-2.5 bg-transparent border border-border-strong rounded-lg text-[12px] flex items-center justify-center gap-1.5 hover:bg-card-elev transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <ArrowUpRight className="w-3 h-3" /> Withdraw
+              <ArrowUpRight className="w-3.5 h-3.5" /> Withdraw
             </button>
             <button
               onClick={() => router.push(`/plans?prefill=${walletBalance}`)}
-              className="px-3.5 py-2.5 bg-gold text-gold-dark rounded-lg text-[11px] font-medium flex items-center gap-1.5 hover:brightness-110 transition"
+              disabled={walletBalance <= 0}
+              className="flex-1 px-3.5 py-2.5 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center justify-center gap-1.5 hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <RefreshCw className="w-3 h-3" /> Reinvest
+              <RefreshCw className="w-3.5 h-3.5" /> Reinvest
             </button>
           </div>
         </div>
+
+        {/* RIGHT — Top up panel */}
+        <TopUpPanel onSubmit={handleTopUp} />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
@@ -113,7 +134,7 @@ export default function WalletPage() {
             <BarChart data={chartData} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
               <Bar dataKey="value" radius={[2, 2, 0, 0]}>
                 {chartData.map((d, i) => (
-                  <Cell key={i} fill={d.isToday ? "#F5C66B" : "#22C55E"} fillOpacity={d.isToday ? 1 : 0.75} />
+                  <Cell key={i} fill={d.isToday ? "#F5C66B" : "#3DD598"} fillOpacity={d.isToday ? 1 : 0.75} />
                 ))}
               </Bar>
             </BarChart>
@@ -143,9 +164,10 @@ export default function WalletPage() {
               </div>
               {ev.amount !== undefined && (
                 <span
-                  className={`text-[12px] font-mono ${
+                  className={cn(
+                    "text-[12px] font-mono",
                     ev.amountKind === "in" ? "text-green" : "text-text-muted"
-                  }`}
+                  )}
                 >
                   {ev.amountKind === "in" ? "+" : "−"}
                   {formatPHP(ev.amount)}

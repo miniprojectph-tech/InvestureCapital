@@ -5,6 +5,7 @@ import {
   Plus,
   CheckCircle2,
   RefreshCw,
+  ArrowDownToLine,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -14,11 +15,12 @@ import { mockActivity, type ActivityEvent, type ActivityType } from "@/lib/mock-
 
 const typeIcon: Record<ActivityType, { icon: LucideIcon; bg: string; color: string }> = {
   payout: { icon: ArrowDownRight, bg: "bg-green/15", color: "text-green" },
-  compound: { icon: TrendingUp, bg: "bg-blue/15", color: "text-blue" },
+  compound: { icon: TrendingUp, bg: "bg-vault/15", color: "text-vault" },
   "plan-activate": { icon: Plus, bg: "bg-white/5", color: "text-text-muted" },
   "plan-complete": { icon: CheckCircle2, bg: "bg-blue/15", color: "text-blue" },
   withdrawal: { icon: ArrowUpRight, bg: "bg-white/5", color: "text-text-muted" },
   reinvest: { icon: RefreshCw, bg: "bg-gold/15", color: "text-gold" },
+  deposit: { icon: ArrowDownToLine, bg: "bg-green/15", color: "text-green" },
 };
 
 function amountStr(ev: ActivityEvent) {

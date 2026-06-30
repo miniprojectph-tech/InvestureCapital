@@ -42,6 +42,7 @@ const typeMeta: Record<
   "plan-complete": { label: "Plan complete", icon: CheckCircle2, color: "text-blue", bg: "bg-blue/15" },
   withdrawal: { label: "Withdrawal", icon: ArrowUpRight, color: "text-text-muted", bg: "bg-white/5" },
   reinvest: { label: "Reinvest", icon: RefreshCw, color: "text-gold", bg: "bg-gold/15" },
+  deposit: { label: "Top up", icon: ChevronRight, color: "text-green", bg: "bg-green/15" },
 };
 
 function metaFor(type: string) {

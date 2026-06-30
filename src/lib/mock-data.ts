@@ -144,7 +144,7 @@ export function calcReinvestmentVault(monthlyDeposit: number, months: number, me
 }
 
 // Activity events for feed
-export type ActivityType = "payout" | "compound" | "plan-activate" | "plan-complete" | "withdrawal" | "reinvest";
+export type ActivityType = "payout" | "compound" | "plan-activate" | "plan-complete" | "withdrawal" | "reinvest" | "deposit";
 
 export type ActivityEvent = {
   id: string;
