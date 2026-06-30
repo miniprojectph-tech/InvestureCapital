@@ -15,9 +15,7 @@ service cloud.firestore {
 
     // === Users ===
     match /users/{userId} {
-      // Owner: full access
       allow read, write: if isSignedIn() && request.auth.uid == userId;
-      // Admin: full access (needed for plan-complete test action, balance adjustments, etc.)
       allow read, write: if isAdmin();
 
       match /activity/{activityId} {
@@ -42,7 +40,17 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // === Platform settings ===
+    // === Top-up requests ===
+    match /topups/{tId} {
+      allow read: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    // === Platform settings (readable by all signed-in, writable by admin) ===
     match /settings/{doc} {
       allow read: if isSignedIn();
       allow write: if isAdmin();

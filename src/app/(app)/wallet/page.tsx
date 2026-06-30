@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, RefreshCw, ArrowDownRight, Loader2, ArrowDownToLine } from "lucide-react";
+import { ArrowUpRight, RefreshCw, ArrowDownRight, Loader2 } from "lucide-react";
 import { Bar, BarChart, Cell, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
@@ -11,7 +11,7 @@ import { TopUpPanel } from "@/components/TopUpPanel";
 import { formatPHP, cn } from "@/lib/utils";
 import { mockActivity, mockPlans } from "@/lib/mock-data";
 import { useUserState } from "@/lib/useUserState";
-import { computeDailyIncome, topUpWallet } from "@/lib/userState";
+import { computeDailyIncome } from "@/lib/userState";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { requestWithdrawal } from "@/lib/withdrawals";
@@ -32,13 +32,6 @@ export default function WalletPage() {
       userEmail: user.email,
       amount,
     });
-  }
-
-  async function handleTopUp(amount: number) {
-    if (demoMode || !user) return;
-    const { db } = getFirebase();
-    if (!db) return;
-    await topUpWallet(db, user.uid, amount);
   }
 
   if (loading || !state) {
@@ -97,8 +90,8 @@ export default function WalletPage() {
           </div>
         </div>
 
-        {/* RIGHT — Top up panel */}
-        <TopUpPanel onSubmit={handleTopUp} />
+        {/* RIGHT — Top up request panel */}
+        <TopUpPanel />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">

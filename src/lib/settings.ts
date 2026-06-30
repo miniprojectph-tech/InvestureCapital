@@ -4,22 +4,51 @@ import { useEffect, useState } from "react";
 import { doc, onSnapshot, setDoc, type Firestore } from "firebase/firestore";
 import { getFirebase } from "./firebase";
 
+export type PaymentMethodConfig = {
+  enabled: boolean;
+  accountName: string;
+  accountNumber: string; // generic field — can be card no, phone, account no
+  extra?: string; // bank name (for bank transfer), notes, etc.
+};
+
+export type PaymentMethodsConfig = {
+  gotyme: PaymentMethodConfig;
+  gcash: PaymentMethodConfig;
+  bankTransfer: PaymentMethodConfig;
+};
+
 export type PlatformSettings = {
   vaultDailyRate: number; // percent, e.g. 1.0
   vaultLockDays: number;
   starterBalance: number;
   autoSeed: boolean;
   maintenanceMode: boolean;
+  paymentMethods?: PaymentMethodsConfig;
   updatedAt?: number;
   updatedBy?: string;
+};
+
+export const DEFAULT_PAYMENT_METHODS: PaymentMethodsConfig = {
+  gotyme: { enabled: false, accountName: "", accountNumber: "" },
+  gcash: { enabled: false, accountName: "", accountNumber: "" },
+  bankTransfer: { enabled: false, accountName: "", accountNumber: "", extra: "" },
 };
 
 export const DEFAULT_SETTINGS: PlatformSettings = {
   vaultDailyRate: 1.0,
   vaultLockDays: 365,
-  starterBalance: 10000,
-  autoSeed: true,
+  starterBalance: 0,
+  autoSeed: false,
   maintenanceMode: false,
+  paymentMethods: DEFAULT_PAYMENT_METHODS,
+};
+
+export type PaymentMethodId = "gotyme" | "gcash" | "bankTransfer";
+
+export const PAYMENT_METHOD_LABELS: Record<PaymentMethodId, string> = {
+  gotyme: "GoTyme",
+  gcash: "GCash",
+  bankTransfer: "Bank transfer",
 };
 
 export function settingsRef(db: Firestore) {
