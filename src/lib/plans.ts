@@ -66,16 +66,20 @@ export async function deletePlan(db: Firestore, id: string): Promise<void> {
   await deleteDoc(doc(db, "plans", id));
 }
 
-/** Hook: live plans from Firestore. Falls back to mock when DB unavailable. */
+/** Hook: live plans from Firestore. Falls back to mock when DB unavailable
+ *  or the collection is empty. `isFromMock` lets callers detect that case
+ *  and show a "Seed defaults" affordance. */
 export function usePlans(opts: { onlyActive?: boolean } = {}) {
   const [plans, setPlans] = useState<StoredPlan[]>(() =>
     mockPlans.map((p) => ({ ...p, active: true }))
   );
   const [loading, setLoading] = useState(true);
+  const [isFromMock, setIsFromMock] = useState(true);
 
   useEffect(() => {
     const { db } = getFirebase();
     if (!db) {
+      setIsFromMock(true);
       setLoading(false);
       return;
     }
@@ -86,21 +90,23 @@ export function usePlans(opts: { onlyActive?: boolean } = {}) {
       ref,
       (snap) => {
         if (snap.empty) {
-          // Keep mock fallback if collection hasn't been seeded yet
           setPlans(mockPlans.map((p) => ({ ...p, active: true })));
+          setIsFromMock(true);
         } else {
           setPlans(snap.docs.map((d) => d.data() as StoredPlan));
+          setIsFromMock(false);
         }
         setLoading(false);
       },
       (err) => {
         console.warn("plans subscription error, using mock:", err);
         setPlans(mockPlans.map((p) => ({ ...p, active: true })));
+        setIsFromMock(true);
         setLoading(false);
       }
     );
     return unsub;
   }, [opts.onlyActive]);
 
-  return { plans, loading };
+  return { plans, loading, isFromMock };
 }

@@ -30,7 +30,7 @@ import {
 type Editing = StoredPlan & { _new?: boolean };
 
 export default function AdminPlansPage() {
-  const { plans, loading } = usePlans();
+  const { plans, loading, isFromMock } = usePlans();
   const { user } = useAuth();
   const [editing, setEditing] = useState<Editing | null>(null);
   const [seeding, setSeeding] = useState(false);
@@ -39,11 +39,20 @@ export default function AdminPlansPage() {
   async function toggle(p: StoredPlan) {
     const { db } = getFirebase();
     if (!db || !user?.isAdmin) return;
+    if (isFromMock) {
+      setError("These are demo plans — click 'Seed defaults' first to write them to Firestore.");
+      return;
+    }
     try {
       await updatePlan(db, p.id, { active: !p.active });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Update failed");
     }
+  }
+
+  function startEdit(p: StoredPlan) {
+    // If plans are still mock (Firestore empty), Save should CREATE not UPDATE
+    setEditing({ ...p, _new: isFromMock });
   }
 
   async function seed() {
@@ -104,13 +113,15 @@ export default function AdminPlansPage() {
     );
   }
 
-  const isEmpty = plans.length === 0;
-
   return (
     <div>
       <TopHeader
         title="Plan templates"
-        subtitle="Live from Firestore — changes are visible to investors immediately"
+        subtitle={
+          isFromMock
+            ? "Showing demo plans — none persisted to Firestore yet"
+            : "Live from Firestore — changes are visible to investors immediately"
+        }
       />
 
       {error && (
@@ -120,20 +131,37 @@ export default function AdminPlansPage() {
         </div>
       )}
 
+      {isFromMock && (
+        <div className="mb-3 flex items-start justify-between gap-3 px-4 py-3 bg-vault/5 border border-border-vault rounded-lg">
+          <div className="flex items-start gap-2 flex-1 min-w-0">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-vault" />
+            <div>
+              <p className="text-[12px] font-medium m-0 text-text">
+                The /plans collection is empty in Firestore
+              </p>
+              <p className="text-[11px] text-text-muted mt-0.5 m-0">
+                You&apos;re seeing demo plans. Click <span className="text-vault">Seed defaults</span> to write the 4 canonical templates so investors can activate them and you can edit them here.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={seed}
+            disabled={seeding}
+            className="text-[12px] px-3 py-2 bg-vault text-vault-dark rounded-lg font-medium flex items-center gap-1.5 hover:brightness-110 transition disabled:opacity-60 shrink-0"
+          >
+            {seeding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+            Seed defaults
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center justify-between mb-3">
         <p className="text-[11px] text-text-muted m-0">
           {plans.filter((p) => p.active).length} of {plans.length} active
         </p>
         <div className="flex gap-2">
-          {isEmpty && (
-            <button
-              onClick={seed}
-              disabled={seeding}
-              className="text-[12px] px-3 py-2 bg-card border border-border-strong rounded-lg flex items-center gap-1.5 hover:bg-card-elev transition disabled:opacity-60"
-            >
-              {seeding ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-              Seed defaults
-            </button>
+          {false && (
+            <span style={{ display: "none" }} />
           )}
           <button
             onClick={() =>
@@ -155,16 +183,6 @@ export default function AdminPlansPage() {
           </button>
         </div>
       </div>
-
-      {isEmpty && (
-        <Card className="text-center py-10 mb-3">
-          <p className="text-[12px] text-text-muted m-0">
-            No plans in Firestore yet. Click <span className="text-gold">Seed defaults</span> to
-            populate from the canonical templates, or <span className="text-gold">New plan</span> to
-            create your own.
-          </p>
-        </Card>
-      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
         {plans.map((p) => {
@@ -227,14 +245,15 @@ export default function AdminPlansPage() {
 
               <div className="flex gap-2 mt-auto">
                 <button
-                  onClick={() => setEditing(p)}
+                  onClick={() => startEdit(p)}
                   className="flex-1 text-[11px] py-2 bg-card-elev border border-border-strong rounded-md text-text-muted hover:text-text flex items-center justify-center gap-1.5"
                 >
                   <Edit3 className="w-3 h-3" /> Edit
                 </button>
                 <button
                   onClick={() => remove(p)}
-                  className="text-[11px] px-3 py-2 bg-card-elev border border-border-strong rounded-md text-red hover:bg-red/10"
+                  disabled={isFromMock}
+                  className="text-[11px] px-3 py-2 bg-card-elev border border-border-strong rounded-md text-red hover:bg-red/10 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-3 h-3" />
                 </button>
