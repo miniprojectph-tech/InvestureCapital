@@ -10,7 +10,8 @@ export type IconName =
   | "support"
   | "users"
   | "chart"
-  | "settings";
+  | "settings"
+  | "timer";
 
 export type NavItem = {
   label: string;
@@ -58,6 +59,7 @@ export const adminNav: NavGroup[] = [
   {
     label: "Operations",
     items: [
+      { label: "Active plans", href: "/admin/active-plans", icon: "timer" },
       { label: "Transactions", href: "/admin/transactions", icon: "receipt" },
       { label: "Activity log", href: "/admin/activity", icon: "activity" },
     ],

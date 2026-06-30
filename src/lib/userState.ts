@@ -19,6 +19,12 @@ export type StoredActivePlan = {
   completedAt?: number;
 };
 
+export type CompletedPlan = StoredActivePlan & {
+  completedAt: number;
+  vaultCredited: number;
+  capitalReturned: number;
+};
+
 export type UserState = {
   profile: {
     name: string;
@@ -32,6 +38,7 @@ export type UserState = {
     vaultLockStartedAt: number | null;
   };
   activePlans: StoredActivePlan[];
+  completedPlans?: CompletedPlan[];
   /** Admin role — set manually in Firestore console. Defaults false on seed. */
   isAdmin?: boolean;
 };
@@ -52,6 +59,7 @@ export function createStarterState(name: string, email: string): UserState {
         startedAt: now,
       },
     ],
+    completedPlans: [],
     isAdmin: false,
   };
 }
@@ -175,6 +183,58 @@ export async function withdrawFromWallet(
     subtitle: "To bank ····3421",
     amount,
     amountKind: "out",
+  });
+}
+
+/**
+ * Admin-only: fast-forward a user's active plan to completion. Used for
+ * testing the completion flow without waiting real days. Credits the vault
+ * by `capital × dailyRate × duration`, returns capital to wallet, moves the
+ * plan from activePlans → completedPlans, anchors the vault lock if it's
+ * the user's first ever completion, and logs the event.
+ */
+export async function completePlanForUser(
+  db: Firestore,
+  userId: string,
+  planInstanceId: string,
+  planRate: number,
+  planDuration: number,
+  planName: string
+): Promise<void> {
+  const ref = doc(db, "users", userId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("User not found");
+  const cur = snap.data() as UserState;
+
+  const plan = cur.activePlans?.find((p) => p.id === planInstanceId);
+  if (!plan) throw new Error("Plan not found in active list");
+
+  const vaultCredit = plan.capital * (planRate / 100) * planDuration;
+  const completed: CompletedPlan = {
+    ...plan,
+    completedAt: Date.now(),
+    vaultCredited: vaultCredit,
+    capitalReturned: plan.capital,
+  };
+
+  const updates: Record<string, unknown> = {
+    activePlans: cur.activePlans.filter((p) => p.id !== planInstanceId),
+    completedPlans: [...(cur.completedPlans ?? []), completed],
+    "balances.vault": (cur.balances.vault ?? 0) + vaultCredit,
+    "balances.wallet": (cur.balances.wallet ?? 0) + plan.capital,
+  };
+
+  if (!cur.balances.vaultLockStartedAt) {
+    updates["balances.vaultLockStartedAt"] = Date.now();
+  }
+
+  await updateDoc(ref, updates);
+  await logActivity(db, userId, {
+    type: "plan-complete",
+    title: `Plan completed — ${planName}`,
+    subtitle: `Vault credited ${vaultCredit.toFixed(2)} · capital ${plan.capital} returned`,
+    amount: vaultCredit,
+    amountKind: "neutral",
   });
 }
 

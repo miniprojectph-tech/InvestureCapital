@@ -1,7 +1,17 @@
 "use client";
 
-import { collection, getDocs, limit, orderBy, query, type Firestore } from "firebase/firestore";
-import type { UserState } from "./userState";
+import {
+  collection,
+  collectionGroup,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  startAfter,
+  type Firestore,
+  type QueryDocumentSnapshot,
+} from "firebase/firestore";
+import type { CompletedPlan, StoredActivePlan, UserState } from "./userState";
 
 export type InvestorRow = {
   uid: string;
@@ -59,5 +69,112 @@ export function computeAggregate(rows: InvestorRow[]): AdminAggregate {
       0
     ),
     totalActivePlans: rows.reduce((s, r) => s + r.activePlansCount, 0),
+  };
+}
+
+// ===== Cross-investor plan listings =====
+
+export type ActivePlanRow = StoredActivePlan & {
+  userId: string;
+  userName: string;
+  userEmail: string;
+};
+
+export type CompletedPlanRow = CompletedPlan & {
+  userId: string;
+  userName: string;
+  userEmail: string;
+};
+
+export async function listAllActivePlans(db: Firestore): Promise<ActivePlanRow[]> {
+  const snap = await getDocs(collection(db, "users"));
+  const rows: ActivePlanRow[] = [];
+  for (const userDoc of snap.docs) {
+    const data = userDoc.data() as UserState;
+    for (const plan of data.activePlans ?? []) {
+      rows.push({
+        ...plan,
+        userId: userDoc.id,
+        userName: data.profile?.name ?? "—",
+        userEmail: data.profile?.email ?? "",
+      });
+    }
+  }
+  return rows.sort((a, b) => b.startedAt - a.startedAt);
+}
+
+export async function listAllCompletedPlans(db: Firestore): Promise<CompletedPlanRow[]> {
+  const snap = await getDocs(collection(db, "users"));
+  const rows: CompletedPlanRow[] = [];
+  for (const userDoc of snap.docs) {
+    const data = userDoc.data() as UserState;
+    for (const plan of data.completedPlans ?? []) {
+      rows.push({
+        ...plan,
+        userId: userDoc.id,
+        userName: data.profile?.name ?? "—",
+        userEmail: data.profile?.email ?? "",
+      });
+    }
+  }
+  return rows.sort((a, b) => b.completedAt - a.completedAt);
+}
+
+// ===== Cross-investor activity (collectionGroup) =====
+
+export type AdminActivityRow = {
+  id: string;
+  path: string;
+  userId: string;
+  type: string;
+  title: string;
+  subtitle: string;
+  amount?: number;
+  amountKind?: "in" | "out" | "neutral";
+  at: number;
+};
+
+function rowFromActivityDoc(d: QueryDocumentSnapshot): AdminActivityRow {
+  const data = d.data();
+  const userId = d.ref.parent.parent?.id ?? "";
+  // Firestore timestamps come back as Timestamp objects; normalise to ms.
+  const at =
+    data.at && typeof (data.at as { toMillis?: () => number }).toMillis === "function"
+      ? (data.at as { toMillis: () => number }).toMillis()
+      : typeof data.at === "number"
+      ? data.at
+      : Date.now();
+  return {
+    id: d.id,
+    path: d.ref.path,
+    userId,
+    type: data.type ?? "unknown",
+    title: data.title ?? "",
+    subtitle: data.subtitle ?? "",
+    amount: typeof data.amount === "number" ? data.amount : undefined,
+    amountKind: data.amountKind,
+    at,
+  };
+}
+
+export type ActivityPage = {
+  rows: AdminActivityRow[];
+  lastDoc: QueryDocumentSnapshot | null;
+  hasMore: boolean;
+};
+
+/** Fetch a page of cross-investor activity. Pass `after` to get the next page. */
+export async function fetchActivityPage(
+  db: Firestore,
+  pageSize: number,
+  after?: QueryDocumentSnapshot | null
+): Promise<ActivityPage> {
+  const base = query(collectionGroup(db, "activity"), orderBy("at", "desc"));
+  const q = after ? query(base, startAfter(after), limit(pageSize)) : query(base, limit(pageSize));
+  const snap = await getDocs(q);
+  return {
+    rows: snap.docs.map(rowFromActivityDoc),
+    lastDoc: snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null,
+    hasMore: snap.docs.length === pageSize,
   };
 }

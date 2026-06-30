@@ -15,12 +15,14 @@ service cloud.firestore {
 
     // === Users ===
     match /users/{userId} {
+      // Owner: full access
       allow read, write: if isSignedIn() && request.auth.uid == userId;
-      allow read: if isAdmin();
+      // Admin: full access (needed for plan-complete test action, balance adjustments, etc.)
+      allow read, write: if isAdmin();
 
       match /activity/{activityId} {
         allow read, write: if isSignedIn() && request.auth.uid == userId;
-        allow read: if isAdmin();
+        allow read, write: if isAdmin();
       }
     }
 
@@ -32,26 +34,21 @@ service cloud.firestore {
 
     // === Withdrawal requests ===
     match /withdrawals/{wId} {
-      // Owner can read their own; admin can read all
       allow read: if isSignedIn()
         && (resource.data.userId == request.auth.uid || isAdmin());
-
-      // Owner can create only with their own userId + pending status
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'pending';
-
-      // Only admins can change status (approve/reject)
       allow update, delete: if isAdmin();
     }
 
-    // === Platform settings (single doc, readable by all signed-in) ===
+    // === Platform settings ===
     match /settings/{doc} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
-    // collectionGroup('activity') reads — admins only across all users
+    // === collectionGroup('activity') reads — admins only across all users ===
     match /{path=**}/activity/{activityId} {
       allow read: if isAdmin();
     }
