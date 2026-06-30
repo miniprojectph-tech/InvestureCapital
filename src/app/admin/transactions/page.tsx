@@ -15,20 +15,20 @@ import {
   ChevronLeft,
   type LucideIcon,
 } from "lucide-react";
-import type { QueryDocumentSnapshot } from "firebase/firestore";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { cn, formatPHP } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import {
-  fetchActivityPage,
+  fetchAllActivity,
   listInvestors,
   type AdminActivityRow,
   type InvestorRow,
 } from "@/lib/adminQueries";
 
 const PAGE_SIZE = 20;
+const FETCH_CAP = 500;
 
 type SortKey = "newest" | "oldest" | "amount-desc" | "amount-asc";
 
@@ -58,44 +58,21 @@ function metaFor(type: string) {
 export default function AdminTransactionsPage() {
   const { user, demoMode } = useAuth();
   const [investors, setInvestors] = useState<InvestorRow[]>([]);
-  const [pages, setPages] = useState<AdminActivityRow[][]>([]);
-  const [cursors, setCursors] = useState<(QueryDocumentSnapshot | null)[]>([null]);
-  const [pageIdx, setPageIdx] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
+  const [allRows, setAllRows] = useState<AdminActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState(0);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("newest");
   const [typeFilter, setTypeFilter] = useState<string | "all">("all");
 
-  // Load investor list once for name lookups
   useEffect(() => {
     let cancelled = false;
-    async function loadInvestors() {
-      if (demoMode || !user) return;
-      const { db } = getFirebase();
-      if (!db) return;
-      try {
-        const list = await listInvestors(db, 500);
-        if (!cancelled) setInvestors(list);
-      } catch {
-        // ignore — names just won't resolve
-      }
-    }
-    loadInvestors();
-    return () => {
-      cancelled = true;
-    };
-  }, [user, demoMode]);
-
-  // Load first page
-  useEffect(() => {
-    let cancelled = false;
-    async function loadFirst() {
+    async function load() {
       if (demoMode || !user) {
         if (!cancelled) {
-          setPages([]);
+          setAllRows([]);
           setLoading(false);
         }
         return;
@@ -106,59 +83,44 @@ export default function AdminTransactionsPage() {
         return;
       }
       try {
-        const page = await fetchActivityPage(db, PAGE_SIZE);
+        // Load investors + activity in parallel
+        const [people, rows] = await Promise.all([
+          listInvestors(db, 500).catch(() => [] as InvestorRow[]),
+          fetchAllActivity(db, FETCH_CAP),
+        ]);
         if (!cancelled) {
-          setPages([page.rows]);
-          setCursors([null, page.lastDoc]);
-          setHasMore(page.hasMore);
+          setInvestors(people);
+          setAllRows(rows);
           setLoading(false);
         }
       } catch (err) {
         console.error("activity fetch failed", err);
         if (!cancelled) {
-          const msg = err instanceof Error ? err.message : "Failed to load activity";
-          // Helpful hint if Firestore prints the composite-index URL
-          setError(
-            msg.includes("index")
-              ? `${msg}\n\nFirestore needs a composite index — click the URL in the server logs to create it.`
-              : msg
-          );
+          setError(err instanceof Error ? err.message : "Failed to load activity");
           setLoading(false);
         }
       }
     }
-    loadFirst();
+    load();
     return () => {
       cancelled = true;
     };
   }, [user, demoMode]);
 
-  async function loadNext() {
-    if (loadingMore || !hasMore) return;
+  async function refresh() {
     const { db } = getFirebase();
     if (!db) return;
-    // If next page already cached
-    if (pageIdx + 1 < pages.length) {
-      setPageIdx(pageIdx + 1);
-      return;
-    }
-    setLoadingMore(true);
+    setRefreshing(true);
+    setError(null);
     try {
-      const after = cursors[pageIdx + 1] ?? null;
-      const page = await fetchActivityPage(db, PAGE_SIZE, after);
-      setPages((prev) => [...prev, page.rows]);
-      setCursors((prev) => [...prev, page.lastDoc]);
-      setHasMore(page.hasMore);
-      setPageIdx((idx) => idx + 1);
+      const rows = await fetchAllActivity(db, FETCH_CAP);
+      setAllRows(rows);
+      setPage(0);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load more");
+      setError(err instanceof Error ? err.message : "Refresh failed");
     } finally {
-      setLoadingMore(false);
+      setRefreshing(false);
     }
-  }
-
-  function loadPrev() {
-    if (pageIdx > 0) setPageIdx(pageIdx - 1);
   }
 
   const userNameById = useMemo(() => {
@@ -167,11 +129,10 @@ export default function AdminTransactionsPage() {
     return m;
   }, [investors]);
 
-  const currentRaw = pages[pageIdx] ?? [];
-
-  const visible = useMemo(() => {
+  // Apply filter + search + sort to ALL rows, then paginate
+  const filtered = useMemo(() => {
     const q = query.toLowerCase();
-    let list = currentRaw.filter((r) => {
+    let list = allRows.filter((r) => {
       if (typeFilter !== "all" && r.type !== typeFilter) return false;
       if (!q) return true;
       const u = userNameById.get(r.userId);
@@ -197,13 +158,23 @@ export default function AdminTransactionsPage() {
       }
     });
     return list;
-  }, [currentRaw, query, sort, typeFilter, userNameById]);
+  }, [allRows, query, sort, typeFilter, userNameById]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const start = safePage * PAGE_SIZE;
+  const visible = filtered.slice(start, start + PAGE_SIZE);
+
+  // Reset to page 0 when filters change
+  useEffect(() => {
+    setPage(0);
+  }, [query, sort, typeFilter]);
 
   return (
     <div>
       <TopHeader
         title="Platform transactions"
-        subtitle={`Page ${pageIdx + 1} · ${currentRaw.length} on this page · live from Firestore`}
+        subtitle={`${filtered.length} of ${allRows.length} loaded · page ${safePage + 1} of ${totalPages}`}
       />
 
       {error && (
@@ -266,6 +237,18 @@ export default function AdminTransactionsPage() {
             <option value="amount-desc">Amount (high → low)</option>
             <option value="amount-asc">Amount (low → high)</option>
           </select>
+          <button
+            onClick={refresh}
+            disabled={refreshing}
+            className="text-[11px] px-3 py-1.5 bg-card border border-border rounded-full text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-60"
+          >
+            {refreshing ? (
+              <Loader2 className="w-3 h-3 animate-spin" />
+            ) : (
+              <RefreshCw className="w-3 h-3" />
+            )}
+            Refresh
+          </button>
         </div>
       </div>
 
@@ -276,9 +259,9 @@ export default function AdminTransactionsPage() {
           </div>
         ) : visible.length === 0 ? (
           <p className="text-[11px] text-text-subtle text-center py-12 m-0">
-            {currentRaw.length === 0
+            {allRows.length === 0
               ? "No transactions in Firestore yet. Activity is logged when investors get payouts, withdraw, or activate plans."
-              : "No transactions match the current filter on this page."}
+              : "No transactions match the current filter."}
           </p>
         ) : (
           <div className="overflow-x-auto -mx-1">
@@ -315,9 +298,7 @@ export default function AdminTransactionsPage() {
                           </div>
                           <div className="min-w-0">
                             <p className="m-0 text-[11px] truncate">{u?.name ?? row.userId.slice(0, 8)}</p>
-                            <p className="m-0 text-[9px] text-text-subtle truncate">
-                              {u?.email ?? ""}
-                            </p>
+                            <p className="m-0 text-[9px] text-text-subtle truncate">{u?.email ?? ""}</p>
                           </div>
                         </div>
                       </td>
@@ -364,22 +345,24 @@ export default function AdminTransactionsPage() {
 
       <div className="flex items-center justify-between mt-3">
         <p className="text-[10px] text-text-subtle m-0">
-          Showing page {pageIdx + 1} · {currentRaw.length} of {PAGE_SIZE} per page
+          Showing {start + 1}–{Math.min(start + PAGE_SIZE, filtered.length)} of {filtered.length}
+          {allRows.length === FETCH_CAP && (
+            <span className="ml-2 text-text-dim">(capped at {FETCH_CAP})</span>
+          )}
         </p>
         <div className="flex items-center gap-2">
           <button
-            onClick={loadPrev}
-            disabled={pageIdx === 0}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={safePage === 0}
             className="text-[11px] px-3 py-1.5 bg-card border border-border-strong rounded-md text-text-muted hover:text-text disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
           >
             <ChevronLeft className="w-3 h-3" /> Previous
           </button>
           <button
-            onClick={loadNext}
-            disabled={!hasMore || loadingMore}
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={safePage >= totalPages - 1}
             className="text-[11px] px-3 py-1.5 bg-gold text-gold-dark rounded-md font-medium hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
           >
-            {loadingMore ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
             Next <ChevronRight className="w-3 h-3" />
           </button>
         </div>

@@ -163,7 +163,25 @@ export type ActivityPage = {
   hasMore: boolean;
 };
 
-/** Fetch a page of cross-investor activity. Pass `after` to get the next page. */
+/**
+ * Fetch up to `cap` cross-investor activity rows in one shot, then sort
+ * client-side by `at` desc. This avoids needing a Firestore single-field
+ * exemption for `collectionGroup('activity').orderBy('at')` — the spec
+ * is committed in firestore.indexes.json but takes 5–10 minutes to build
+ * the first time. The client-side cap stays well under Firestore's
+ * collectionGroup limits for the prototype scale.
+ */
+export async function fetchAllActivity(
+  db: Firestore,
+  cap = 500
+): Promise<AdminActivityRow[]> {
+  const q = query(collectionGroup(db, "activity"), limit(cap));
+  const snap = await getDocs(q);
+  const rows = snap.docs.map(rowFromActivityDoc);
+  return rows.sort((a, b) => b.at - a.at);
+}
+
+/** Legacy paginated fetch (requires the COLLECTION_GROUP_DESC exemption on `at`). */
 export async function fetchActivityPage(
   db: Firestore,
   pageSize: number,
