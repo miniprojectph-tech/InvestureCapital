@@ -117,15 +117,15 @@ export function PlansCalculator() {
             </div>
           </div>
           <div className="text-right shrink-0">
-            <p className="text-[9px] text-gold-muted tracking-wider m-0 mb-1">VAULT COMPOUNDS AT</p>
-            <p className="text-[18px] font-medium font-mono text-gold m-0 leading-none">1% daily</p>
+            <p className="text-[9px] text-vault-muted tracking-wider m-0 mb-1">VAULT COMPOUNDS AT</p>
+            <p className="text-[18px] font-medium font-mono text-vault m-0 leading-none">1% daily</p>
             <p className="text-[9px] text-text-subtle mt-1 m-0">≈37.78× over 365 days</p>
           </div>
         </div>
         {mode === "monthly" && (
-          <p className="text-[10px] text-gold-muted mt-3 m-0">
+          <p className="text-[10px] text-vault-muted mt-3 m-0">
             Reinvest mode: deposit this amount every 30 days for 12 months. After year 1, vault ≈{" "}
-            <span className="text-gold font-medium font-mono">
+            <span className="text-vault font-medium font-mono">
               {formatPHP(calcReinvestmentVault(amount * 1.05, 12, 365), { short: true })}
             </span>
             {" "}+ wallet{" "}
@@ -226,8 +226,8 @@ function PlanCard({
         <Row label="Vault credit" value={formatPHP(stats.vaultCredit, { short: true })} />
         <div className="border-t border-dashed border-gold/25 mt-1.5 pt-1.5">
           <div className="flex justify-between items-baseline">
-            <span className="text-[9px] text-gold-muted">Vault after 365d</span>
-            <span className="text-[17px] font-mono text-gold font-medium">
+            <span className="text-[9px] text-vault-muted">Vault after 365d</span>
+            <span className="text-[17px] font-mono text-vault font-medium">
               {formatPHP(stats.vaultAfter365, { short: true })}
             </span>
           </div>
@@ -255,7 +255,7 @@ function PlanCard({
       </button>
 
       {mode === "monthly" && inRange && (
-        <p className="text-[9px] text-gold-muted text-center mt-2 m-0">
+        <p className="text-[9px] text-vault-muted text-center mt-2 m-0">
           1yr reinvest projection · vault ≈{" "}
           {formatPHP(calcReinvestmentVault(stats.vaultCredit, 12, 365), { short: true })}
         </p>

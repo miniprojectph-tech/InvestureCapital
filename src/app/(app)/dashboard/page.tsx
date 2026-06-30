@@ -133,14 +133,14 @@ export default function DashboardPage() {
                     <AreaChart data={growthData} margin={{ top: 6, right: 4, bottom: 0, left: 0 }}>
                       <defs>
                         <linearGradient id="dashGold" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#F5C66B" stopOpacity={0.32} />
-                          <stop offset="100%" stopColor="#F5C66B" stopOpacity={0} />
+                          <stop offset="0%" stopColor="#3DD598" stopOpacity={0.32} />
+                          <stop offset="100%" stopColor="#3DD598" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <Area
                         type="monotone"
                         dataKey="value"
-                        stroke="#F5C66B"
+                        stroke="#3DD598"
                         strokeWidth={1.8}
                         fill="url(#dashGold)"
                       />
@@ -154,8 +154,8 @@ export default function DashboardPage() {
                 <PortfolioDonut
                   slices={[
                     { name: "Wallet", value: state.balances.wallet, color: "#4F8EF7" },
-                    { name: "Deployed", value: deployed, color: "#A78BFA" },
-                    { name: "Vault", value: state.balances.vault, color: "#F5C66B" },
+                    { name: "Deployed", value: deployed, color: "#3DD598" },
+                    { name: "Vault", value: state.balances.vault, color: "#A78BFA" },
                   ]}
                 />
               </div>
@@ -166,7 +166,7 @@ export default function DashboardPage() {
           <div className="flex flex-col gap-3">
             <SummaryThemedCard
               icon={ArrowDownRight}
-              theme="green"
+              theme="emerald"
               title="Daily Income"
               subtitle={`${state.activePlans.length} active plans`}
               caption={{ label: "Today", value: formatPHP(dailyIncome, { short: true }) }}
@@ -181,7 +181,7 @@ export default function DashboardPage() {
             />
             <SummaryThemedCard
               icon={Lock}
-              theme="gold"
+              theme="vault"
               title="Future Growth Vault"
               subtitle="Locked · compounding 1% daily"
               caption={{ label: "Pending", value: `+${formatPHP(pendingVault, { short: true })}` }}

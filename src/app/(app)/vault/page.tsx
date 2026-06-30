@@ -16,7 +16,7 @@ export default function VaultPage() {
   if (loading || !state) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-5 h-5 text-gold animate-spin" />
+        <Loader2 className="w-5 h-5 text-vault animate-spin" />
       </div>
     );
   }
@@ -56,34 +56,34 @@ export default function VaultPage() {
         subtitle="1% daily compounding · locked 365 days from first activation"
       />
 
-      <div className="relative overflow-hidden bg-gradient-to-br from-card via-[#221F2E] to-[#1A1226] border border-border-gold rounded-2xl p-5 mb-3">
+      <div className="relative overflow-hidden bg-gradient-to-br from-card via-[#1F1B33] to-[#22193A] border border-border-vault rounded-2xl p-5 mb-3">
         <svg
           className="absolute -top-5 -right-5 w-40 h-32 opacity-10 pointer-events-none"
           viewBox="0 0 160 120"
           aria-hidden
         >
-          <circle cx="120" cy="60" r="40" fill="none" stroke="#F5C66B" strokeWidth="1" />
-          <circle cx="120" cy="60" r="55" fill="none" stroke="#F5C66B" strokeWidth="0.5" />
-          <circle cx="120" cy="60" r="70" fill="none" stroke="#F5C66B" strokeWidth="0.3" />
+          <circle cx="120" cy="60" r="40" fill="none" stroke="#A78BFA" strokeWidth="1" />
+          <circle cx="120" cy="60" r="55" fill="none" stroke="#A78BFA" strokeWidth="0.5" />
+          <circle cx="120" cy="60" r="70" fill="none" stroke="#A78BFA" strokeWidth="0.3" />
         </svg>
         <div className="flex justify-between items-start relative">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <Lock className="w-3 h-3 text-gold-muted" />
-              <span className="text-[10px] text-gold-muted tracking-wider">VAULT BALANCE</span>
+              <Lock className="w-3 h-3 text-vault-muted" />
+              <span className="text-[10px] text-vault-muted tracking-wider">VAULT BALANCE</span>
               <span className="w-1.5 h-1.5 rounded-full bg-green ml-1" />
               <span className="text-[9px] text-green">Compounding live</span>
             </div>
-            <p className="text-[36px] font-medium font-mono m-0 leading-none tracking-tight text-gold">
+            <p className="text-[36px] font-medium font-mono m-0 leading-none tracking-tight text-vault">
               <TickingBalance base={balance} decimals={4} />
             </p>
-            <p className="text-[11px] text-gold-muted mt-2 m-0 font-mono">
+            <p className="text-[11px] text-vault-muted mt-2 m-0 font-mono">
               +{formatPHP(todayCompound)} today · +₱
               {(balance * (Math.pow(1 + VAULT_DAILY_RATE, 1 / 86400) - 1)).toFixed(4)} / sec
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] text-gold-muted tracking-wider m-0 mb-1">UNLOCKS IN</p>
+            <p className="text-[10px] text-vault-muted tracking-wider m-0 mb-1">UNLOCKS IN</p>
             <p className="text-[22px] font-medium font-mono m-0 leading-none">
               {daysRemaining} days
             </p>
@@ -92,7 +92,7 @@ export default function VaultPage() {
         </div>
         <div className="h-1 bg-black/30 rounded-full mt-4 relative">
           <div
-            className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-gold to-[#E0A94B] rounded-full"
+            className="absolute left-0 top-0 bottom-0 bg-gradient-to-r from-vault to-vault-muted rounded-full"
             style={{ width: `${lockProgress}%` }}
           />
         </div>
@@ -113,11 +113,11 @@ export default function VaultPage() {
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <p className="text-[9px] text-text-subtle tracking-wider m-0 mb-1">GROWTH</p>
-          <p className="text-[13px] font-medium font-mono text-gold m-0">+{formatPHP(growth, { short: true })}</p>
+          <p className="text-[13px] font-medium font-mono text-vault m-0">+{formatPHP(growth, { short: true })}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
           <p className="text-[9px] text-text-subtle tracking-wider m-0 mb-1">PROJECTED 365D</p>
-          <p className="text-[13px] font-medium font-mono text-gold m-0">{formatPHP(projected365, { short: true })}</p>
+          <p className="text-[13px] font-medium font-mono text-vault m-0">{formatPHP(projected365, { short: true })}</p>
         </div>
       </div>
 
@@ -128,15 +128,15 @@ export default function VaultPage() {
             <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="vaultFade" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#F5C66B" stopOpacity={0.4} />
-                  <stop offset="100%" stopColor="#F5C66B" stopOpacity={0} />
+                  <stop offset="0%" stopColor="#A78BFA" stopOpacity={0.4} />
+                  <stop offset="100%" stopColor="#A78BFA" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <ReferenceLine x={data[0].day} stroke="#4F8EF7" strokeDasharray="2 2" strokeWidth={0.5} />
               <Area
                 type="monotone"
                 dataKey="value"
-                stroke="#F5C66B"
+                stroke="#A78BFA"
                 strokeWidth={1.8}
                 fill="url(#vaultFade)"
               />
@@ -155,7 +155,7 @@ export default function VaultPage() {
             >
               <div className="flex justify-between mb-0.5">
                 <span className="text-[11px]">{s.name}</span>
-                <span className="text-[11px] font-mono text-gold font-medium">
+                <span className="text-[11px] font-mono text-vault font-medium">
                   {formatPHP(s.amount, { short: true })}
                 </span>
               </div>
@@ -164,8 +164,8 @@ export default function VaultPage() {
           ))}
           <div className="pt-2 mt-2 border-t border-border-strong">
             <div className="flex justify-between">
-              <span className="text-[11px] text-gold-muted">Total deposited</span>
-              <span className="text-[12px] font-mono text-gold font-medium">
+              <span className="text-[11px] text-vault-muted">Total deposited</span>
+              <span className="text-[12px] font-mono text-vault font-medium">
                 {formatPHP(deposited, { short: true })}
               </span>
             </div>
@@ -191,21 +191,21 @@ export default function VaultPage() {
         </Card>
       </div>
 
-      <div className="bg-gold/5 border border-border-gold rounded-xl p-3.5 flex justify-between items-center">
+      <div className="bg-vault/5 border border-border-vault rounded-xl p-3.5 flex justify-between items-center">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-full bg-gold/15 flex items-center justify-center">
-            <Lock className="w-3.5 h-3.5 text-gold" />
+          <div className="w-7 h-7 rounded-full bg-vault/15 flex items-center justify-center">
+            <Lock className="w-3.5 h-3.5 text-vault" />
           </div>
           <div>
             <p className="text-[11px] font-medium m-0">
               Vault is locked for {daysRemaining} more days
             </p>
-            <p className="text-[10px] text-gold-muted mt-0.5 m-0">
+            <p className="text-[10px] text-vault-muted mt-0.5 m-0">
               First withdrawal available Jun 19, 2027 · 1% daily compounding continues
             </p>
           </div>
         </div>
-        <button className="px-3 py-1.5 bg-transparent border border-gold/30 text-gold rounded-md text-[10px]">
+        <button className="px-3 py-1.5 bg-transparent border border-vault/30 text-vault rounded-md text-[10px]">
           View lock terms
         </button>
       </div>

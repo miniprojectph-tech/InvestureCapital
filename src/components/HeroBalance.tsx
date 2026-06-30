@@ -53,7 +53,7 @@ export function HeroBalance({ wallet, deployed, vault }: HeroBalanceProps) {
         <span className="text-text-dim">·</span>
         <span className="text-text-subtle">
           Vault{" "}
-          <span className="text-gold font-medium font-mono ml-1">
+          <span className="text-vault font-medium font-mono ml-1">
             <TickingBalance base={vault} decimals={2} />
           </span>
         </span>

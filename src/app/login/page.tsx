@@ -179,12 +179,12 @@ export default function LoginPage() {
         </div>
 
         <div className="my-4">
-          <p className="text-[11px] text-gold-muted tracking-wider m-0 mb-2">
+          <p className="text-[11px] text-vault-muted tracking-wider m-0 mb-2">
             ONE INVESTMENT · TWO INCOME STREAMS
           </p>
           <p className="text-[22px] font-medium leading-snug m-0 mb-2">
             Invest ₱1,000 once → earn{" "}
-            <span className="text-gold">₱40,722</span> from a single 30-day plan.
+            <span className="text-vault">₱40,722</span> from a single 30-day plan.
           </p>
           <p className="text-[12px] text-text-muted leading-relaxed m-0">
             ₱1,050 daily income to your wallet + ₱1,050 seed into your Future Growth Vault
@@ -192,12 +192,12 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <div className="bg-card/60 border border-border-gold rounded-xl p-4 backdrop-blur-sm">
+        <div className="bg-card/60 border border-border-vault rounded-xl p-4 backdrop-blur-sm">
           <div className="flex justify-between items-baseline mb-2.5">
-            <span className="text-[10px] text-gold-muted tracking-wider">FUTURE GROWTH VAULT</span>
+            <span className="text-[10px] text-vault-muted tracking-wider">FUTURE GROWTH VAULT</span>
             <span className="text-[10px] text-green font-mono">+₱94.45 today</span>
           </div>
-          <p className="text-[26px] font-medium font-mono m-0 mb-2 text-gold tracking-tight">
+          <p className="text-[26px] font-medium font-mono m-0 mb-2 text-vault tracking-tight">
             ₱9,445.42
           </p>
           <div className="h-[70px]">
@@ -205,14 +205,14 @@ export default function LoginPage() {
               <AreaChart data={curve} margin={{ top: 2, right: 2, bottom: 0, left: 0 }}>
                 <defs>
                   <linearGradient id="loginGold" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#F5C66B" stopOpacity={0.4} />
-                    <stop offset="100%" stopColor="#F5C66B" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#A78BFA" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="#A78BFA" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <Area
                   type="monotone"
                   dataKey="value"
-                  stroke="#F5C66B"
+                  stroke="#A78BFA"
                   strokeWidth={1.5}
                   fill="url(#loginGold)"
                 />
@@ -221,7 +221,7 @@ export default function LoginPage() {
           </div>
           <div className="flex justify-between text-[9px] text-text-subtle mt-1">
             <span>Day 1 · ₱250</span>
-            <span className="text-gold-muted">Day 365 · ₱9,445</span>
+            <span className="text-vault-muted">Day 365 · ₱9,445</span>
           </div>
         </div>
 
@@ -235,7 +235,7 @@ export default function LoginPage() {
             <p className="text-[9px] text-text-subtle mt-0.5 m-0">Total managed</p>
           </div>
           <div>
-            <p className="text-[14px] font-medium font-mono text-gold m-0">37.78×</p>
+            <p className="text-[14px] font-medium font-mono text-vault m-0">37.78×</p>
             <p className="text-[9px] text-text-subtle mt-0.5 m-0">Annual multiplier</p>
           </div>
         </div>

@@ -2,32 +2,32 @@ import Link from "next/link";
 import { ArrowUpRight, ArrowDownRight, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type ThemeKey = "green" | "gold" | "blue" | "purple";
+type ThemeKey = "emerald" | "vault" | "blue" | "pink";
 
 const themes: Record<
   ThemeKey,
   { iconBg: string; iconColor: string; ring: string; valueColor?: string }
 > = {
-  green: {
+  emerald: {
     iconBg: "bg-green/15",
     iconColor: "text-green",
-    ring: "ring-green/10",
+    ring: "ring-green/15",
   },
-  gold: {
-    iconBg: "bg-gold/15",
-    iconColor: "text-gold",
-    ring: "ring-gold/15",
-    valueColor: "text-gold",
+  vault: {
+    iconBg: "bg-vault/15",
+    iconColor: "text-vault",
+    ring: "ring-vault/20",
+    valueColor: "text-vault",
   },
   blue: {
     iconBg: "bg-blue/15",
     iconColor: "text-blue",
     ring: "ring-blue/10",
   },
-  purple: {
-    iconBg: "bg-[#A78BFA]/15",
-    iconColor: "text-[#A78BFA]",
-    ring: "ring-[#A78BFA]/10",
+  pink: {
+    iconBg: "bg-pink/15",
+    iconColor: "text-pink",
+    ring: "ring-pink/10",
   },
 };
 
