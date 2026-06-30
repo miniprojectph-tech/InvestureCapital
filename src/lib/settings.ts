@@ -9,6 +9,8 @@ export type PaymentMethodConfig = {
   accountName: string;
   accountNumber: string; // generic field — can be card no, phone, account no
   extra?: string; // bank name (for bank transfer), notes, etc.
+  qrCodeUrl?: string; // Firebase Storage download URL for the QR image
+  qrCodePath?: string; // Storage path, kept so we can delete the old file on re-upload
 };
 
 export type PaymentMethodsConfig = {
@@ -33,6 +35,9 @@ export const DEFAULT_PAYMENT_METHODS: PaymentMethodsConfig = {
   gcash: { enabled: false, accountName: "", accountNumber: "" },
   bankTransfer: { enabled: false, accountName: "", accountNumber: "", extra: "" },
 };
+
+// 2 MB cap so we don't accidentally store giant photos in the QR slot.
+export const MAX_QR_BYTES = 2 * 1024 * 1024;
 
 export const DEFAULT_SETTINGS: PlatformSettings = {
   vaultDailyRate: 1.0,

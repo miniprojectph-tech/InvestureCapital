@@ -9,6 +9,9 @@ import {
   Building2,
   Smartphone,
   CreditCard,
+  Upload,
+  Trash2,
+  ImageOff,
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
@@ -24,6 +27,7 @@ import {
   type PaymentMethodConfig,
   type PaymentMethodId,
 } from "@/lib/settings";
+import { uploadPaymentMethodQr, deletePaymentMethodQr } from "@/lib/storage";
 
 const methodIcons = {
   gotyme: Building2,
@@ -44,6 +48,7 @@ export default function AdminSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploadingQr, setUploadingQr] = useState<PaymentMethodId | null>(null);
 
   useEffect(() => {
     if (!loading) setDraft({ ...settings, paymentMethods: { ...DEFAULT_PAYMENT_METHODS, ...settings.paymentMethods } });
@@ -77,6 +82,64 @@ export default function AdminSettingsPage() {
         [id]: { ...DEFAULT_PAYMENT_METHODS[id], ...d.paymentMethods?.[id], ...patch },
       },
     }));
+  }
+
+  async function uploadQr(id: PaymentMethodId, file: File) {
+    const { db, storage } = getFirebase();
+    if (!db || !storage || !user?.isAdmin) {
+      setError("Admin role and Firebase Storage required.");
+      return;
+    }
+    setUploadingQr(id);
+    setError(null);
+    try {
+      const oldPath = draft.paymentMethods?.[id]?.qrCodePath;
+      const uploaded = await uploadPaymentMethodQr(storage, id, file);
+      // Patch local draft AND persist immediately so the QR link is live
+      const next = {
+        ...DEFAULT_PAYMENT_METHODS,
+        ...draft.paymentMethods,
+        [id]: {
+          ...DEFAULT_PAYMENT_METHODS[id],
+          ...draft.paymentMethods?.[id],
+          qrCodeUrl: uploaded.url,
+          qrCodePath: uploaded.path,
+        },
+      };
+      setDraft((d) => ({ ...d, paymentMethods: next }));
+      await saveSettings(db, { paymentMethods: next }, user.uid);
+      // Best-effort delete of the previous file
+      if (oldPath && oldPath !== uploaded.path) {
+        deletePaymentMethodQr(storage, oldPath).catch(() => {});
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploadingQr(null);
+    }
+  }
+
+  async function removeQr(id: PaymentMethodId) {
+    const { db, storage } = getFirebase();
+    if (!db || !storage || !user?.isAdmin) return;
+    const oldPath = draft.paymentMethods?.[id]?.qrCodePath;
+    const next = {
+      ...DEFAULT_PAYMENT_METHODS,
+      ...draft.paymentMethods,
+      [id]: {
+        ...DEFAULT_PAYMENT_METHODS[id],
+        ...draft.paymentMethods?.[id],
+        qrCodeUrl: "",
+        qrCodePath: "",
+      },
+    };
+    setDraft((d) => ({ ...d, paymentMethods: next }));
+    try {
+      await saveSettings(db, { paymentMethods: next }, user.uid);
+      if (oldPath) deletePaymentMethodQr(storage, oldPath).catch(() => {});
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Remove failed");
+    }
   }
 
   if (loading) {
@@ -206,36 +269,102 @@ export default function AdminSettingsPage() {
                   <Toggle on={cfg.enabled} onChange={(v) => patchMethod(id, { enabled: v })} />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {id === "bankTransfer" && (
-                    <Field label="Bank name">
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_140px] gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {id === "bankTransfer" && (
+                      <Field label="Bank name">
+                        <input
+                          type="text"
+                          value={cfg.extra ?? ""}
+                          onChange={(e) => patchMethod(id, { extra: e.target.value })}
+                          placeholder="e.g. BPI, BDO, UnionBank"
+                          className="bg-canvas border border-border rounded-md px-3 py-2 text-[12px] text-text outline-none focus:border-gold/40 w-full"
+                        />
+                      </Field>
+                    )}
+                    <Field label="Account name">
                       <input
                         type="text"
-                        value={cfg.extra ?? ""}
-                        onChange={(e) => patchMethod(id, { extra: e.target.value })}
-                        placeholder="e.g. BPI, BDO, UnionBank"
+                        value={cfg.accountName}
+                        onChange={(e) => patchMethod(id, { accountName: e.target.value })}
+                        placeholder="e.g. Investure Capital Inc."
                         className="bg-canvas border border-border rounded-md px-3 py-2 text-[12px] text-text outline-none focus:border-gold/40 w-full"
                       />
                     </Field>
-                  )}
-                  <Field label="Account name">
-                    <input
-                      type="text"
-                      value={cfg.accountName}
-                      onChange={(e) => patchMethod(id, { accountName: e.target.value })}
-                      placeholder="e.g. Investure Capital Inc."
-                      className="bg-canvas border border-border rounded-md px-3 py-2 text-[12px] text-text outline-none focus:border-gold/40 w-full"
-                    />
-                  </Field>
-                  <Field label={methodAccountLabel[id]}>
-                    <input
-                      type="text"
-                      value={cfg.accountNumber}
-                      onChange={(e) => patchMethod(id, { accountNumber: e.target.value })}
-                      placeholder={id === "gcash" ? "09XX-XXX-XXXX" : "1234-5678-9012"}
-                      className="bg-canvas border border-border rounded-md px-3 py-2 text-[12px] font-mono text-text outline-none focus:border-gold/40 w-full"
-                    />
-                  </Field>
+                    <Field label={methodAccountLabel[id]}>
+                      <input
+                        type="text"
+                        value={cfg.accountNumber}
+                        onChange={(e) => patchMethod(id, { accountNumber: e.target.value })}
+                        placeholder={id === "gcash" ? "09XX-XXX-XXXX" : "1234-5678-9012"}
+                        className="bg-canvas border border-border rounded-md px-3 py-2 text-[12px] font-mono text-text outline-none focus:border-gold/40 w-full"
+                      />
+                    </Field>
+                  </div>
+
+                  {/* QR code uploader */}
+                  <div className="flex flex-col items-stretch gap-2">
+                    <label className="text-[11px] font-medium text-text">QR code</label>
+                    <div className="relative w-[140px] h-[140px] rounded-lg overflow-hidden border border-border bg-canvas flex items-center justify-center self-center lg:self-start">
+                      {cfg.qrCodeUrl ? (
+                        <>
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={cfg.qrCodeUrl}
+                            alt={`${PAYMENT_METHOD_LABELS[id]} QR`}
+                            className="w-full h-full object-contain bg-white p-1.5"
+                          />
+                          {uploadingQr === id && (
+                            <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                              <Loader2 className="w-5 h-5 text-gold animate-spin" />
+                            </div>
+                          )}
+                        </>
+                      ) : uploadingQr === id ? (
+                        <Loader2 className="w-5 h-5 text-gold animate-spin" />
+                      ) : (
+                        <ImageOff className="w-6 h-6 text-text-dim" />
+                      )}
+                    </div>
+                    <div className="flex gap-1.5">
+                      <label
+                        className={cnInline(
+                          "flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[10px] border transition cursor-pointer",
+                          uploadingQr === id
+                            ? "border-border text-text-subtle cursor-wait"
+                            : "border-border-strong text-text-muted hover:bg-card-elev hover:text-text"
+                        )}
+                      >
+                        <Upload className="w-3 h-3" />
+                        {cfg.qrCodeUrl ? "Replace" : "Upload"}
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif"
+                          className="hidden"
+                          disabled={uploadingQr === id}
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) uploadQr(id, f);
+                            e.currentTarget.value = "";
+                          }}
+                        />
+                      </label>
+                      {cfg.qrCodeUrl && (
+                        <button
+                          type="button"
+                          onClick={() => removeQr(id)}
+                          disabled={uploadingQr === id}
+                          className="px-2 py-1.5 rounded-md text-[10px] border border-border-strong text-red hover:bg-red/10 disabled:opacity-60"
+                          aria-label="Remove QR"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[9px] text-text-subtle m-0 text-center">
+                      PNG / JPG · max 2 MB
+                    </p>
+                  </div>
                 </div>
               </div>
             );

@@ -180,31 +180,53 @@ export function TopUpModal({ open, onClose, onSubmit }: Props) {
               <p className="text-[10px] text-text-muted uppercase tracking-wider m-0 mb-2">
                 Send {amount > 0 ? formatPHP(amount) : "your amount"} to
               </p>
-              <div className="flex flex-col gap-2">
-                {selectedConfig.extra && method === "bankTransfer" && (
-                  <InfoRow label="Bank" value={selectedConfig.extra} />
+              <div
+                className={cn(
+                  "flex gap-3",
+                  selectedConfig.qrCodeUrl ? "flex-col sm:flex-row" : "flex-col"
                 )}
-                <InfoRow
-                  label="Account name"
-                  value={selectedConfig.accountName || "—"}
-                  onCopy={
-                    selectedConfig.accountName
-                      ? () => copy(selectedConfig.accountName, "name")
-                      : undefined
-                  }
-                  copied={copied === "name"}
-                />
-                <InfoRow
-                  label={method === "gcash" ? "Phone number" : "Account number"}
-                  value={selectedConfig.accountNumber || "—"}
-                  mono
-                  onCopy={
-                    selectedConfig.accountNumber
-                      ? () => copy(selectedConfig.accountNumber, "num")
-                      : undefined
-                  }
-                  copied={copied === "num"}
-                />
+              >
+                {selectedConfig.qrCodeUrl && (
+                  <div className="shrink-0 self-center sm:self-start">
+                    <div className="w-[140px] h-[140px] bg-white rounded-lg p-1.5 flex items-center justify-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={selectedConfig.qrCodeUrl}
+                        alt={`${PAYMENT_METHOD_LABELS[method]} QR`}
+                        className="w-full h-full object-contain rounded"
+                      />
+                    </div>
+                    <p className="text-[9px] text-text-subtle text-center mt-1.5 m-0">
+                      Scan with {PAYMENT_METHOD_LABELS[method]}
+                    </p>
+                  </div>
+                )}
+                <div className="flex flex-col gap-2 flex-1 min-w-0">
+                  {selectedConfig.extra && method === "bankTransfer" && (
+                    <InfoRow label="Bank" value={selectedConfig.extra} />
+                  )}
+                  <InfoRow
+                    label="Account name"
+                    value={selectedConfig.accountName || "—"}
+                    onCopy={
+                      selectedConfig.accountName
+                        ? () => copy(selectedConfig.accountName, "name")
+                        : undefined
+                    }
+                    copied={copied === "name"}
+                  />
+                  <InfoRow
+                    label={method === "gcash" ? "Phone number" : "Account number"}
+                    value={selectedConfig.accountNumber || "—"}
+                    mono
+                    onCopy={
+                      selectedConfig.accountNumber
+                        ? () => copy(selectedConfig.accountNumber, "num")
+                        : undefined
+                    }
+                    copied={copied === "num"}
+                  />
+                </div>
               </div>
               <p className="text-[10px] text-text-subtle m-0 mt-2.5">
                 Once you&apos;ve sent the money via {PAYMENT_METHOD_LABELS[method]}, paste the

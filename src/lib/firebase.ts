@@ -1,6 +1,7 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -14,18 +15,20 @@ const firebaseConfig = {
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
 let db: Firestore | undefined;
+let storage: FirebaseStorage | undefined;
 
 function getFirebase() {
   if (!firebaseConfig.apiKey) {
     // Allow the prototype to run without Firebase keys for design/preview.
-    return { app: undefined, auth: undefined, db: undefined };
+    return { app: undefined, auth: undefined, db: undefined, storage: undefined };
   }
   if (!app) {
     app = getApps()[0] ?? initializeApp(firebaseConfig);
     auth = getAuth(app);
     db = getFirestore(app);
+    storage = getStorage(app);
   }
-  return { app, auth, db };
+  return { app, auth, db, storage };
 }
 
 export { getFirebase };

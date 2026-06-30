@@ -1,0 +1,50 @@
+"use client";
+
+import {
+  deleteObject,
+  getDownloadURL,
+  ref as storageRef,
+  uploadBytes,
+  type FirebaseStorage,
+} from "firebase/storage";
+import { MAX_QR_BYTES, type PaymentMethodId } from "./settings";
+
+export type UploadedQr = {
+  url: string;
+  path: string;
+};
+
+const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
+
+/** Upload a QR image for a payment method. Returns the download URL + storage path. */
+export async function uploadPaymentMethodQr(
+  storage: FirebaseStorage,
+  method: PaymentMethodId,
+  file: File
+): Promise<UploadedQr> {
+  if (!ACCEPTED_TYPES.includes(file.type)) {
+    throw new Error("QR must be a PNG, JPG, WebP, or GIF image");
+  }
+  if (file.size > MAX_QR_BYTES) {
+    throw new Error(`QR image too large (max ${MAX_QR_BYTES / 1024 / 1024} MB)`);
+  }
+  const ext = (file.name.split(".").pop() || "png").toLowerCase();
+  const path = `payment-methods/${method}-${Date.now()}.${ext}`;
+  const ref = storageRef(storage, path);
+  await uploadBytes(ref, file, { contentType: file.type });
+  const url = await getDownloadURL(ref);
+  return { url, path };
+}
+
+/** Delete a previously uploaded QR. Safe to call with an undefined/missing path. */
+export async function deletePaymentMethodQr(
+  storage: FirebaseStorage,
+  path: string | undefined
+): Promise<void> {
+  if (!path) return;
+  try {
+    await deleteObject(storageRef(storage, path));
+  } catch {
+    // file may already be gone — ignore
+  }
+}
