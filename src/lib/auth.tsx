@@ -15,6 +15,7 @@ import {
   updateProfile,
   type User,
 } from "firebase/auth";
+import { doc, onSnapshot } from "firebase/firestore";
 import { getFirebase } from "./firebase";
 import { ensureUserDoc } from "./userState";
 
@@ -23,6 +24,7 @@ type AuthUser = {
   email: string;
   name: string;
   initials: string;
+  isAdmin: boolean;
 };
 
 type AuthContextValue = {
@@ -45,12 +47,13 @@ function initialsFrom(name: string, email: string) {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
-function toAuthUser(u: User): AuthUser {
+function toAuthUser(u: User, isAdmin = false): AuthUser {
   return {
     uid: u.uid,
     email: u.email ?? "",
     name: u.displayName || u.email?.split("@")[0] || "Investor",
     initials: initialsFrom(u.displayName ?? "", u.email ?? ""),
+    isAdmin,
   };
 }
 
@@ -65,22 +68,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    const unsub = onAuthStateChanged(auth, async (fbUser) => {
-      if (fbUser) {
-        const u = toAuthUser(fbUser);
-        setUser(u);
-        // Make sure their Firestore doc exists (idempotent — no-op if already seeded).
-        if (db) {
-          ensureUserDoc(db, u.uid, u.name, u.email).catch((err) =>
-            console.error("ensureUserDoc on auth change failed", err)
-          );
-        }
-      } else {
+
+    let unsubDoc: (() => void) | undefined;
+
+    const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
+      // Tear down any previous doc listener
+      unsubDoc?.();
+      unsubDoc = undefined;
+
+      if (!fbUser) {
         setUser(null);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+
+      const u = toAuthUser(fbUser);
+      setUser(u);
+
+      if (db) {
+        ensureUserDoc(db, u.uid, u.name, u.email).catch((err) =>
+          console.error("ensureUserDoc on auth change failed", err)
+        );
+
+        // Live-track isAdmin from the user's Firestore doc so a manual
+        // role change in the console takes effect without a re-login.
+        unsubDoc = onSnapshot(
+          doc(db, "users", u.uid),
+          (snap) => {
+            const isAdmin = snap.exists() && snap.data().isAdmin === true;
+            setUser((prev) => (prev ? { ...prev, isAdmin } : prev));
+            setLoading(false);
+          },
+          (err) => {
+            console.error("user doc subscription error", err);
+            setLoading(false);
+          }
+        );
+      } else {
+        setLoading(false);
+      }
     });
-    return unsub;
+
+    return () => {
+      unsubAuth();
+      unsubDoc?.();
+    };
   }, [auth, db]);
 
   async function signIn(email: string, password: string) {

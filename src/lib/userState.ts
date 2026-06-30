@@ -32,6 +32,8 @@ export type UserState = {
     vaultLockStartedAt: number | null;
   };
   activePlans: StoredActivePlan[];
+  /** Admin role — set manually in Firestore console. Defaults false on seed. */
+  isAdmin?: boolean;
 };
 
 export const STARTER_BALANCE = 10000;
@@ -50,6 +52,7 @@ export function createStarterState(name: string, email: string): UserState {
         startedAt: now,
       },
     ],
+    isAdmin: false,
   };
 }
 
