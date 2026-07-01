@@ -12,6 +12,9 @@ import {
   Upload,
   Trash2,
   ImageOff,
+  Bot,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
@@ -22,10 +25,12 @@ import {
   saveSettings,
   DEFAULT_SETTINGS,
   DEFAULT_PAYMENT_METHODS,
+  DEFAULT_AI_TRADING,
   PAYMENT_METHOD_LABELS,
   type PlatformSettings,
   type PaymentMethodConfig,
   type PaymentMethodId,
+  type AiTradingProvider,
 } from "@/lib/settings";
 import { uploadPaymentMethodQr, deletePaymentMethodQr } from "@/lib/storage";
 
@@ -51,8 +56,16 @@ export default function AdminSettingsPage() {
   const [uploadingQr, setUploadingQr] = useState<PaymentMethodId | null>(null);
 
   useEffect(() => {
-    if (!loading) setDraft({ ...settings, paymentMethods: { ...DEFAULT_PAYMENT_METHODS, ...settings.paymentMethods } });
+    if (!loading)
+      setDraft({
+        ...settings,
+        paymentMethods: { ...DEFAULT_PAYMENT_METHODS, ...settings.paymentMethods },
+        aiTrading: { ...DEFAULT_AI_TRADING, ...settings.aiTrading },
+      });
   }, [loading, settings]);
+
+  const [showSecret, setShowSecret] = useState(false);
+  const [showKey, setShowKey] = useState(false);
 
   async function save() {
     const { db } = getFirebase();
@@ -370,6 +383,177 @@ export default function AdminSettingsPage() {
             );
           })}
         </div>
+      </Card>
+
+      {/* AI Trading config */}
+      <Card className="mb-3">
+        <CardHeader
+          title="AI Trading engine"
+          subtitle="Wire up the crypto trading provider. Investors unlock the tab once their wallet balance reaches the threshold below."
+        />
+        <div className="flex items-center justify-between gap-3 p-3 bg-canvas border border-border rounded-lg mb-4">
+          <div className="flex items-center gap-3">
+            <div
+              className={`w-9 h-9 rounded-md flex items-center justify-center ${
+                draft.aiTrading?.enabled ? "bg-gold/15 text-gold" : "bg-card-elev text-text-muted"
+              }`}
+            >
+              <Bot className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[12px] font-medium m-0">
+                {draft.aiTrading?.enabled ? "Trading engine active" : "Trading engine disabled"}
+              </p>
+              <p className="text-[10px] text-text-subtle mt-0.5 m-0">
+                {draft.aiTrading?.enabled
+                  ? `Provider: ${draft.aiTrading.provider} · Unlock at ₱${(draft.aiTrading.unlockThreshold ?? 0).toLocaleString()}`
+                  : "Investors see the AI Trading tab locked with the wallet threshold overlay"}
+              </p>
+            </div>
+          </div>
+          <Toggle
+            on={!!draft.aiTrading?.enabled}
+            onChange={(v) =>
+              setDraft((d) => ({
+                ...d,
+                aiTrading: { ...DEFAULT_AI_TRADING, ...d.aiTrading, enabled: v },
+              }))
+            }
+          />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <Field label="Provider">
+            <select
+              value={draft.aiTrading?.provider ?? "binance"}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  aiTrading: {
+                    ...DEFAULT_AI_TRADING,
+                    ...d.aiTrading,
+                    provider: e.target.value as AiTradingProvider,
+                  },
+                }))
+              }
+              className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] text-text outline-none focus:border-gold/40 w-full"
+            >
+              <option value="binance">Binance</option>
+              <option value="okx">OKX</option>
+              <option value="kraken">Kraken</option>
+              <option value="custom">Custom endpoint</option>
+            </select>
+          </Field>
+          <Field label="Unlock threshold (₱ wallet balance)">
+            <input
+              type="number"
+              value={draft.aiTrading?.unlockThreshold ?? 100000}
+              onChange={(e) =>
+                setDraft((d) => ({
+                  ...d,
+                  aiTrading: {
+                    ...DEFAULT_AI_TRADING,
+                    ...d.aiTrading,
+                    unlockThreshold: parseInt(e.target.value) || 0,
+                  },
+                }))
+              }
+              className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-gold/40 w-full"
+            />
+          </Field>
+        </div>
+
+        <Field label="API endpoint">
+          <input
+            type="text"
+            value={draft.aiTrading?.apiEndpoint ?? ""}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                aiTrading: { ...DEFAULT_AI_TRADING, ...d.aiTrading, apiEndpoint: e.target.value },
+              }))
+            }
+            placeholder="https://api.binance.com or your custom URL"
+            className="bg-canvas border border-border rounded-md px-3 py-2 text-[12px] font-mono text-text outline-none focus:border-gold/40 w-full mt-1.5"
+          />
+        </Field>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+          <Field label="API key">
+            <div className="flex items-center gap-1 bg-canvas border border-border rounded-md px-3 py-2 focus-within:border-gold/40">
+              <input
+                type={showKey ? "text" : "password"}
+                value={draft.aiTrading?.apiKey ?? ""}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    aiTrading: { ...DEFAULT_AI_TRADING, ...d.aiTrading, apiKey: e.target.value },
+                  }))
+                }
+                placeholder="Paste API key"
+                className="flex-1 bg-transparent text-[12px] font-mono text-text outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey((s) => !s)}
+                className="text-text-subtle hover:text-text"
+              >
+                {showKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </Field>
+          <Field label="API secret">
+            <div className="flex items-center gap-1 bg-canvas border border-border rounded-md px-3 py-2 focus-within:border-gold/40">
+              <input
+                type={showSecret ? "text" : "password"}
+                value={draft.aiTrading?.apiSecret ?? ""}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    aiTrading: { ...DEFAULT_AI_TRADING, ...d.aiTrading, apiSecret: e.target.value },
+                  }))
+                }
+                placeholder="Paste API secret"
+                className="flex-1 bg-transparent text-[12px] font-mono text-text outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSecret((s) => !s)}
+                className="text-text-subtle hover:text-text"
+              >
+                {showSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </Field>
+        </div>
+
+        <Field label="Supported pairs (comma-separated)">
+          <input
+            type="text"
+            value={(draft.aiTrading?.supportedPairs ?? []).join(", ")}
+            onChange={(e) =>
+              setDraft((d) => ({
+                ...d,
+                aiTrading: {
+                  ...DEFAULT_AI_TRADING,
+                  ...d.aiTrading,
+                  supportedPairs: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                },
+              }))
+            }
+            placeholder="BTC/USDT, ETH/USDT, SOL/USDT"
+            className="bg-canvas border border-border rounded-md px-3 py-2 text-[12px] font-mono text-text outline-none focus:border-gold/40 w-full mt-1.5"
+          />
+        </Field>
+
+        <p className="text-[10px] text-text-subtle mt-3 m-0">
+          Note: API credentials are stored in Firestore for prototype convenience. In production
+          they should be kept server-side (Cloud Function or backend proxy) so investors never
+          receive them in the browser.
+        </p>
       </Card>
 
       <Card className="mb-3">

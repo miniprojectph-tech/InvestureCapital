@@ -11,7 +11,8 @@ export type IconName =
   | "users"
   | "chart"
   | "settings"
-  | "timer";
+  | "timer"
+  | "bot";
 
 export type NavItem = {
   label: string;
@@ -32,6 +33,7 @@ export const investorNav: NavGroup[] = [
       { label: "My plans", href: "/plans", icon: "coins" },
       { label: "Wallet", href: "/wallet", icon: "wallet" },
       { label: "Vault", href: "/vault", icon: "lock" },
+      { label: "AI Trading", href: "/ai-trading", icon: "bot" },
       { label: "Activity", href: "/activity", icon: "activity" },
       { label: "Withdrawals", href: "/withdrawals", icon: "withdraw" },
       { label: "Transactions", href: "/transactions", icon: "receipt" },

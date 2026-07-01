@@ -19,6 +19,28 @@ export type PaymentMethodsConfig = {
   bankTransfer: PaymentMethodConfig;
 };
 
+export type AiTradingProvider = "binance" | "okx" | "kraken" | "custom";
+
+export type AiTradingConfig = {
+  enabled: boolean;
+  provider: AiTradingProvider;
+  apiEndpoint: string;
+  apiKey: string;
+  apiSecret: string;
+  unlockThreshold: number; // wallet balance required to unlock (default ₱100,000)
+  supportedPairs: string[]; // e.g. ["BTC/USDT", "ETH/USDT"]
+};
+
+export const DEFAULT_AI_TRADING: AiTradingConfig = {
+  enabled: false,
+  provider: "binance",
+  apiEndpoint: "",
+  apiKey: "",
+  apiSecret: "",
+  unlockThreshold: 100000,
+  supportedPairs: ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
+};
+
 export type PlatformSettings = {
   vaultDailyRate: number; // percent, e.g. 1.0
   vaultLockDays: number;
@@ -26,6 +48,7 @@ export type PlatformSettings = {
   autoSeed: boolean;
   maintenanceMode: boolean;
   paymentMethods?: PaymentMethodsConfig;
+  aiTrading?: AiTradingConfig;
   updatedAt?: number;
   updatedBy?: string;
 };
@@ -46,6 +69,7 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   autoSeed: false,
   maintenanceMode: false,
   paymentMethods: DEFAULT_PAYMENT_METHODS,
+  aiTrading: DEFAULT_AI_TRADING,
 };
 
 export type PaymentMethodId = "gotyme" | "gcash" | "bankTransfer";

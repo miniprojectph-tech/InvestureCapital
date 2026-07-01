@@ -19,6 +19,7 @@ import {
   ChartBar,
   Settings,
   Timer,
+  Bot,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -39,6 +40,7 @@ const iconMap: Record<IconName, LucideIcon> = {
   chart: ChartBar,
   settings: Settings,
   timer: Timer,
+  bot: Bot,
 };
 
 type SidebarProps = {
