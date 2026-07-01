@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
+import { InstallAppCard } from "@/components/InstallAppCard";
 import { useAuth } from "@/lib/auth";
 import { useUserState } from "@/lib/useUserState";
 
@@ -111,6 +112,8 @@ export default function ProfilePage() {
               </button>
             </div>
           </Card>
+
+          <InstallAppCard />
 
           <Card>
             <CardHeader title="Danger zone" />
