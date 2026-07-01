@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, X, Clock, AlertCircle, Loader2 } from "lucide-react";
+import { Check, X, Clock, AlertCircle, Loader2, Send } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { formatPHP, cn } from "@/lib/utils";
@@ -156,8 +156,12 @@ export default function AdminWithdrawalsPage() {
               <div className="flex-1 min-w-0">
                 <p className="text-[12px] m-0">{r.userName}</p>
                 <p className="text-[10px] text-text-subtle mt-0.5 m-0 truncate">
-                  {r.userEmail} · {r.type === "long-term" ? "Long-term" : "Short-term"}
+                  {r.userEmail}
                   {r.note && <span className="text-vault-muted ml-1">· {r.note}</span>}
+                </p>
+                <p className="text-[10px] mt-0.5 m-0 truncate flex items-center gap-1">
+                  <Send className="w-2.5 h-2.5 text-gold shrink-0" />
+                  <span className="text-text font-mono">{r.destination}</span>
                 </p>
               </div>
               <div className="text-right shrink-0">

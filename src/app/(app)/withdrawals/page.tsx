@@ -1,15 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, CheckCircle2, Clock, XCircle, Loader2 } from "lucide-react";
+import {
+  ArrowUpRight,
+  CheckCircle2,
+  Clock,
+  XCircle,
+  Loader2,
+  Building2,
+  Wallet,
+  Pencil,
+  Plus,
+} from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { WithdrawModal } from "@/components/WithdrawModal";
+import { PayoutMethodModal } from "@/components/PayoutMethodModal";
 import { formatPHP, cn } from "@/lib/utils";
 import { useUserState } from "@/lib/useUserState";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { requestWithdrawal, useWithdrawals } from "@/lib/withdrawals";
+import {
+  savePayoutMethod,
+  formatPayoutDestination,
+  shortPayoutLabel,
+  PAYOUT_METHOD_LABELS,
+  type PayoutMethodType,
+} from "@/lib/payoutMethod";
 
 type Filter = "all" | "approved" | "pending" | "rejected";
 
@@ -24,10 +42,13 @@ export default function WithdrawalsPage() {
   const { user, demoMode } = useAuth();
   const { rows: history, loading: historyLoading } = useWithdrawals("me");
   const [open, setOpen] = useState(false);
+  const [payoutOpen, setPayoutOpen] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
 
+  const payoutMethod = state?.payoutMethod;
+
   async function handleWithdraw(amount: number) {
-    if (demoMode || !user) return;
+    if (demoMode || !user || !payoutMethod) return;
     const { db } = getFirebase();
     if (!db) return;
     await requestWithdrawal(db, {
@@ -35,7 +56,29 @@ export default function WithdrawalsPage() {
       userName: user.name,
       userEmail: user.email,
       amount,
+      destination: formatPayoutDestination(payoutMethod),
     });
+  }
+
+  async function handleSavePayout(draft: {
+    type: PayoutMethodType;
+    accountName: string;
+    accountNumber: string;
+    bankName?: string;
+  }) {
+    if (demoMode || !user) return;
+    const { db } = getFirebase();
+    if (!db) return;
+    await savePayoutMethod(db, user.uid, draft);
+  }
+
+  function openWithdraw() {
+    if (!payoutMethod) {
+      // No destination yet — steer them to set one up first.
+      setPayoutOpen(true);
+      return;
+    }
+    setOpen(true);
   }
 
   if (stateLoading || !state) {
@@ -61,7 +104,8 @@ export default function WithdrawalsPage() {
     <div>
       <TopHeader title="Withdrawals" subtitle="Request and track payouts from your wallet" />
 
-      <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 mb-3 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3 items-stretch">
+        {/* Part 1 — Available to withdraw */}
         <Card>
           <p className="text-[10px] text-text-subtle uppercase tracking-wider m-0 mb-1">
             Available to withdraw
@@ -82,20 +126,90 @@ export default function WithdrawalsPage() {
                 {formatPHP(totalApproved, { short: true })}
               </span>
             </span>
-            <span className="text-text-subtle">
-              Default bank{" "}
-              <span className="text-text font-mono ml-1">BPI ···· 3421</span>
-            </span>
           </div>
+          <button
+            onClick={openWithdraw}
+            disabled={state.balances.wallet <= 0}
+            className="mt-4 w-full px-5 py-3 bg-gold text-gold-dark rounded-xl text-[13px] font-medium flex items-center justify-center gap-2 hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <ArrowUpRight className="w-4 h-4" />
+            Request withdrawal
+          </button>
+          {state.balances.wallet > 0 && !payoutMethod && (
+            <p className="text-[10px] text-text-subtle text-center mt-2 m-0">
+              Set up a mode of payout first
+            </p>
+          )}
         </Card>
-        <button
-          onClick={() => setOpen(true)}
-          disabled={state.balances.wallet <= 0}
-          className="px-5 py-3 bg-gold text-gold-dark rounded-xl text-[13px] font-medium flex items-center justify-center gap-2 hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed self-stretch"
-        >
-          <ArrowUpRight className="w-4 h-4" />
-          Request withdrawal
-        </button>
+
+        {/* Part 2 — Mode of payout */}
+        <Card>
+          <div className="flex items-start justify-between gap-2 mb-3">
+            <div>
+              <p className="text-[10px] text-text-subtle uppercase tracking-wider m-0 mb-1">
+                Mode of payout
+              </p>
+              <p className="text-[11px] text-text-muted m-0">
+                Where approved withdrawals are sent
+              </p>
+            </div>
+            <button
+              onClick={() => setPayoutOpen(true)}
+              className="text-[11px] px-3 py-1.5 rounded-full flex items-center gap-1.5 shrink-0 bg-gold/15 text-gold hover:bg-gold/25 transition"
+            >
+              {payoutMethod ? (
+                <>
+                  <Pencil className="w-3 h-3" /> Edit
+                </>
+              ) : (
+                <>
+                  <Plus className="w-3 h-3" /> Add
+                </>
+              )}
+            </button>
+          </div>
+
+          {payoutMethod ? (
+            <div className="flex items-center gap-3 px-3 py-3 bg-canvas border border-border rounded-lg">
+              <div className="w-9 h-9 rounded-md bg-blue/15 flex items-center justify-center shrink-0">
+                {payoutMethod.type === "bankTransfer" ? (
+                  <Building2 className="w-4 h-4 text-blue" />
+                ) : (
+                  <Wallet className="w-4 h-4 text-blue" />
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] m-0 truncate">
+                  {payoutMethod.type === "bankTransfer" && payoutMethod.bankName
+                    ? payoutMethod.bankName
+                    : PAYOUT_METHOD_LABELS[payoutMethod.type]}
+                  <span className="text-text-subtle"> · {payoutMethod.accountName}</span>
+                </p>
+                <p className="text-[10px] text-text-subtle mt-0.5 m-0 font-mono">
+                  {shortPayoutLabel(payoutMethod)}
+                </p>
+              </div>
+              <span className="text-[9px] text-green bg-green/15 px-2 py-0.5 rounded-md font-medium">
+                Active
+              </span>
+            </div>
+          ) : (
+            <button
+              onClick={() => setPayoutOpen(true)}
+              className="w-full flex items-center gap-3 px-3 py-3 bg-canvas border border-dashed border-border-strong rounded-lg text-left hover:border-gold/40 transition"
+            >
+              <div className="w-9 h-9 rounded-md bg-card-elev flex items-center justify-center shrink-0">
+                <Plus className="w-4 h-4 text-text-muted" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] m-0">No payout method yet</p>
+                <p className="text-[10px] text-text-subtle mt-0.5 m-0">
+                  Add GCash, GoTyme, or a bank account
+                </p>
+              </div>
+            </button>
+          )}
+        </Card>
       </div>
 
       <Card>
@@ -184,7 +298,19 @@ export default function WithdrawalsPage() {
         open={open}
         onClose={() => setOpen(false)}
         availableBalance={state.balances.wallet}
+        payoutMethod={payoutMethod}
+        onSetUpPayout={() => {
+          setOpen(false);
+          setPayoutOpen(true);
+        }}
         onSubmit={handleWithdraw}
+      />
+
+      <PayoutMethodModal
+        open={payoutOpen}
+        onClose={() => setPayoutOpen(false)}
+        current={payoutMethod}
+        onSave={handleSavePayout}
       />
     </div>
   );

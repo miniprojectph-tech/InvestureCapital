@@ -1,23 +1,39 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Building2, CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { ArrowRight, Building2, CheckCircle2, Loader2, AlertCircle, Wallet } from "lucide-react";
 import { Modal } from "./Modal";
 import { formatPHP, cn } from "@/lib/utils";
+import {
+  type PayoutMethod,
+  PAYOUT_METHOD_LABELS,
+  shortPayoutLabel,
+} from "@/lib/payoutMethod";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   availableBalance: number;
+  payoutMethod?: PayoutMethod;
+  onSetUpPayout?: () => void;
   onSubmit?: (amount: number) => Promise<void>;
 };
 
 type Stage = "form" | "processing" | "success" | "error";
 
-export function WithdrawModal({ open, onClose, availableBalance, onSubmit }: Props) {
+export function WithdrawModal({
+  open,
+  onClose,
+  availableBalance,
+  payoutMethod,
+  onSetUpPayout,
+  onSubmit,
+}: Props) {
   const [amount, setAmount] = useState(0);
   const [stage, setStage] = useState<Stage>("form");
   const [error, setError] = useState<string | null>(null);
+
+  const hasPayout = !!payoutMethod;
 
   function close() {
     onClose();
@@ -29,7 +45,7 @@ export function WithdrawModal({ open, onClose, availableBalance, onSubmit }: Pro
   }
 
   async function submit() {
-    if (amount <= 0 || amount > availableBalance) return;
+    if (amount <= 0 || amount > availableBalance || !hasPayout) return;
     setStage("processing");
     setError(null);
     try {
@@ -47,7 +63,7 @@ export function WithdrawModal({ open, onClose, availableBalance, onSubmit }: Pro
   }
 
   return (
-    <Modal open={open} onClose={close} title="Withdraw to bank">
+    <Modal open={open} onClose={close} title="Request withdrawal">
       {stage === "form" && (
         <div className="flex flex-col gap-4">
           <div>
@@ -79,16 +95,51 @@ export function WithdrawModal({ open, onClose, availableBalance, onSubmit }: Pro
             <label className="block text-[10px] text-text-muted uppercase tracking-wider mb-1.5">
               Destination
             </label>
-            <div className="flex items-center gap-3 px-3 py-2.5 bg-canvas border border-border rounded-lg">
-              <div className="w-8 h-8 rounded-md bg-blue/15 flex items-center justify-center shrink-0">
-                <Building2 className="w-4 h-4 text-blue" />
+            {payoutMethod ? (
+              <div className="flex items-center gap-3 px-3 py-2.5 bg-canvas border border-border rounded-lg">
+                <div className="w-8 h-8 rounded-md bg-blue/15 flex items-center justify-center shrink-0">
+                  {payoutMethod.type === "bankTransfer" ? (
+                    <Building2 className="w-4 h-4 text-blue" />
+                  ) : (
+                    <Wallet className="w-4 h-4 text-blue" />
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] m-0 truncate">
+                    {payoutMethod.type === "bankTransfer" && payoutMethod.bankName
+                      ? payoutMethod.bankName
+                      : PAYOUT_METHOD_LABELS[payoutMethod.type]}
+                    <span className="text-text-subtle"> · {payoutMethod.accountName}</span>
+                  </p>
+                  <p className="text-[10px] text-text-subtle mt-0.5 m-0 font-mono">
+                    {shortPayoutLabel(payoutMethod)}
+                  </p>
+                </div>
+                {onSetUpPayout && (
+                  <button
+                    onClick={onSetUpPayout}
+                    className="text-[10px] text-gold hover:brightness-110 transition"
+                  >
+                    Change
+                  </button>
+                )}
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[12px] m-0">BPI Savings</p>
-                <p className="text-[10px] text-text-subtle mt-0.5 m-0 font-mono">···· 3421</p>
-              </div>
-              <span className="text-[10px] text-text-subtle">Default</span>
-            </div>
+            ) : (
+              <button
+                onClick={onSetUpPayout}
+                className="w-full flex items-center gap-3 px-3 py-2.5 bg-canvas border border-dashed border-gold/40 rounded-lg text-left hover:border-gold/60 transition"
+              >
+                <div className="w-8 h-8 rounded-md bg-gold/15 flex items-center justify-center shrink-0">
+                  <AlertCircle className="w-4 h-4 text-gold" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] m-0 text-gold">Set up a mode of payout</p>
+                  <p className="text-[10px] text-text-subtle mt-0.5 m-0">
+                    Required before you can withdraw
+                  </p>
+                </div>
+              </button>
+            )}
           </div>
 
           <div className="bg-canvas/50 rounded-lg p-3 border border-border">
@@ -114,10 +165,10 @@ export function WithdrawModal({ open, onClose, availableBalance, onSubmit }: Pro
             </button>
             <button
               onClick={submit}
-              disabled={amount <= 0 || amount > availableBalance}
+              disabled={amount <= 0 || amount > availableBalance || !hasPayout}
               className={cn(
                 "flex-1 py-2.5 rounded-lg text-[12px] font-medium flex items-center justify-center gap-1.5 transition",
-                amount > 0 && amount <= availableBalance
+                amount > 0 && amount <= availableBalance && hasPayout
                   ? "bg-gold text-gold-dark hover:brightness-110"
                   : "bg-card-elev text-text-subtle cursor-not-allowed"
               )}
@@ -143,7 +194,11 @@ export function WithdrawModal({ open, onClose, availableBalance, onSubmit }: Pro
           <div>
             <p className="text-[14px] font-medium m-0">Withdrawal submitted</p>
             <p className="text-[11px] text-text-muted mt-1 m-0">
-              <span className="font-mono">{formatPHP(amount)}</span> to BPI ···· 3421
+              <span className="font-mono">{formatPHP(amount)}</span>
+              {payoutMethod ? ` to ${shortPayoutLabel(payoutMethod)}` : ""}
+            </p>
+            <p className="text-[10px] text-text-subtle mt-1 m-0">
+              Pending admin approval — funds are held until then.
             </p>
           </div>
           <button

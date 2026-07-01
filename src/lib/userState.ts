@@ -25,6 +25,15 @@ export type CompletedPlan = StoredActivePlan & {
   capitalReturned: number;
 };
 
+/** Investor's own account where approved withdrawals are sent. */
+export type PayoutMethod = {
+  type: "gotyme" | "gcash" | "bankTransfer";
+  accountName: string;
+  accountNumber: string;
+  bankName?: string;
+  updatedAt: number;
+};
+
 export type UserState = {
   profile: {
     name: string;
@@ -39,6 +48,8 @@ export type UserState = {
   };
   activePlans: StoredActivePlan[];
   completedPlans?: CompletedPlan[];
+  /** Where approved withdrawals are paid out. Set by the investor on /withdrawals. */
+  payoutMethod?: PayoutMethod;
   /** Admin role — set manually in Firestore console. Defaults false on seed. */
   isAdmin?: boolean;
 };
