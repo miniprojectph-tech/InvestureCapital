@@ -91,6 +91,56 @@ export default function PlayPage() {
   const rarityMeta = (rarityId: string) =>
     config.rarities.find((r) => r.id === rarityId) ?? config.rarities[0];
 
+  const assets = config.assets ?? {};
+  const fullBg = assets.bgVideo || assets.bgFull;
+  const hasLayers = !!(assets.bgSky || assets.bgSea || assets.bgWater || assets.bgForeground);
+  const noAssetBg = !fullBg && !hasLayers;
+
+  // Render a fish as its uploaded image if present, else the emoji.
+  function creature(id: string, size: number) {
+    const f = fishById.get(id);
+    if (f?.image) {
+      // eslint-disable-next-line @next/next/no-img-element
+      return <img src={f.image} alt={f.name} style={{ width: size, height: size }} className="object-contain inline-block" />;
+    }
+    return (
+      <span style={{ fontSize: size * 0.9 }} aria-hidden>
+        {f?.emoji ?? "🐟"}
+      </span>
+    );
+  }
+
+  // ---- Audio (starts on first user gesture per browser autoplay rules) ----
+  const ambientRef = useRef<HTMLAudioElement | null>(null);
+  function playSfx(url?: string, vol = 0.7) {
+    if (!url) return;
+    try {
+      const a = new Audio(url);
+      a.volume = vol;
+      a.play().catch(() => {});
+    } catch {
+      /* ignore */
+    }
+  }
+  function startAmbient() {
+    if (!assets.ambientAudio || ambientRef.current) return;
+    try {
+      const a = new Audio(assets.ambientAudio);
+      a.loop = true;
+      a.volume = 0.3;
+      a.play().catch(() => {});
+      ambientRef.current = a;
+    } catch {
+      /* ignore */
+    }
+  }
+  useEffect(() => {
+    return () => {
+      ambientRef.current?.pause();
+      ambientRef.current = null;
+    };
+  }, []);
+
   const today = manilaDay();
   const energy = state?.energy ?? config.dailyEnergy;
   const points = state?.points ?? 0;
@@ -134,11 +184,17 @@ export default function PlayPage() {
     stopRaf();
     const power = meterRef.current;
     setPhase("casting");
+    startAmbient();
+    playSfx(assets.castSfx);
+    const biteTimer = setTimeout(() => playSfx(assets.biteSfx), 950);
     try {
       const [res] = await Promise.all([castLine(power), wait(1400)]);
+      clearTimeout(biteTimer);
       setIsNewCatch(!state?.collection?.[res.fish.id]);
+      playSfx(assets.catchSfx);
       setReveal(res);
     } catch (e) {
+      clearTimeout(biteTimer);
       setError(e instanceof Error ? e.message : "Cast failed");
     } finally {
       setPhase("idle");
@@ -202,6 +258,34 @@ export default function PlayPage() {
           className="relative overflow-hidden rounded-2xl border border-border-strong select-none"
           style={{ height: "min(72vh, 560px)" }}
         >
+          {/* ===== uploaded background ===== */}
+          {assets.bgVideo ? (
+            // eslint-disable-next-line jsx-a11y/media-has-caption
+            <video
+              className="absolute inset-0 w-full h-full object-cover"
+              src={assets.bgVideo}
+              autoPlay
+              loop
+              muted
+              playsInline
+            />
+          ) : assets.bgFull ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img className="absolute inset-0 w-full h-full object-cover" src={assets.bgFull} alt="" />
+          ) : hasLayers ? (
+            <>
+              {[assets.bgSky, assets.bgSea, assets.bgWater, assets.bgForeground].map(
+                (u, i) =>
+                  u ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={i} className="absolute inset-0 w-full h-full object-cover" src={u} alt="" />
+                  ) : null
+              )}
+            </>
+          ) : null}
+
+          {noAssetBg && (
+          <>
           {/* ===== SKY ===== */}
           <div
             className="absolute inset-x-0 top-0"
@@ -300,6 +384,19 @@ export default function PlayPage() {
             })}
           </div>
 
+          </>
+          )}
+
+          {/* uploaded rod */}
+          {assets.rod && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={assets.rod}
+              alt=""
+              className="absolute bottom-10 left-4 w-16 z-[4] pointer-events-none object-contain"
+            />
+          )}
+
           {/* ===== FISHING LINE + LURE ===== */}
           <div
             className="absolute left-[46%] w-px bg-white/50"
@@ -313,7 +410,12 @@ export default function PlayPage() {
               animation: casting || charging ? "none" : "reef-bob 2.6s ease-in-out infinite",
             }}
           >
-            <div className="w-3.5 h-3.5 rounded-full bg-gold shadow-[0_0_10px_rgba(61,213,152,0.8)] border-2 border-white/80" />
+            {assets.lure ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={assets.lure} alt="" className="w-7 h-7 object-contain" />
+            ) : (
+              <div className="w-3.5 h-3.5 rounded-full bg-gold shadow-[0_0_10px_rgba(61,213,152,0.8)] border-2 border-white/80" />
+            )}
             {casting && (
               <>
                 <span
@@ -328,7 +430,8 @@ export default function PlayPage() {
             )}
           </div>
 
-          {/* ===== FOREGROUND DECK ===== */}
+          {/* ===== FOREGROUND DECK (only when no uploaded background) ===== */}
+          {noAssetBg && (
           <div
             className="absolute inset-x-0 bottom-0 h-16"
             style={{ background: "linear-gradient(180deg,#6b4426 0%,#3f2714 100%)" }}
@@ -351,6 +454,7 @@ export default function PlayPage() {
               ))}
             </div>
           </div>
+          )}
 
           {/* ===== HUD: top-left currency + refill ===== */}
           <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5">
@@ -577,19 +681,33 @@ export default function PlayPage() {
               className="relative flex flex-col items-center text-center"
               onClick={(e) => e.stopPropagation()}
             >
-              <div
-                className="absolute -z-10 w-72 h-72 rounded-full"
-                style={{
-                  background: `conic-gradient(from 0deg, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00)`,
-                  filter: "blur(2px)",
-                  animation: "reef-spin 9s linear infinite",
-                  opacity: 0.55,
-                }}
-              />
+              {assets.revealRays ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={assets.revealRays}
+                  alt=""
+                  className="absolute -z-10 w-80 h-80 object-contain"
+                  style={{ animation: "reef-spin 10s linear infinite", opacity: 0.85 }}
+                />
+              ) : (
+                <div
+                  className="absolute -z-10 w-72 h-72 rounded-full"
+                  style={{
+                    background: `conic-gradient(from 0deg, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00)`,
+                    filter: "blur(2px)",
+                    animation: "reef-spin 9s linear infinite",
+                    opacity: 0.55,
+                  }}
+                />
+              )}
               <div
                 className="absolute -z-10 w-52 h-52 rounded-full"
                 style={{ background: `radial-gradient(circle, ${reveal.rarity.color}44, transparent 70%)` }}
               />
+              {reveal.rarity.frame && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={reveal.rarity.frame} alt="" className="absolute -z-10 w-64 h-64 object-contain" />
+              )}
               {reveal.isFoth && (
                 <p className="text-[11px] text-gold m-0 mb-1 font-semibold tracking-wide">🔥 FISH OF THE HOUR</p>
               )}
@@ -599,13 +717,12 @@ export default function PlayPage() {
                 </span>
               )}
               <motion.div
-                className="text-[96px] leading-none select-none"
+                className="leading-none select-none"
                 initial={{ rotate: -8 }}
                 animate={{ rotate: [-8, 6, -4, 0] }}
                 transition={{ duration: 0.7 }}
-                aria-hidden
               >
-                {emojiFor(reveal.fish.id)}
+                {creature(reveal.fish.id, 110)}
               </motion.div>
               <p
                 className="text-[11px] uppercase tracking-[0.2em] m-0 mt-1 font-semibold"
@@ -678,7 +795,7 @@ function CollectionBook({
   rarities,
   caught,
 }: {
-  fish: { id: string; name: string; rarity: string; emoji?: string }[];
+  fish: { id: string; name: string; rarity: string; emoji?: string; image?: string }[];
   rarities: { id: string; label: string; color: string }[];
   caught: Record<string, { count: number; firstAt: number }>;
 }) {
@@ -719,9 +836,14 @@ function CollectionBook({
                       }}
                       title={have ? `${f.name} ×${have.count}` : "Not yet caught"}
                     >
-                      <span className="text-2xl select-none" aria-hidden>
-                        {have ? f.emoji ?? "🐟" : "❔"}
-                      </span>
+                      {have && f.image ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={f.image} alt={f.name} className="w-8 h-8 object-contain" />
+                      ) : (
+                        <span className="text-2xl select-none" aria-hidden>
+                          {have ? f.emoji ?? "🐟" : "❔"}
+                        </span>
+                      )}
                       <span className="text-[8px] text-text-subtle truncate max-w-full px-1">
                         {have ? f.name : "???"}
                       </span>

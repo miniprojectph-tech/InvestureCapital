@@ -71,6 +71,32 @@ export async function uploadGameImage(
   return { url, path };
 }
 
+const MAX_ASSET_BYTES = 25 * 1024 * 1024; // 25 MB — allows short video/audio loops
+
+/**
+ * Upload a game skin asset (image, video, or audio) under /game-assets/*.
+ * Admin-only per Storage rules.
+ */
+export async function uploadGameAsset(
+  storage: FirebaseStorage,
+  file: File
+): Promise<UploadedQr> {
+  const ok =
+    file.type.startsWith("image/") ||
+    file.type.startsWith("video/") ||
+    file.type.startsWith("audio/");
+  if (!ok) throw new Error("Must be an image, video, or audio file");
+  if (file.size > MAX_ASSET_BYTES) {
+    throw new Error(`File too large (max ${MAX_ASSET_BYTES / 1024 / 1024} MB)`);
+  }
+  const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+  const path = `game-assets/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${ext}`;
+  const ref = storageRef(storage, path);
+  await uploadBytes(ref, file, { contentType: file.type });
+  const url = await getDownloadURL(ref);
+  return { url, path };
+}
+
 const MAX_RECEIPT_BYTES = 5 * 1024 * 1024; // 5 MB — screenshots can be larger than QRs
 
 /**

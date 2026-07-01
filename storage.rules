@@ -43,6 +43,16 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
+    // Game skin assets — images, video, or audio loops (admin write)
+    match /game-assets/{file} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin()
+        && request.resource.size < 25 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+          || request.resource.contentType.matches('audio/.*'));
+    }
+
     // Default deny
     match /{allPaths=**} {
       allow read, write: if false;

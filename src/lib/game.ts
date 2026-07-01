@@ -19,7 +19,33 @@ import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
 
 // ===== Types (mirror functions/src/game.ts) =====
-export type Rarity = { id: string; label: string; color: string; weight: number; points: number };
+export type Rarity = {
+  id: string;
+  label: string;
+  color: string;
+  weight: number;
+  points: number;
+  frame?: string; // optional uploaded rarity frame image
+};
+
+/** Uploaded art/audio assets that skin the game (all optional). */
+export type GameAssets = {
+  bgFull?: string;
+  bgVideo?: string;
+  bgSky?: string;
+  bgSea?: string;
+  bgWater?: string;
+  bgForeground?: string;
+  rod?: string;
+  lure?: string;
+  revealRays?: string;
+  splash?: string;
+  logo?: string;
+  ambientAudio?: string;
+  castSfx?: string;
+  catchSfx?: string;
+  biteSfx?: string;
+};
 export type Quest = {
   id: string;
   label: string;
@@ -36,6 +62,7 @@ export type GameConfig = {
   fothChance: number;
   quests: Quest[];
   leaderboardPrizes: number[];
+  assets?: GameAssets;
 };
 export type Fish = {
   id: string;
@@ -92,6 +119,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
     { id: "catch10", label: "Catch 10 fish", type: "catch", target: 10, reward: 30 },
   ],
   leaderboardPrizes: [500, 300, 150, 75, 50],
+  assets: {},
 };
 
 /** Starter fish catalog seeded on first admin visit. Emoji = zero-asset visuals. */

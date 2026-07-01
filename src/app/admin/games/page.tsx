@@ -8,7 +8,7 @@ import { Modal } from "@/components/Modal";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
-import { uploadGameImage } from "@/lib/storage";
+import { uploadGameImage, uploadGameAsset } from "@/lib/storage";
 import {
   useGameConfig,
   useFish,
@@ -18,8 +18,17 @@ import {
   seedFishIfEmpty,
   DEFAULT_GAME_CONFIG,
   type GameConfig,
+  type GameAssets,
   type Fish,
 } from "@/lib/game";
+
+function assetKind(url?: string): "video" | "audio" | "image" {
+  if (!url) return "image";
+  const u = url.toLowerCase();
+  if (/\.(mp4|webm|mov)(\?|$)/.test(u)) return "video";
+  if (/\.(mp3|wav|ogg|m4a)(\?|$)/.test(u)) return "audio";
+  return "image";
+}
 
 export default function AdminGamesPage() {
   const { user } = useAuth();
@@ -72,6 +81,27 @@ export default function AdminGamesPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Seed failed");
     }
+  }
+
+  async function updateAsset(key: keyof GameAssets, url: string) {
+    if (!draft) return;
+    const assets = { ...(draft.assets ?? {}) };
+    if (url) assets[key] = url;
+    else delete assets[key];
+    setDraft({ ...draft, assets });
+    const { db } = getFirebase();
+    if (db) await saveGameConfig(db, { assets });
+    setMsg(url ? "Asset saved." : "Asset removed.");
+  }
+
+  async function updateRarityFrame(i: number, url: string) {
+    if (!draft) return;
+    const rarities = [...draft.rarities];
+    rarities[i] = { ...rarities[i], frame: url || undefined };
+    setDraft({ ...draft, rarities });
+    const { db } = getFirebase();
+    if (db) await saveGameConfig(db, { rarities });
+    setMsg("Rarity frame saved.");
   }
 
   const numCsv = (arr: number[]) => arr.join(", ");
@@ -159,6 +189,11 @@ export default function AdminGamesPage() {
                 }}
                 className="w-20 px-2 py-1 bg-canvas border border-border rounded text-[11px] font-mono"
               />
+              <FrameUpload
+                value={r.frame}
+                onSet={(url) => updateRarityFrame(i, url)}
+                onError={setError}
+              />
             </div>
           ))}
         </div>
@@ -191,6 +226,31 @@ export default function AdminGamesPage() {
           >
             Reset to defaults
           </button>
+        </div>
+      </Card>
+
+      {/* Game assets */}
+      <Card className="mb-3">
+        <CardHeader
+          title="Game assets"
+          subtitle="Upload art, animation & audio to skin the reef · see REEF_ASSETS.md for exact sizes"
+        />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          <AssetField label="Background (image)" hint="2048×1536" accept="image/*" value={draft.assets?.bgFull} onSet={(u) => updateAsset("bgFull", u)} onError={setError} />
+          <AssetField label="Background (video)" hint="1920×1080 loop" accept="video/*" value={draft.assets?.bgVideo} onSet={(u) => updateAsset("bgVideo", u)} onError={setError} />
+          <AssetField label="Layer · sky" accept="image/*" value={draft.assets?.bgSky} onSet={(u) => updateAsset("bgSky", u)} onError={setError} />
+          <AssetField label="Layer · far sea" accept="image/*" value={draft.assets?.bgSea} onSet={(u) => updateAsset("bgSea", u)} onError={setError} />
+          <AssetField label="Layer · near water" accept="image/*" value={draft.assets?.bgWater} onSet={(u) => updateAsset("bgWater", u)} onError={setError} />
+          <AssetField label="Layer · foreground" accept="image/*" value={draft.assets?.bgForeground} onSet={(u) => updateAsset("bgForeground", u)} onError={setError} />
+          <AssetField label="Fishing rod" hint="512×1024" accept="image/*" value={draft.assets?.rod} onSet={(u) => updateAsset("rod", u)} onError={setError} />
+          <AssetField label="Lure / bobber" hint="128×128" accept="image/*" value={draft.assets?.lure} onSet={(u) => updateAsset("lure", u)} onError={setError} />
+          <AssetField label="Reveal god-rays" hint="1024×1024" accept="image/*" value={draft.assets?.revealRays} onSet={(u) => updateAsset("revealRays", u)} onError={setError} />
+          <AssetField label="Splash FX" accept="image/*" value={draft.assets?.splash} onSet={(u) => updateAsset("splash", u)} onError={setError} />
+          <AssetField label="Logo / wordmark" hint="1024×512" accept="image/*" value={draft.assets?.logo} onSet={(u) => updateAsset("logo", u)} onError={setError} />
+          <AssetField label="Ambient audio loop" accept="audio/*" value={draft.assets?.ambientAudio} onSet={(u) => updateAsset("ambientAudio", u)} onError={setError} />
+          <AssetField label="Cast SFX" accept="audio/*" value={draft.assets?.castSfx} onSet={(u) => updateAsset("castSfx", u)} onError={setError} />
+          <AssetField label="Catch SFX" accept="audio/*" value={draft.assets?.catchSfx} onSet={(u) => updateAsset("catchSfx", u)} onError={setError} />
+          <AssetField label="Bite SFX" accept="audio/*" value={draft.assets?.biteSfx} onSet={(u) => updateAsset("biteSfx", u)} onError={setError} />
         </div>
       </Card>
 
@@ -291,6 +351,112 @@ function NumField({
         className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-[13px] font-mono outline-none focus:border-gold/40"
       />
     </div>
+  );
+}
+
+function AssetField({
+  label,
+  hint,
+  accept,
+  value,
+  onSet,
+  onError,
+}: {
+  label: string;
+  hint?: string;
+  accept: string;
+  value?: string;
+  onSet: (url: string) => void | Promise<void>;
+  onError: (e: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const kind = assetKind(value);
+
+  async function pick(file: File) {
+    const { storage } = getFirebase();
+    if (!storage) return;
+    setBusy(true);
+    try {
+      const { url } = await uploadGameAsset(storage, file);
+      await onSet(url);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="p-2 bg-canvas border border-border rounded-lg">
+      <p className="text-[10px] text-text-muted m-0 mb-1.5 flex items-center justify-between">
+        <span className="truncate">{label}</span>
+        {hint && <span className="text-[8px] text-text-subtle shrink-0 ml-1">{hint}</span>}
+      </p>
+      <div className="h-16 rounded bg-card-elev/40 flex items-center justify-center overflow-hidden mb-1.5">
+        {!value ? (
+          <span className="text-[9px] text-text-subtle">empty</span>
+        ) : kind === "video" ? (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <video src={value} className="w-full h-full object-cover" muted loop autoPlay playsInline />
+        ) : kind === "audio" ? (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <audio src={value} controls className="w-full scale-90" />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={value} alt={label} className="w-full h-full object-contain" />
+        )}
+      </div>
+      <div className="flex gap-1">
+        <label className="flex-1 text-center text-[10px] px-2 py-1 bg-card-elev border border-border rounded cursor-pointer hover:border-gold/40">
+          {busy ? "Uploading…" : value ? "Replace" : "Upload"}
+          <input
+            type="file"
+            accept={accept}
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && pick(e.target.files[0])}
+          />
+        </label>
+        {value && (
+          <button
+            onClick={() => onSet("")}
+            className="text-[10px] px-2 py-1 border border-border rounded text-text-subtle hover:text-red"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FrameUpload({
+  value,
+  onSet,
+  onError,
+}: {
+  value?: string;
+  onSet: (url: string) => void | Promise<void>;
+  onError: (e: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  async function pick(file: File) {
+    const { storage } = getFirebase();
+    if (!storage) return;
+    setBusy(true);
+    try {
+      const { url } = await uploadGameAsset(storage, file);
+      await onSet(url);
+    } catch (e) {
+      onError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <label className="text-[9px] px-2 py-1 bg-canvas border border-border rounded cursor-pointer hover:border-gold/40 whitespace-nowrap">
+      {busy ? "…" : value ? "Frame ✓" : "+ Frame"}
+      <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && pick(e.target.files[0])} />
+    </label>
   );
 }
 
