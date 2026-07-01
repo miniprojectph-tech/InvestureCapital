@@ -1,19 +1,25 @@
 "use client";
 
-import { Lock, Loader2 } from "lucide-react";
+import { Lock, Loader2, TrendingUp } from "lucide-react";
 import { Area, AreaChart, ReferenceLine, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { TickingBalance } from "@/components/TickingBalance";
 import { formatPHP } from "@/lib/utils";
-import { VAULT_DAILY_RATE, VAULT_365_MULTIPLIER } from "@/lib/mock-data";
 import { useUserState } from "@/lib/useUserState";
-import { computeVaultLockDay } from "@/lib/userState";
+import { useSettings } from "@/lib/settings";
+import { usePlans } from "@/lib/plans";
+import { useUserActivity } from "@/lib/userActivity";
+
+const DAY_MS = 86_400_000;
 
 export default function VaultPage() {
   const { state, loading } = useUserState();
+  const { settings, loading: settingsLoading } = useSettings();
+  const { plans } = usePlans();
+  const { rows: compoundLog } = useUserActivity("vault-growth");
 
-  if (loading || !state) {
+  if (loading || settingsLoading || !state) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="w-5 h-5 text-vault animate-spin" />
@@ -21,39 +27,53 @@ export default function VaultPage() {
     );
   }
 
-  const balance = state.balances.vault;
-  const lockDay = computeVaultLockDay(state.balances.vaultLockStartedAt);
-  const lockTotal = 365;
-  const lockProgress = (lockDay / lockTotal) * 100;
-  const daysRemaining = lockTotal - lockDay;
-  const todayCompound = balance - balance / (1 + VAULT_DAILY_RATE);
-  const projected365 = balance * VAULT_365_MULTIPLIER;
-  const deposited = 2050;
-  const growth = balance - deposited;
+  const ratePct = settings.vaultDailyRate; // e.g. 1.0
+  const rate = ratePct / 100; // e.g. 0.01
+  const lockTotal = settings.vaultLockDays;
 
-  const data = Array.from({ length: 60 }, (_, i) => {
-    const day = (i / 59) * 365;
-    return { day, value: balance * Math.pow(1 + VAULT_DAILY_RATE, day) };
+  const balance = state.balances.vault;
+  const lockStarted = state.balances.vaultLockStartedAt;
+  const elapsedDays = lockStarted
+    ? Math.floor((Date.now() - lockStarted) / DAY_MS)
+    : 0;
+  const lockDay = Math.max(0, Math.min(lockTotal, elapsedDays));
+  const lockProgress = lockTotal > 0 ? (lockDay / lockTotal) * 100 : 0;
+  const daysRemaining = Math.max(0, lockTotal - lockDay);
+  const unlockDate = lockStarted ? new Date(lockStarted + lockTotal * DAY_MS) : null;
+  const unlockLabel = unlockDate
+    ? unlockDate.toLocaleDateString("en-PH", { year: "numeric", month: "short", day: "numeric" })
+    : "—";
+
+  const completed = state.completedPlans ?? [];
+  const deposited = completed.reduce((s, p) => s + (p.vaultCredited ?? 0), 0);
+  const growth = Math.max(0, balance - deposited);
+  const todayCompound = balance - balance / (1 + rate);
+  const perSecond = balance * (Math.pow(1 + rate, 1 / 86400) - 1);
+  const projectedLockEnd = balance * Math.pow(1 + rate, lockTotal);
+
+  const sources = [...completed]
+    .sort((a, b) => b.completedAt - a.completedAt)
+    .map((p) => ({
+      name: plans.find((t) => t.id === p.planId)?.name ?? p.planName ?? p.planId,
+      amount: p.vaultCredited ?? 0,
+      date: `${new Date(p.completedAt).toLocaleDateString("en-PH", {
+        month: "short",
+        day: "numeric",
+      })} · ${formatPHP(p.capital, { short: true })} plan`,
+    }));
+
+  const chartData = Array.from({ length: 60 }, (_, i) => {
+    const day = (i / 59) * lockTotal;
+    return { day, value: balance * Math.pow(1 + rate, day) };
   });
 
-  const sources = [
-    { name: "15-day momentum", amount: 1350, date: "Apr 8 · ₱3,000 plan" },
-    { name: "10-day boost", amount: 500, date: "Mar 25 · ₱2,000 plan" },
-    { name: "5-day basic", amount: 100, date: "Mar 15 · ₱500 plan" },
-  ];
-
-  const compoundLog = [
-    { when: "Today 00:00", on: 9351, gain: 93.52 },
-    { when: "Yesterday 00:00", on: 9259, gain: 92.59 },
-    { when: "2 days ago", on: 9168, gain: 91.68 },
-    { when: "3 days ago", on: 9077, gain: 90.77 },
-  ];
+  const recentCompounds = compoundLog.slice(0, 4);
 
   return (
     <div>
       <TopHeader
         title="Future growth vault"
-        subtitle="1% daily compounding · locked 365 days from first activation"
+        subtitle={`${ratePct}% daily compounding · locked ${lockTotal} days from first activation`}
       />
 
       <div className="relative overflow-hidden bg-gradient-to-br from-card via-[#1F1B33] to-[#22193A] border border-border-vault rounded-2xl p-5 mb-3">
@@ -71,23 +91,28 @@ export default function VaultPage() {
             <div className="flex items-center gap-2 mb-2">
               <Lock className="w-3 h-3 text-vault-muted" />
               <span className="text-[10px] text-vault-muted tracking-wider">VAULT BALANCE</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-green ml-1" />
-              <span className="text-[9px] text-green">Compounding live</span>
+              {balance > 0 && (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-green ml-1" />
+                  <span className="text-[9px] text-green">Compounding live</span>
+                </>
+              )}
             </div>
             <p className="text-[36px] font-medium font-mono m-0 leading-none tracking-tight text-vault">
               <TickingBalance base={balance} decimals={4} />
             </p>
-            <p className="text-[11px] text-vault-muted mt-2 m-0 font-mono">
-              +{formatPHP(todayCompound)} today · +₱
-              {(balance * (Math.pow(1 + VAULT_DAILY_RATE, 1 / 86400) - 1)).toFixed(4)} / sec
-            </p>
+            {balance > 0 && (
+              <p className="text-[11px] text-vault-muted mt-2 m-0 font-mono">
+                +{formatPHP(todayCompound)} today · +₱{perSecond.toFixed(4)} / sec
+              </p>
+            )}
           </div>
           <div className="text-right">
             <p className="text-[10px] text-vault-muted tracking-wider m-0 mb-1">UNLOCKS IN</p>
             <p className="text-[22px] font-medium font-mono m-0 leading-none">
-              {daysRemaining} days
+              {lockStarted ? `${daysRemaining} days` : "—"}
             </p>
-            <p className="text-[9px] text-text-subtle mt-1 m-0">Jun 19, 2027</p>
+            <p className="text-[9px] text-text-subtle mt-1 m-0">{unlockLabel}</p>
           </div>
         </div>
         <div className="h-1 bg-black/30 rounded-full mt-4 relative">
@@ -108,7 +133,7 @@ export default function VaultPage() {
           <p className="text-[13px] font-medium font-mono text-green m-0">+{formatPHP(todayCompound)}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
-          <p className="text-[9px] text-text-subtle tracking-wider m-0 mb-1">DEPOSITED</p>
+          <p className="text-[9px] text-text-subtle tracking-wider m-0 mb-1">CREDITED IN</p>
           <p className="text-[13px] font-medium font-mono m-0">{formatPHP(deposited, { short: true })}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
@@ -116,23 +141,23 @@ export default function VaultPage() {
           <p className="text-[13px] font-medium font-mono text-vault m-0">+{formatPHP(growth, { short: true })}</p>
         </div>
         <div className="bg-card border border-border rounded-lg p-3">
-          <p className="text-[9px] text-text-subtle tracking-wider m-0 mb-1">PROJECTED 365D</p>
-          <p className="text-[13px] font-medium font-mono text-vault m-0">{formatPHP(projected365, { short: true })}</p>
+          <p className="text-[9px] text-text-subtle tracking-wider m-0 mb-1">PROJECTED {lockTotal}D</p>
+          <p className="text-[13px] font-medium font-mono text-vault m-0">{formatPHP(projectedLockEnd, { short: true })}</p>
         </div>
       </div>
 
       <Card className="mb-3">
-        <CardHeader title="Vault growth" subtitle="Projected to day 365" />
+        <CardHeader title="Vault growth" subtitle={`Projected to day ${lockTotal}`} />
         <div className="h-[140px]">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
               <defs>
                 <linearGradient id="vaultFade" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#A78BFA" stopOpacity={0.4} />
                   <stop offset="100%" stopColor="#A78BFA" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <ReferenceLine x={data[0].day} stroke="#4F8EF7" strokeDasharray="2 2" strokeWidth={0.5} />
+              <ReferenceLine x={chartData[0].day} stroke="#4F8EF7" strokeDasharray="2 2" strokeWidth={0.5} />
               <Area
                 type="monotone"
                 dataKey="value"
@@ -148,46 +173,75 @@ export default function VaultPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
         <Card>
           <p className="text-[12px] font-medium m-0 mb-2.5">Vault sources</p>
-          {sources.map((s, i) => (
-            <div
-              key={i}
-              className={`py-1.5 ${i < sources.length - 1 ? "border-b border-border" : ""}`}
-            >
-              <div className="flex justify-between mb-0.5">
-                <span className="text-[11px]">{s.name}</span>
-                <span className="text-[11px] font-mono text-vault font-medium">
-                  {formatPHP(s.amount, { short: true })}
-                </span>
+          {sources.length === 0 ? (
+            <p className="text-[11px] text-text-subtle py-4 text-center m-0">
+              No vault credits yet. Completing a plan credits its earnings here.
+            </p>
+          ) : (
+            <>
+              {sources.map((s, i) => (
+                <div
+                  key={i}
+                  className={`py-1.5 ${i < sources.length - 1 ? "border-b border-border" : ""}`}
+                >
+                  <div className="flex justify-between mb-0.5">
+                    <span className="text-[11px]">{s.name}</span>
+                    <span className="text-[11px] font-mono text-vault font-medium">
+                      {formatPHP(s.amount, { short: true })}
+                    </span>
+                  </div>
+                  <p className="text-[9px] text-text-subtle m-0">{s.date}</p>
+                </div>
+              ))}
+              <div className="pt-2 mt-2 border-t border-border-strong">
+                <div className="flex justify-between">
+                  <span className="text-[11px] text-vault-muted">Total credited</span>
+                  <span className="text-[12px] font-mono text-vault font-medium">
+                    {formatPHP(deposited, { short: true })}
+                  </span>
+                </div>
               </div>
-              <p className="text-[9px] text-text-subtle m-0">{s.date}</p>
-            </div>
-          ))}
-          <div className="pt-2 mt-2 border-t border-border-strong">
-            <div className="flex justify-between">
-              <span className="text-[11px] text-vault-muted">Total deposited</span>
-              <span className="text-[12px] font-mono text-vault font-medium">
-                {formatPHP(deposited, { short: true })}
-              </span>
-            </div>
-          </div>
+            </>
+          )}
         </Card>
 
         <Card>
           <p className="text-[12px] font-medium m-0 mb-2.5">Daily compound log</p>
-          {compoundLog.map((c, i) => (
-            <div
-              key={i}
-              className={`flex justify-between items-center py-1.5 ${
-                i < compoundLog.length - 1 ? "border-b border-border" : ""
-              }`}
-            >
-              <div>
-                <p className="text-[11px] m-0">{c.when}</p>
-                <p className="text-[9px] text-text-subtle m-0 mt-0.5">1% on {formatPHP(c.on, { short: true })}</p>
+          {recentCompounds.length === 0 ? (
+            <p className="text-[11px] text-text-subtle py-4 text-center m-0">
+              No compounding yet. Your vault compounds {ratePct}% daily once funded.
+            </p>
+          ) : (
+            recentCompounds.map((c, i) => (
+              <div
+                key={c.id}
+                className={`flex justify-between items-center py-1.5 ${
+                  i < recentCompounds.length - 1 ? "border-b border-border" : ""
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <TrendingUp className="w-3 h-3 text-vault shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[11px] m-0 truncate">
+                      {new Date(c.at).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
+                      {" · "}
+                      {new Date(c.at).toLocaleTimeString("en-PH", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        hour12: false,
+                      })}
+                    </p>
+                    <p className="text-[9px] text-text-subtle m-0 mt-0.5 truncate">{c.subtitle}</p>
+                  </div>
+                </div>
+                {c.amount !== undefined && (
+                  <span className="text-[11px] font-mono text-green shrink-0">
+                    +{formatPHP(c.amount)}
+                  </span>
+                )}
               </div>
-              <span className="text-[11px] font-mono text-green">+{formatPHP(c.gain)}</span>
-            </div>
-          ))}
+            ))
+          )}
         </Card>
       </div>
 
@@ -198,10 +252,14 @@ export default function VaultPage() {
           </div>
           <div>
             <p className="text-[11px] font-medium m-0">
-              Vault is locked for {daysRemaining} more days
+              {lockStarted
+                ? `Vault is locked for ${daysRemaining} more days`
+                : "Vault unlocks 365 days after your first plan activation"}
             </p>
             <p className="text-[10px] text-vault-muted mt-0.5 m-0">
-              First withdrawal available Jun 19, 2027 · 1% daily compounding continues
+              {lockStarted
+                ? `First withdrawal available ${unlockLabel} · ${ratePct}% daily compounding continues`
+                : `Activate a plan to start the ${lockTotal}-day lock`}
             </p>
           </div>
         </div>

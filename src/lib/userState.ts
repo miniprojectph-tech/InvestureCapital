@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   onSnapshot,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -17,6 +18,11 @@ export type StoredActivePlan = {
   capital: number;
   startedAt: number; // unix ms
   completedAt?: number;
+  // Snapshot of the plan template's terms at activation time, so completion
+  // never depends on the template still existing (it can be edited/deleted).
+  dailyRate?: number; // percent
+  durationDays?: number;
+  planName?: string;
 };
 
 export type CompletedPlan = StoredActivePlan & {
@@ -235,44 +241,49 @@ export async function completePlanForUser(
   planName: string
 ): Promise<void> {
   const ref = doc(db, "users", userId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) throw new Error("User not found");
-  const cur = snap.data() as UserState;
+  // Run inside a transaction so a concurrent scheduled maintenance run can't
+  // double-complete / double-credit the same plan.
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error("User not found");
+    const cur = snap.data() as UserState;
 
-  const plan = cur.activePlans?.find((p) => p.id === planInstanceId);
-  if (!plan) throw new Error("Plan not found in active list");
+    const plan = cur.activePlans?.find((p) => p.id === planInstanceId);
+    if (!plan) throw new Error("Plan not found in active list");
 
-  const vaultCredit = plan.capital * (planRate / 100) * planDuration;
-  const completed: CompletedPlan = {
-    ...plan,
-    completedAt: Date.now(),
-    vaultCredited: vaultCredit,
-    capitalReturned: plan.capital,
-  };
+    const vaultCredit = plan.capital * (planRate / 100) * planDuration;
+    const completed: CompletedPlan = {
+      ...plan,
+      completedAt: Date.now(),
+      vaultCredited: vaultCredit,
+      capitalReturned: plan.capital,
+    };
 
-  const updates: Record<string, unknown> = {
-    activePlans: cur.activePlans.filter((p) => p.id !== planInstanceId),
-    completedPlans: [...(cur.completedPlans ?? []), completed],
-    "balances.vault": (cur.balances.vault ?? 0) + vaultCredit,
-    "balances.wallet": (cur.balances.wallet ?? 0) + plan.capital,
-  };
+    const updates: Record<string, unknown> = {
+      activePlans: cur.activePlans.filter((p) => p.id !== planInstanceId),
+      completedPlans: [...(cur.completedPlans ?? []), completed],
+      "balances.vault": (cur.balances.vault ?? 0) + vaultCredit,
+      "balances.wallet": (cur.balances.wallet ?? 0) + plan.capital,
+    };
 
-  if (!cur.balances.vaultLockStartedAt) {
-    updates["balances.vaultLockStartedAt"] = Date.now();
-  }
-  // Anchor the compounding clock to now on first vault credit, so the
-  // scheduled job compounds from here rather than from the (earlier) lock date.
-  if (!cur.balances.vaultLastCompoundedAt) {
-    updates["balances.vaultLastCompoundedAt"] = Date.now();
-  }
+    if (!cur.balances.vaultLockStartedAt) {
+      updates["balances.vaultLockStartedAt"] = Date.now();
+    }
+    // Anchor the compounding clock to now on first vault credit, so the
+    // scheduled job compounds from here rather than from the (earlier) lock date.
+    if (!cur.balances.vaultLastCompoundedAt) {
+      updates["balances.vaultLastCompoundedAt"] = Date.now();
+    }
 
-  await updateDoc(ref, updates);
-  await logActivity(db, userId, {
-    type: "plan-complete",
-    title: `Plan completed — ${planName}`,
-    subtitle: `Vault credited ${vaultCredit.toFixed(2)} · capital ${plan.capital} returned`,
-    amount: vaultCredit,
-    amountKind: "neutral",
+    tx.update(ref, updates);
+    tx.set(doc(userActivityRef(db, userId)), {
+      type: "plan-complete",
+      title: `Plan completed — ${planName}`,
+      subtitle: `Vault credited ${vaultCredit.toFixed(2)} · capital ${plan.capital} returned`,
+      amount: vaultCredit,
+      amountKind: "neutral",
+      at: serverTimestamp(),
+    });
   });
 }
 
@@ -281,7 +292,9 @@ export async function activatePlanFor(
   uid: string,
   planId: string,
   planName: string,
-  capital: number
+  capital: number,
+  planRate?: number,
+  planDuration?: number
 ): Promise<void> {
   const ref = doc(db, "users", uid);
   const snap = await getDoc(ref);
@@ -296,6 +309,9 @@ export async function activatePlanFor(
     planId,
     capital,
     startedAt: Date.now(),
+    planName,
+    ...(planRate != null ? { dailyRate: planRate } : {}),
+    ...(planDuration != null ? { durationDays: planDuration } : {}),
   };
 
   const updates: Record<string, unknown> = {

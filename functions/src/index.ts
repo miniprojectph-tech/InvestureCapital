@@ -20,6 +20,10 @@ type StoredActivePlan = {
   planId: string;
   capital: number;
   startedAt: number;
+  // Snapshot of terms at activation — used if the template is later deleted.
+  dailyRate?: number;
+  durationDays?: number;
+  planName?: string;
 };
 
 type CompletedPlan = StoredActivePlan & {
@@ -103,17 +107,22 @@ async function processUser(
     let completedCount = 0;
     for (const plan of activePlans) {
       const tpl = templates.get(plan.planId);
-      if (!tpl) {
+      // Prefer the snapshot stored on the plan; fall back to the live template.
+      const dailyRate = plan.dailyRate ?? tpl?.dailyRate;
+      const durationDays = plan.durationDays ?? tpl?.durationDays;
+      const name = tpl?.name ?? plan.planName ?? plan.planId;
+      if (dailyRate == null || durationDays == null) {
+        // No terms available (template deleted and no snapshot) — leave it be.
         remaining.push(plan);
         continue;
       }
-      const completionTime = plan.startedAt + tpl.durationDays * DAY_MS;
+      const completionTime = plan.startedAt + durationDays * DAY_MS;
       if (now < completionTime) {
         remaining.push(plan);
         continue;
       }
 
-      const vaultCredit = plan.capital * (tpl.dailyRate / 100) * tpl.durationDays;
+      const vaultCredit = plan.capital * (dailyRate / 100) * durationDays;
       completedPlans.push({
         ...plan,
         completedAt: now,
@@ -128,7 +137,7 @@ async function processUser(
         ref: activityRef(uid),
         data: {
           type: "plan-complete",
-          title: `Plan completed — ${tpl.name}`,
+          title: `Plan completed — ${name}`,
           subtitle: `Vault credited ${vaultCredit.toFixed(2)} · capital ${plan.capital} returned`,
           amount: vaultCredit,
           amountKind: "neutral",

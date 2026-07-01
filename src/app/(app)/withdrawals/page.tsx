@@ -48,7 +48,8 @@ export default function WithdrawalsPage() {
   const payoutMethod = state?.payoutMethod;
 
   async function handleWithdraw(amount: number) {
-    if (demoMode || !user || !payoutMethod) return;
+    if (demoMode) throw new Error("Withdrawals aren't available in demo mode.");
+    if (!user || !payoutMethod) return;
     const { db } = getFirebase();
     if (!db) return;
     await requestWithdrawal(db, {
@@ -66,7 +67,8 @@ export default function WithdrawalsPage() {
     accountNumber: string;
     bankName?: string;
   }) {
-    if (demoMode || !user) return;
+    if (demoMode) throw new Error("Sign in to save a payout method — demo mode is read-only.");
+    if (!user) return;
     const { db } = getFirebase();
     if (!db) return;
     await savePayoutMethod(db, user.uid, draft);
@@ -277,7 +279,16 @@ export default function WithdrawalsPage() {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
-                  {row.note && <span className="text-text-dim ml-2">· {row.note}</span>}
+                  {row.note && (
+                    <span
+                      className={cn(
+                        "ml-2",
+                        row.status === "rejected" ? "text-red" : "text-text-dim"
+                      )}
+                    >
+                      · {row.note}
+                    </span>
+                  )}
                 </p>
               </div>
               <span

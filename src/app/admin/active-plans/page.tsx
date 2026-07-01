@@ -82,14 +82,18 @@ export default function AdminActivePlansPage() {
       return;
     }
     const tpl = planTemplates.find((t) => t.id === row.planId);
-    if (!tpl) {
-      setError(`Plan template ${row.planId} not found.`);
+    // Prefer the terms snapshotted on the plan; fall back to the live template.
+    const dailyRate = row.dailyRate ?? tpl?.dailyRate;
+    const durationDays = row.durationDays ?? tpl?.durationDays;
+    const name = tpl?.name ?? row.planName ?? row.planId;
+    if (dailyRate == null || durationDays == null) {
+      setError(`No terms found for plan ${row.planId}.`);
       return;
     }
     setBusy(row.id);
     setError(null);
     try {
-      await completePlanForUser(db, row.userId, row.id, tpl.dailyRate, tpl.durationDays, tpl.name);
+      await completePlanForUser(db, row.userId, row.id, dailyRate, durationDays, name);
       // Refresh
       setRefreshKey((k) => k + 1);
     } catch (err) {
@@ -270,7 +274,10 @@ export default function AdminActivePlansPage() {
                 <tbody>
                   {filteredActive.map((r) => {
                     const tpl = planTemplates.find((t) => t.id === r.planId);
-                    const daily = tpl ? r.capital * (tpl.dailyRate / 100) : 0;
+                    const rate = r.dailyRate ?? tpl?.dailyRate;
+                    const duration = r.durationDays ?? tpl?.durationDays;
+                    const planLabel = tpl?.name ?? r.planName ?? r.planId;
+                    const daily = rate != null ? r.capital * (rate / 100) : 0;
                     const isBusy = busy === r.id;
                     return (
                       <tr key={`${r.userId}-${r.id}`} className="border-t border-border">
@@ -286,9 +293,9 @@ export default function AdminActivePlansPage() {
                           </div>
                         </td>
                         <td className="py-2">
-                          <p className="m-0 text-[11px]">{tpl?.name ?? r.planId}</p>
+                          <p className="m-0 text-[11px]">{planLabel}</p>
                           <p className="m-0 text-[9px] text-text-subtle">
-                            {tpl ? `${tpl.dailyRate}% · ${tpl.durationDays}d` : "—"}
+                            {rate != null && duration != null ? `${rate}% · ${duration}d` : "—"}
                           </p>
                         </td>
                         <td className="py-2 text-right font-mono">
@@ -358,6 +365,9 @@ export default function AdminActivePlansPage() {
                 <tbody>
                   {filteredExpired.map((r) => {
                     const tpl = planTemplates.find((t) => t.id === r.planId);
+                    const rate = r.dailyRate ?? tpl?.dailyRate;
+                    const duration = r.durationDays ?? tpl?.durationDays;
+                    const planLabel = tpl?.name ?? r.planName ?? r.planId;
                     return (
                       <tr key={`${r.userId}-${r.id}`} className="border-t border-border">
                         <td className="py-2">
@@ -372,9 +382,9 @@ export default function AdminActivePlansPage() {
                           </div>
                         </td>
                         <td className="py-2">
-                          <p className="m-0 text-[11px]">{tpl?.name ?? r.planId}</p>
+                          <p className="m-0 text-[11px]">{planLabel}</p>
                           <p className="m-0 text-[9px] text-text-subtle">
-                            {tpl ? `${tpl.dailyRate}% · ${tpl.durationDays}d` : "—"}
+                            {rate != null && duration != null ? `${rate}% · ${duration}d` : "—"}
                           </p>
                         </td>
                         <td className="py-2 text-right font-mono">

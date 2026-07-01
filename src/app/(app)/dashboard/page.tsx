@@ -13,8 +13,9 @@ import { ActivePlansList } from "@/components/ActivePlansList";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { PlanHistoryTable } from "@/components/PlanHistoryTable";
 import { formatPHP } from "@/lib/utils";
-import { mockPlans, VAULT_DAILY_RATE } from "@/lib/mock-data";
 import { useUserState } from "@/lib/useUserState";
+import { useSettings } from "@/lib/settings";
+import { usePlans } from "@/lib/plans";
 import {
   computeDailyIncome,
   computeDeployed,
@@ -36,6 +37,9 @@ const item: Variants = {
 
 export default function DashboardPage() {
   const { state, loading } = useUserState();
+  const { settings } = useSettings();
+  const { plans } = usePlans();
+  const rate = settings.vaultDailyRate / 100;
 
   if (loading || !state) {
     return (
@@ -47,11 +51,11 @@ export default function DashboardPage() {
   }
 
   const deployed = computeDeployed(state.activePlans);
-  const dailyIncome = computeDailyIncome(state.activePlans, mockPlans);
-  const pendingVault = computePendingVaultCredits(state.activePlans, mockPlans);
+  const dailyIncome = computeDailyIncome(state.activePlans, plans);
+  const pendingVault = computePendingVaultCredits(state.activePlans, plans);
   const total = state.balances.wallet + deployed + state.balances.vault;
   const todayCompound =
-    state.balances.vault - state.balances.vault / (1 + VAULT_DAILY_RATE);
+    state.balances.vault - state.balances.vault / (1 + rate);
   const totalEarned = state.balances.vault + state.balances.wallet;
   const totalInvested = deployed > 0 ? deployed : 1; // avoid divide-by-zero
   const roi = (totalEarned / totalInvested) * 100;
@@ -64,10 +68,7 @@ export default function DashboardPage() {
   // Investment growth — accumulating curve from past data + projection
   const growthData = Array.from({ length: 30 }, (_, i) => ({
     day: i,
-    value:
-      state.balances.vault *
-        Math.pow(1 + VAULT_DAILY_RATE, i - 25) +
-      deployed * 0.5,
+    value: state.balances.vault * Math.pow(1 + rate, i - 25) + deployed * 0.5,
   }));
 
   return (
@@ -167,7 +168,7 @@ export default function DashboardPage() {
               icon={Lock}
               theme="vault"
               title="Future Growth Vault"
-              subtitle="Locked · compounding 1% daily"
+              subtitle={`Locked · compounding ${settings.vaultDailyRate}% daily`}
               caption={{ label: "Pending", value: `+${formatPHP(pendingVault, { short: true })}` }}
               valueLabel="Vault balance"
               value={<TickingBalance base={state.balances.vault} decimals={2} />}

@@ -51,7 +51,15 @@ export function PlansCalculator() {
     if (demoMode || !user) return;
     const { db } = getFirebase();
     if (!db) return;
-    await activatePlanFor(db, user.uid, plan.id, plan.name, capitalAmount);
+    await activatePlanFor(
+      db,
+      user.uid,
+      plan.id,
+      plan.name,
+      capitalAmount,
+      plan.dailyRate,
+      plan.durationDays
+    );
   }
 
   const selected = useMemo(

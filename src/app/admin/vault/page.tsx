@@ -10,7 +10,7 @@ import { formatPHP } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { listInvestors, type InvestorRow } from "@/lib/adminQueries";
-import { VAULT_DAILY_RATE, VAULT_365_MULTIPLIER } from "@/lib/mock-data";
+import { useSettings } from "@/lib/settings";
 
 const mock: InvestorRow[] = [
   { uid: "tw", name: "Theresa Webb", email: "theresa@mail.com", wallet: 250, vault: 9445, activePlansCount: 3, joinedAt: Date.now() - 50*86400000, isAdmin: false },
@@ -20,8 +20,13 @@ const mock: InvestorRow[] = [
 
 export default function AdminVaultPage() {
   const { user, demoMode } = useAuth();
+  const { settings } = useSettings();
   const [rows, setRows] = useState<InvestorRow[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const ratePct = settings.vaultDailyRate;
+  const rate = ratePct / 100;
+  const multiplier = Math.pow(1 + rate, settings.vaultLockDays);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,9 +52,9 @@ export default function AdminVaultPage() {
     const withVault = rows.filter((r) => r.vault > 0);
     const total = withVault.reduce((s, r) => s + r.vault, 0);
     const avg = withVault.length ? total / withVault.length : 0;
-    const dailyAccrual = total * VAULT_DAILY_RATE;
+    const dailyAccrual = total * rate;
     return { total, avg, count: withVault.length, dailyAccrual };
-  }, [rows]);
+  }, [rows, rate]);
 
   if (loading) {
     return (
@@ -61,12 +66,12 @@ export default function AdminVaultPage() {
 
   const data = Array.from({ length: 30 }, (_, i) => ({
     day: i,
-    value: stats.total * Math.pow(1 + VAULT_DAILY_RATE, i - 25),
+    value: stats.total * Math.pow(1 + rate, i - 25),
   }));
 
   return (
     <div>
-      <TopHeader title="Vault accounts" subtitle={`${stats.count} active vaults · compounding at 1% daily`} />
+      <TopHeader title="Vault accounts" subtitle={`${stats.count} active vaults · compounding at ${ratePct}% daily`} />
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
         <KpiCard label="Vault total" value={formatPHP(stats.total, { short: true })} icon={Lock} iconTone="gold" />
@@ -75,7 +80,7 @@ export default function AdminVaultPage() {
         <KpiCard
           label="Compounded today"
           value={`+${formatPHP(stats.dailyAccrual, { short: true })}`}
-          sub="1% daily on aggregate"
+          sub={`${ratePct}% daily on aggregate`}
           subTone="gold"
           icon={TrendingUp}
           iconTone="gold"
@@ -133,10 +138,10 @@ export default function AdminVaultPage() {
                   </td>
                   <td className="py-2 text-right font-mono text-vault">{formatPHP(u.vault, { short: true })}</td>
                   <td className="py-2 text-right font-mono text-vault-muted">
-                    {formatPHP(u.vault * VAULT_365_MULTIPLIER, { short: true })}
+                    {formatPHP(u.vault * multiplier, { short: true })}
                   </td>
                   <td className="py-2 text-right font-mono text-green">
-                    +{formatPHP(u.vault * VAULT_DAILY_RATE)}
+                    +{formatPHP(u.vault * rate)}
                   </td>
                 </tr>
               ))}
