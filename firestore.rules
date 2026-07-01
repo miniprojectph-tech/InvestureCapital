@@ -22,6 +22,44 @@ service cloud.firestore {
         allow read, write: if isSignedIn() && request.auth.uid == userId;
         allow read, write: if isAdmin();
       }
+
+      // Reef game state — owner can read; writes only via Cloud Functions
+      // (admin SDK bypasses rules) so points/energy can't be forged client-side.
+      match /game/{doc} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // === Reef: fish catalog (admin-managed, readable by all signed-in) ===
+    match /fish/{fishId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // === Reef: reward catalog ===
+    match /rewards/{rewardId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // === Reef: redemption requests (created via Cloud Functions) ===
+    match /redemptions/{rId} {
+      allow read: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    // === Reef: leaderboard (written by Cloud Functions) ===
+    match /leaderboard/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // === Reef: global game docs e.g. fish of the hour (written by functions) ===
+    match /games/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
     // === Plans (admin-managed templates, readable by all signed-in users) ===

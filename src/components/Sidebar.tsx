@@ -20,6 +20,9 @@ import {
   Settings,
   Timer,
   Bot,
+  Gamepad2,
+  Gift,
+  Fish,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -41,6 +44,9 @@ const iconMap: Record<IconName, LucideIcon> = {
   settings: Settings,
   timer: Timer,
   bot: Bot,
+  play: Gamepad2,
+  gift: Gift,
+  fish: Fish,
 };
 
 type SidebarProps = {

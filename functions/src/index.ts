@@ -1,17 +1,15 @@
-import { initializeApp } from "firebase-admin/app";
 import {
-  getFirestore,
   FieldValue,
-  type Firestore,
   type DocumentReference,
   type Transaction,
 } from "firebase-admin/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
+import { db } from "./init";
 
-initializeApp();
-const db: Firestore = getFirestore();
+// Game functions live in their own module.
+export { castLine, claimQuest, redeemReward, fishOfTheHour, weeklyReef } from "./game";
 
 const DAY_MS = 86_400_000;
 

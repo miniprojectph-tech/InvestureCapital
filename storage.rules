@@ -29,6 +29,20 @@ service firebase.storage {
       allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
+    // Reef game images (fish + rewards) — signed-in read, admin write
+    match /fish/{file} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin()
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+    match /rewards/{file} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin()
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     // Default deny
     match /{allPaths=**} {
       allow read, write: if false;

@@ -49,6 +49,28 @@ export async function deletePaymentMethodQr(
   }
 }
 
+const MAX_GAME_IMAGE_BYTES = 2 * 1024 * 1024;
+
+/** Upload a fish or reward image under /fish/* or /rewards/*. Admin-only per rules. */
+export async function uploadGameImage(
+  storage: FirebaseStorage,
+  folder: "fish" | "rewards",
+  file: File
+): Promise<UploadedQr> {
+  if (!ACCEPTED_TYPES.includes(file.type)) {
+    throw new Error("Image must be a PNG, JPG, WebP, or GIF");
+  }
+  if (file.size > MAX_GAME_IMAGE_BYTES) {
+    throw new Error(`Image too large (max ${MAX_GAME_IMAGE_BYTES / 1024 / 1024} MB)`);
+  }
+  const ext = (file.name.split(".").pop() || "png").toLowerCase();
+  const path = `${folder}/${Date.now()}.${ext}`;
+  const ref = storageRef(storage, path);
+  await uploadBytes(ref, file, { contentType: file.type });
+  const url = await getDownloadURL(ref);
+  return { url, path };
+}
+
 const MAX_RECEIPT_BYTES = 5 * 1024 * 1024; // 5 MB — screenshots can be larger than QRs
 
 /**

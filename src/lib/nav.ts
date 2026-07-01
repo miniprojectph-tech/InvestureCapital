@@ -12,7 +12,10 @@ export type IconName =
   | "chart"
   | "settings"
   | "timer"
-  | "bot";
+  | "bot"
+  | "play"
+  | "gift"
+  | "fish";
 
 export type NavItem = {
   label: string;
@@ -37,6 +40,13 @@ export const investorNav: NavGroup[] = [
       { label: "Activity", href: "/activity", icon: "activity" },
       { label: "Withdrawals", href: "/withdrawals", icon: "withdraw" },
       { label: "Transactions", href: "/transactions", icon: "receipt" },
+    ],
+  },
+  {
+    label: "Reef",
+    items: [
+      { label: "Play", href: "/play", icon: "play" },
+      { label: "Rewards", href: "/rewards", icon: "gift" },
     ],
   },
   {
@@ -65,6 +75,13 @@ export const adminNav: NavGroup[] = [
       { label: "Active plans", href: "/admin/active-plans", icon: "timer" },
       { label: "Transactions", href: "/admin/transactions", icon: "receipt" },
       { label: "Activity log", href: "/admin/activity", icon: "activity" },
+    ],
+  },
+  {
+    label: "Reef game",
+    items: [
+      { label: "Fish & config", href: "/admin/games", icon: "fish" },
+      { label: "Rewards & redemptions", href: "/admin/rewards", icon: "gift" },
     ],
   },
   {
