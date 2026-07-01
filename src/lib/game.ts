@@ -30,21 +30,78 @@ export type Rarity = {
 
 /** Uploaded art/audio assets that skin the game (all optional). */
 export type GameAssets = {
+  // Background
   bgFull?: string;
   bgVideo?: string;
   bgSky?: string;
   bgSea?: string;
   bgWater?: string;
   bgForeground?: string;
+  // Gear + rod animation states
   rod?: string;
   lure?: string;
+  rodIdle?: string;
+  rodCasting?: string;
+  rodBendLight?: string;
+  rodBendMedium?: string;
+  rodBendExtreme?: string;
+  lineSnap?: string;
+  // Fishing line states
+  lineNormal?: string;
+  lineTight?: string;
+  lineDanger?: string;
+  lineBroken?: string;
+  // Bite / hook FX
+  fxNibble?: string;
+  fxBigBite?: string;
+  fxBobberPull?: string;
+  fxPerfectHook?: string;
+  fxFishEscaped?: string;
+  // Reeling challenge UI
+  uiTensionMeter?: string;
+  uiStaminaBar?: string;
+  uiReelButton?: string;
+  uiPullLeft?: string;
+  uiPullRight?: string;
+  uiDangerWarning?: string;
+  uiPerfectZone?: string;
+  // Reveal FX
   revealRays?: string;
+  fxSparkle?: string;
   splash?: string;
+  // Environment / weather
+  envSunny?: string;
+  envSunset?: string;
+  envNight?: string;
+  envRain?: string;
+  envStorm?: string;
+  envFog?: string;
+  envGoldenOcean?: string;
+  // Live events
+  eventFothBanner?: string;
+  eventLegendaryAlert?: string;
+  eventTournament?: string;
+  eventWorldBoss?: string;
+  eventWinnerScreen?: string;
+  // Progression icons
+  iconCoins?: string;
+  iconGems?: string;
+  iconXp?: string;
+  iconChest?: string;
+  iconBait?: string;
+  iconRodUpgrade?: string;
+  iconCollectionBook?: string;
+  // Identity
   logo?: string;
+  appIcon?: string;
+  loadingArt?: string;
+  // Audio
   ambientAudio?: string;
   castSfx?: string;
-  catchSfx?: string;
   biteSfx?: string;
+  catchSfx?: string;
+  uiClick?: string;
+  music?: string;
 };
 export type Quest = {
   id: string;

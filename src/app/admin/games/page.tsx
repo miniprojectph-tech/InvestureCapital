@@ -30,6 +30,137 @@ function assetKind(url?: string): "video" | "audio" | "image" {
   return "image";
 }
 
+const A_IMG = "image/*";
+const A_VID = "video/*";
+const A_AUD = "audio/*";
+const A_BG = "image/*,video/*";
+
+type AssetGroup = {
+  title: string;
+  fields: { key: keyof GameAssets; label: string; hint?: string; accept: string }[];
+};
+
+// Every uploadable game asset, grouped. Keys match GameAssets. Categories mirror
+// REEF_ASSETS.xlsx. Items beyond the "Now"-wired ones are stored for Phase 2/3.
+const ASSET_GROUPS: AssetGroup[] = [
+  {
+    title: "Background",
+    fields: [
+      { key: "bgFull", label: "Background (image)", hint: "2048×1536", accept: A_IMG },
+      { key: "bgVideo", label: "Background (video)", hint: "1920×1080", accept: A_VID },
+      { key: "bgSky", label: "Layer · sky", accept: A_IMG },
+      { key: "bgSea", label: "Layer · far sea", accept: A_IMG },
+      { key: "bgWater", label: "Layer · near water", accept: A_IMG },
+      { key: "bgForeground", label: "Layer · foreground", accept: A_IMG },
+    ],
+  },
+  {
+    title: "Gear & rod states",
+    fields: [
+      { key: "rod", label: "Rod (static)", hint: "512×1024", accept: A_IMG },
+      { key: "lure", label: "Lure / bobber", hint: "128×128", accept: A_IMG },
+      { key: "rodIdle", label: "Rod · idle", accept: A_IMG },
+      { key: "rodCasting", label: "Rod · casting", accept: A_IMG },
+      { key: "rodBendLight", label: "Rod bend · light", accept: A_IMG },
+      { key: "rodBendMedium", label: "Rod bend · medium", accept: A_IMG },
+      { key: "rodBendExtreme", label: "Rod bend · extreme", accept: A_IMG },
+      { key: "lineSnap", label: "Line snap FX", accept: A_IMG },
+    ],
+  },
+  {
+    title: "Fishing line",
+    fields: [
+      { key: "lineNormal", label: "Line · normal", accept: A_IMG },
+      { key: "lineTight", label: "Line · tight", accept: A_IMG },
+      { key: "lineDanger", label: "Line · danger", accept: A_IMG },
+      { key: "lineBroken", label: "Line · broken", accept: A_IMG },
+    ],
+  },
+  {
+    title: "Bite / hook FX",
+    fields: [
+      { key: "fxNibble", label: "Small nibble ripple", accept: A_IMG },
+      { key: "fxBigBite", label: "Big bite splash", accept: A_IMG },
+      { key: "fxBobberPull", label: "Bobber pulled under", accept: A_IMG },
+      { key: "fxPerfectHook", label: "Perfect Hook FX", accept: A_IMG },
+      { key: "fxFishEscaped", label: "Fish Escaped FX", accept: A_IMG },
+    ],
+  },
+  {
+    title: "Reeling UI",
+    fields: [
+      { key: "uiTensionMeter", label: "Tension meter", accept: A_IMG },
+      { key: "uiStaminaBar", label: "Fish stamina bar", accept: A_IMG },
+      { key: "uiReelButton", label: "Reel button", accept: A_IMG },
+      { key: "uiPullLeft", label: "Pull-left indicator", accept: A_IMG },
+      { key: "uiPullRight", label: "Pull-right indicator", accept: A_IMG },
+      { key: "uiDangerWarning", label: "Danger zone warning", accept: A_IMG },
+      { key: "uiPerfectZone", label: "Perfect timing zone", accept: A_IMG },
+    ],
+  },
+  {
+    title: "Reveal FX",
+    fields: [
+      { key: "revealRays", label: "God-rays burst", hint: "1024×1024", accept: A_IMG },
+      { key: "fxSparkle", label: "Sparkle / confetti", accept: A_IMG },
+      { key: "splash", label: "Splash FX", accept: A_IMG },
+    ],
+  },
+  {
+    title: "Environment / weather",
+    fields: [
+      { key: "envSunny", label: "Sunny day", accept: A_BG },
+      { key: "envSunset", label: "Sunset", accept: A_BG },
+      { key: "envNight", label: "Night", accept: A_BG },
+      { key: "envRain", label: "Rain overlay", accept: A_BG },
+      { key: "envStorm", label: "Storm overlay", accept: A_BG },
+      { key: "envFog", label: "Fog overlay", accept: A_BG },
+      { key: "envGoldenOcean", label: "Golden Ocean event", accept: A_BG },
+    ],
+  },
+  {
+    title: "Live events",
+    fields: [
+      { key: "eventFothBanner", label: "Fish of the Hour banner", accept: A_IMG },
+      { key: "eventLegendaryAlert", label: "Legendary Spawn Alert", accept: A_IMG },
+      { key: "eventTournament", label: "Tournament Started", accept: A_IMG },
+      { key: "eventWorldBoss", label: "World Boss / Kraken", accept: A_BG },
+      { key: "eventWinnerScreen", label: "Leaderboard winner screen", accept: A_IMG },
+    ],
+  },
+  {
+    title: "Progression icons",
+    fields: [
+      { key: "iconCoins", label: "Coins", accept: A_IMG },
+      { key: "iconGems", label: "Gems", accept: A_IMG },
+      { key: "iconXp", label: "XP", accept: A_IMG },
+      { key: "iconChest", label: "Treasure chest", accept: A_IMG },
+      { key: "iconBait", label: "Bait", accept: A_IMG },
+      { key: "iconRodUpgrade", label: "Rod upgrade", accept: A_IMG },
+      { key: "iconCollectionBook", label: "Collection book", accept: A_IMG },
+    ],
+  },
+  {
+    title: "Identity",
+    fields: [
+      { key: "logo", label: "Logo / wordmark", hint: "1024×512", accept: A_IMG },
+      { key: "appIcon", label: "App icon", hint: "1024×1024", accept: A_IMG },
+      { key: "loadingArt", label: "Loading art", accept: A_IMG },
+    ],
+  },
+  {
+    title: "Audio",
+    fields: [
+      { key: "ambientAudio", label: "Ambient loop", accept: A_AUD },
+      { key: "castSfx", label: "Cast SFX", accept: A_AUD },
+      { key: "biteSfx", label: "Bite SFX", accept: A_AUD },
+      { key: "catchSfx", label: "Catch SFX", accept: A_AUD },
+      { key: "uiClick", label: "UI click", accept: A_AUD },
+      { key: "music", label: "Music loop", accept: A_AUD },
+    ],
+  },
+];
+
 export default function AdminGamesPage() {
   const { user } = useAuth();
   const { config, loading } = useGameConfig();
@@ -233,25 +364,26 @@ export default function AdminGamesPage() {
       <Card className="mb-3">
         <CardHeader
           title="Game assets"
-          subtitle="Upload art, animation & audio to skin the reef · see REEF_ASSETS.md for exact sizes"
+          subtitle="Upload art, animation & audio to skin the reef · sizes in REEF_ASSETS.xlsx · empty slots fall back to the built-in look"
         />
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-          <AssetField label="Background (image)" hint="2048×1536" accept="image/*" value={draft.assets?.bgFull} onSet={(u) => updateAsset("bgFull", u)} onError={setError} />
-          <AssetField label="Background (video)" hint="1920×1080 loop" accept="video/*" value={draft.assets?.bgVideo} onSet={(u) => updateAsset("bgVideo", u)} onError={setError} />
-          <AssetField label="Layer · sky" accept="image/*" value={draft.assets?.bgSky} onSet={(u) => updateAsset("bgSky", u)} onError={setError} />
-          <AssetField label="Layer · far sea" accept="image/*" value={draft.assets?.bgSea} onSet={(u) => updateAsset("bgSea", u)} onError={setError} />
-          <AssetField label="Layer · near water" accept="image/*" value={draft.assets?.bgWater} onSet={(u) => updateAsset("bgWater", u)} onError={setError} />
-          <AssetField label="Layer · foreground" accept="image/*" value={draft.assets?.bgForeground} onSet={(u) => updateAsset("bgForeground", u)} onError={setError} />
-          <AssetField label="Fishing rod" hint="512×1024" accept="image/*" value={draft.assets?.rod} onSet={(u) => updateAsset("rod", u)} onError={setError} />
-          <AssetField label="Lure / bobber" hint="128×128" accept="image/*" value={draft.assets?.lure} onSet={(u) => updateAsset("lure", u)} onError={setError} />
-          <AssetField label="Reveal god-rays" hint="1024×1024" accept="image/*" value={draft.assets?.revealRays} onSet={(u) => updateAsset("revealRays", u)} onError={setError} />
-          <AssetField label="Splash FX" accept="image/*" value={draft.assets?.splash} onSet={(u) => updateAsset("splash", u)} onError={setError} />
-          <AssetField label="Logo / wordmark" hint="1024×512" accept="image/*" value={draft.assets?.logo} onSet={(u) => updateAsset("logo", u)} onError={setError} />
-          <AssetField label="Ambient audio loop" accept="audio/*" value={draft.assets?.ambientAudio} onSet={(u) => updateAsset("ambientAudio", u)} onError={setError} />
-          <AssetField label="Cast SFX" accept="audio/*" value={draft.assets?.castSfx} onSet={(u) => updateAsset("castSfx", u)} onError={setError} />
-          <AssetField label="Catch SFX" accept="audio/*" value={draft.assets?.catchSfx} onSet={(u) => updateAsset("catchSfx", u)} onError={setError} />
-          <AssetField label="Bite SFX" accept="audio/*" value={draft.assets?.biteSfx} onSet={(u) => updateAsset("biteSfx", u)} onError={setError} />
-        </div>
+        {ASSET_GROUPS.map((g) => (
+          <div key={g.title} className="mb-4 last:mb-0">
+            <p className="text-[11px] font-medium m-0 mb-2 text-text-muted">{g.title}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {g.fields.map((f) => (
+                <AssetField
+                  key={f.key}
+                  label={f.label}
+                  hint={f.hint}
+                  accept={f.accept}
+                  value={draft.assets?.[f.key]}
+                  onSet={(u) => updateAsset(f.key, u)}
+                  onError={setError}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
       </Card>
 
       {/* Fish catalog */}
