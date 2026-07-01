@@ -1,3 +1,5 @@
+"use client";
+
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -6,16 +8,18 @@ import {
   CheckCircle2,
   RefreshCw,
   ArrowDownToLine,
+  Loader2,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardHeader } from "./Card";
 import { formatPHP } from "@/lib/utils";
-import { mockActivity, type ActivityEvent, type ActivityType } from "@/lib/mock-data";
+import { useUserActivity, type UserActivityRow } from "@/lib/userActivity";
 
-const typeIcon: Record<ActivityType, { icon: LucideIcon; bg: string; color: string }> = {
+const typeIcon: Record<string, { icon: LucideIcon; bg: string; color: string }> = {
   payout: { icon: ArrowDownRight, bg: "bg-green/15", color: "text-green" },
   compound: { icon: TrendingUp, bg: "bg-vault/15", color: "text-vault" },
+  "vault-growth": { icon: TrendingUp, bg: "bg-vault/15", color: "text-vault" },
   "plan-activate": { icon: Plus, bg: "bg-white/5", color: "text-text-muted" },
   "plan-complete": { icon: CheckCircle2, bg: "bg-blue/15", color: "text-blue" },
   withdrawal: { icon: ArrowUpRight, bg: "bg-white/5", color: "text-text-muted" },
@@ -23,19 +27,24 @@ const typeIcon: Record<ActivityType, { icon: LucideIcon; bg: string; color: stri
   deposit: { icon: ArrowDownToLine, bg: "bg-green/15", color: "text-green" },
 };
 
-function amountStr(ev: ActivityEvent) {
+const DEFAULT_ICON = { icon: RefreshCw, bg: "bg-white/5", color: "text-text-muted" };
+
+function amountStr(ev: UserActivityRow) {
   if (ev.amount === undefined) return "";
   const sign = ev.amountKind === "in" ? "+" : ev.amountKind === "out" ? "−" : "";
   return `${sign}${formatPHP(ev.amount, { short: ev.amount % 1 === 0 })}`;
 }
 
-function amountColor(ev: ActivityEvent) {
+function amountColor(ev: UserActivityRow) {
   if (ev.amountKind === "in") return "text-green";
   if (ev.amountKind === "out") return "text-text-muted";
   return "text-text";
 }
 
 export function ActivityFeed() {
+  const { rows, loading } = useUserActivity();
+  const visible = rows.slice(0, 6);
+
   return (
     <Card>
       <CardHeader
@@ -47,14 +56,24 @@ export function ActivityFeed() {
         }
       />
       <div>
-        {mockActivity.map((ev, i) => {
-          const t = typeIcon[ev.type];
+        {loading && (
+          <div className="flex items-center justify-center py-6">
+            <Loader2 className="w-4 h-4 text-gold animate-spin" />
+          </div>
+        )}
+        {!loading && visible.length === 0 && (
+          <p className="text-[11px] text-text-subtle py-2 m-0">
+            No activity yet. Top up and activate a plan to get started.
+          </p>
+        )}
+        {visible.map((ev, i) => {
+          const t = typeIcon[ev.type] ?? DEFAULT_ICON;
           const Icon = t.icon;
           return (
             <div
               key={ev.id}
               className={`flex items-center gap-2.5 py-1.5 ${
-                i < mockActivity.length - 1 ? "border-b border-border" : ""
+                i < visible.length - 1 ? "border-b border-border" : ""
               }`}
             >
               <div className={`w-[22px] h-[22px] rounded-full ${t.bg} flex items-center justify-center shrink-0`}>

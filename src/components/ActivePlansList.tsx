@@ -1,14 +1,17 @@
 "use client";
 
+"use client";
+
 import Link from "next/link";
 import { Loader2, Plus } from "lucide-react";
 import { Card, CardHeader } from "./Card";
-import { mockPlans } from "@/lib/mock-data";
 import { useUserState } from "@/lib/useUserState";
+import { usePlans } from "@/lib/plans";
 import { getDayProgress } from "@/lib/userState";
 
 export function ActivePlansList() {
   const { state, loading } = useUserState();
+  const { plans: templates } = usePlans();
 
   if (loading || !state) {
     return (
@@ -28,7 +31,7 @@ export function ActivePlansList() {
         title="Active plans"
         right={
           <span className="text-[10px] text-text-subtle">
-            {plans.length} of {plans.length}
+            {plans.length} active
           </span>
         }
       />
@@ -39,19 +42,21 @@ export function ActivePlansList() {
           </p>
         )}
         {plans.map((ap, i) => {
-          const plan = mockPlans.find((p) => p.id === ap.planId);
-          if (!plan) return null;
-          const day = getDayProgress(ap, plan.durationDays);
-          const pct = (day / plan.durationDays) * 100;
+          const tpl = templates.find((p) => p.id === ap.planId);
+          const name = tpl?.name ?? ap.planName ?? ap.planId;
+          const durationDays = ap.durationDays ?? tpl?.durationDays;
+          if (durationDays == null) return null;
+          const day = getDayProgress(ap, durationDays);
+          const pct = (day / durationDays) * 100;
           return (
             <div
               key={ap.id}
               className={`py-2 ${i < plans.length - 1 ? "border-b border-border" : ""}`}
             >
               <div className="flex justify-between mb-1.5">
-                <span className="text-[12px] font-medium text-text">{plan.name}</span>
+                <span className="text-[12px] font-medium text-text">{name}</span>
                 <span className="text-[10px] font-mono text-text-subtle">
-                  D{day}/{plan.durationDays}
+                  D{day}/{durationDays}
                 </span>
               </div>
               <div className="h-[3px] bg-border rounded-full">

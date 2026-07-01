@@ -56,9 +56,16 @@ export default function DashboardPage() {
   const total = state.balances.wallet + deployed + state.balances.vault;
   const todayCompound =
     state.balances.vault - state.balances.vault / (1 + rate);
-  const totalEarned = state.balances.vault + state.balances.wallet;
-  const totalInvested = deployed > 0 ? deployed : 1; // avoid divide-by-zero
-  const roi = (totalEarned / totalInvested) * 100;
+
+  // Earnings = everything credited to the vault (plan completions + compounding).
+  const totalEarned = state.balances.vault;
+  // All capital ever put to work: currently deployed + capital of completed plans.
+  const completedCapital = (state.completedPlans ?? []).reduce(
+    (s, p) => s + p.capital,
+    0
+  );
+  const totalInvestedEver = deployed + completedCapital;
+  const roi = totalInvestedEver > 0 ? (totalEarned / totalInvestedEver) * 100 : 0;
 
   const firstName = state.profile.name.split(" ")[0];
   const hour = new Date().getHours();
@@ -100,12 +107,12 @@ export default function DashboardPage() {
                   value: formatPHP(deployed, { short: true }),
                 },
                 {
-                  label: "Current value",
-                  value: formatPHP(state.balances.vault + state.balances.wallet, { short: true }),
+                  label: "Total earned",
+                  value: formatPHP(totalEarned, { short: true }),
                 },
                 {
                   label: "ROI",
-                  value: `+${roi.toFixed(1)}%`,
+                  value: `${roi >= 0 ? "+" : ""}${roi.toFixed(1)}%`,
                 },
               ]}
             />

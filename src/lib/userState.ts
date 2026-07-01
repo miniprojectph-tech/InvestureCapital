@@ -127,9 +127,9 @@ export function computeDailyIncome(
   templates: PlanTemplate[]
 ) {
   return activePlans.reduce((sum, p) => {
-    const tpl = templates.find((t) => t.id === p.planId);
-    if (!tpl) return sum;
-    return sum + p.capital * (tpl.dailyRate / 100);
+    const rate = p.dailyRate ?? templates.find((t) => t.id === p.planId)?.dailyRate;
+    if (rate == null) return sum;
+    return sum + p.capital * (rate / 100);
   }, 0);
 }
 
@@ -139,8 +139,10 @@ export function computePendingVaultCredits(
 ) {
   return activePlans.reduce((sum, p) => {
     const tpl = templates.find((t) => t.id === p.planId);
-    if (!tpl) return sum;
-    return sum + p.capital * (tpl.dailyRate / 100) * tpl.durationDays;
+    const rate = p.dailyRate ?? tpl?.dailyRate;
+    const duration = p.durationDays ?? tpl?.durationDays;
+    if (rate == null || duration == null) return sum;
+    return sum + p.capital * (rate / 100) * duration;
   }, 0);
 }
 
