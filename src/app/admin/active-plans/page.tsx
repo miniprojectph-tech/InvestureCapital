@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FastForward, Loader2, Timer, CheckCircle2, AlertCircle, Search } from "lucide-react";
+import { httpsCallable } from "firebase/functions";
+import { FastForward, Loader2, Timer, CheckCircle2, AlertCircle, Search, Zap } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { formatPHP, cn } from "@/lib/utils";
@@ -29,6 +30,8 @@ export default function AdminActivePlansPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [runningMaintenance, setRunningMaintenance] = useState(false);
+  const [maintenanceMsg, setMaintenanceMsg] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,6 +99,32 @@ export default function AdminActivePlansPage() {
     }
   }
 
+  async function runMaintenanceNow() {
+    const { functions } = getFirebase();
+    if (!functions || !user?.isAdmin) {
+      setError("Admin role required.");
+      return;
+    }
+    setRunningMaintenance(true);
+    setMaintenanceMsg(null);
+    setError(null);
+    try {
+      const call = httpsCallable<
+        void,
+        { usersScanned: number; usersUpdated: number; plansCompleted: number }
+      >(functions, "runMaintenanceNow");
+      const res = await call();
+      setMaintenanceMsg(
+        `Scanned ${res.data.usersScanned} investors · completed ${res.data.plansCompleted} plan(s) · updated ${res.data.usersUpdated}`
+      );
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Maintenance run failed");
+    } finally {
+      setRunningMaintenance(false);
+    }
+  }
+
   const filteredActive = useMemo(() => {
     const q = query.toLowerCase();
     return active.filter(
@@ -125,6 +154,13 @@ export default function AdminActivePlansPage() {
         subtitle={`${active.length} active · ${expired.length} expired · live from Firestore`}
       />
 
+      {maintenanceMsg && (
+        <div className="mb-3 flex items-start gap-2 px-3 py-2 bg-vault/10 border border-border-vault rounded-lg text-[11px] text-vault">
+          <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>{maintenanceMsg}</span>
+        </div>
+      )}
+
       {error && (
         <div className="mb-3 flex items-start gap-2 px-3 py-2 bg-red/10 border border-red/30 rounded-lg text-[11px] text-red">
           <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -133,6 +169,19 @@ export default function AdminActivePlansPage() {
       )}
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
+        <button
+          onClick={runMaintenanceNow}
+          disabled={runningMaintenance}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-vault/15 border border-border-vault text-vault rounded-full text-[12px] hover:bg-vault/25 transition disabled:opacity-60"
+          title="Runs the same scheduled job that auto-completes plans and compounds the vault — applies anything overdue right now instead of waiting for the hourly run"
+        >
+          {runningMaintenance ? (
+            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          ) : (
+            <Zap className="w-3.5 h-3.5" />
+          )}
+          Run maintenance now
+        </button>
         <button
           onClick={() => setTab("active")}
           className={cn(
