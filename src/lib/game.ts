@@ -293,11 +293,11 @@ export function useLeaderboard(top = 20) {
 }
 
 // ===== Callable wrappers =====
-export async function castLine(): Promise<CastResult> {
+export async function castLine(power = 0): Promise<CastResult> {
   const { functions } = getFirebase();
   if (!functions) throw new Error("Not connected");
-  const call = httpsCallable<void, CastResult>(functions, "castLine");
-  const res = await call();
+  const call = httpsCallable<{ power: number }, CastResult>(functions, "castLine");
+  const res = await call({ power });
   return res.data;
 }
 

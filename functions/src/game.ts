@@ -103,16 +103,29 @@ function rarityRank(rarityId: string, config: GameConfig): number {
   return i < 0 ? 0 : i;
 }
 
-function pickFish(fish: FishDoc[], config: GameConfig): FishDoc {
-  const total = config.rarities.reduce((s, r) => s + r.weight, 0);
+/**
+ * Effective rarity weight given cast power (0..1). A stronger cast reaches
+ * deeper water: the common tier (index 0) is dampened and rarer tiers are
+ * boosted. The multipliers are bounded so power can only tilt the odds
+ * modestly — it can never guarantee a rare catch.
+ */
+function effWeight(r: Rarity, index: number, power: number): number {
+  if (index === 0) return r.weight * (1 - 0.4 * power);
+  return r.weight * (1 + 0.8 * power);
+}
+
+function pickFish(fish: FishDoc[], config: GameConfig, power = 0): FishDoc {
+  const p = Math.max(0, Math.min(1, power));
+  const weights = config.rarities.map((r, i) => effWeight(r, i, p));
+  const total = weights.reduce((s, w) => s + w, 0);
   let roll = Math.random() * total;
   let chosen = config.rarities[0];
-  for (const r of config.rarities) {
-    if (roll < r.weight) {
-      chosen = r;
+  for (let i = 0; i < config.rarities.length; i++) {
+    if (roll < weights[i]) {
+      chosen = config.rarities[i];
       break;
     }
-    roll -= r.weight;
+    roll -= weights[i];
   }
   const pool = fish.filter((f) => f.rarity === chosen.id);
   const from = pool.length ? pool : fish;
@@ -157,6 +170,7 @@ export const castLine = onCall(async (request) => {
   const [config, fish] = await Promise.all([loadConfig(), loadFish()]);
   if (fish.length === 0) throw new HttpsError("failed-precondition", "No fish configured yet.");
 
+  const power = Math.max(0, Math.min(1, (request.data as { power?: number })?.power ?? 0));
   const now = Date.now();
   const today = dayKey(now);
   const yesterday = dayKey(now - DAY_MS);
@@ -196,7 +210,7 @@ export const castLine = onCall(async (request) => {
     if (fothActive && Math.random() < config.fothChance) {
       caught = fish.find((f) => f.id === foth!.fishId)!;
     } else {
-      caught = pickFish(fish, config);
+      caught = pickFish(fish, config, power);
     }
     const rarity = config.rarities.find((r) => r.id === caught.rarity) ?? config.rarities[0];
     const gained = rarity.points + streakBonus;

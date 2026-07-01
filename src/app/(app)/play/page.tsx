@@ -1,16 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Loader2,
-  Zap,
   Trophy,
   Fish as FishIcon,
   Flame,
   Sparkles,
   CheckCircle2,
   AlertCircle,
+  BookOpen,
+  ScrollText,
+  ChevronLeft,
+  Timer,
+  X,
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
@@ -27,21 +31,32 @@ import {
   type CastResult,
 } from "@/lib/game";
 
-type Tab = "cast" | "collection" | "leaderboard";
+type View = "cast" | "collection" | "leaderboard";
+type Phase = "idle" | "charging" | "casting";
 
 function manilaDay(ts = Date.now()): string {
   return new Date(ts + 8 * 3_600_000).toISOString().slice(0, 10);
 }
+function msToRefill(now: number): string {
+  const d = new Date(now + 8 * 3_600_000);
+  const into = ((d.getUTCHours() * 60 + d.getUTCMinutes()) * 60 + d.getUTCSeconds()) * 1000;
+  const left = 86_400_000 - into;
+  const h = Math.floor(left / 3_600_000);
+  const m = Math.floor((left % 3_600_000) / 60_000);
+  return `${h}h ${m}m`;
+}
+const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-// Decorative ambient sea life drifting across the scene.
 const AMBIENT = [
-  { emoji: "🐟", top: "22%", dur: 26, delay: 0, size: 20 },
-  { emoji: "🐠", top: "42%", dur: 34, delay: 6, size: 26, rev: true },
-  { emoji: "🐡", top: "62%", dur: 30, delay: 12, size: 22 },
-  { emoji: "🐟", top: "74%", dur: 40, delay: 3, size: 16, rev: true },
+  { emoji: "🐟", top: "58%", dur: 26, delay: 0, size: 18 },
+  { emoji: "🐠", top: "70%", dur: 34, delay: 6, size: 24, rev: true },
+  { emoji: "🐡", top: "82%", dur: 30, delay: 12, size: 20 },
 ];
-const SEABED = ["🪸", "🌿", "🐚", "🪸", "🌿", "🪨", "🌿", "🪸"];
-const BUBBLES = Array.from({ length: 16 });
+const CLOUDS = [
+  { top: "8%", dur: 90, delay: 0, scale: 1 },
+  { top: "18%", dur: 130, delay: 20, scale: 0.7 },
+  { top: "4%", dur: 110, delay: 50, scale: 1.3 },
+];
 
 export default function PlayPage() {
   const { user, demoMode } = useAuth();
@@ -51,12 +66,25 @@ export default function PlayPage() {
   const foth = useFishOfHour();
   const { rows: leaderboard } = useLeaderboard();
 
-  const [tab, setTab] = useState<Tab>("cast");
-  const [casting, setCasting] = useState(false);
+  const [view, setView] = useState<View>("cast");
+  const [questsOpen, setQuestsOpen] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
+  const [meter, setMeter] = useState(0);
   const [reveal, setReveal] = useState<CastResult | null>(null);
   const [isNewCatch, setIsNewCatch] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busyQuest, setBusyQuest] = useState<string | null>(null);
+  const [clock, setClock] = useState(Date.now());
+
+  const meterRef = useRef(0);
+  const rafRef = useRef<number | null>(null);
+  const startRef = useRef(0);
+
+  // Lightweight clock for countdowns.
+  useEffect(() => {
+    const t = setInterval(() => setClock(Date.now()), 20_000);
+    return () => clearInterval(t);
+  }, []);
 
   const fishById = useMemo(() => new Map(fish.map((f) => [f.id, f])), [fish]);
   const emojiFor = (id: string) => fishById.get(id)?.emoji ?? "🐟";
@@ -69,30 +97,68 @@ export default function PlayPage() {
   const streak = state?.streak ?? 0;
   const questsToday =
     state?.quests?.day === today ? state.quests : { day: today, progress: {}, claimed: {} };
+  const claimable = config.quests.filter(
+    (q) => (questsToday.progress?.[q.id] ?? 0) >= q.target && !questsToday.claimed?.[q.id]
+  ).length;
+  const totalCaught = fish.filter((f) => state?.collection?.[f.id]).length;
 
-  async function doCast() {
+  // ---- Cast power meter ----
+  function stopRaf() {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+  }
+  function startCharge() {
+    if (phase !== "idle") return;
     if (demoMode) {
       setError("Casting isn't available in demo mode — sign in to play.");
       return;
     }
     if (energy <= 0) {
-      setError("Out of energy — come back tomorrow!");
+      setError("Out of energy — new casts tomorrow!");
       return;
     }
-    setCasting(true);
     setError(null);
+    setPhase("charging");
+    startRef.current = performance.now();
+    const loop = (t: number) => {
+      const phaseT = ((t - startRef.current) % 1200) / 1200;
+      const tri = phaseT < 0.5 ? phaseT * 2 : (1 - phaseT) * 2;
+      meterRef.current = tri;
+      setMeter(tri);
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+  }
+  async function releaseCharge() {
+    if (phase !== "charging") return;
+    stopRaf();
+    const power = meterRef.current;
+    setPhase("casting");
     try {
-      const hadBefore = !!state?.collection;
-      const res = await castLine();
-      setIsNewCatch(!hadBefore || !state?.collection?.[res.fish.id]);
-      // brief line-drop beat before the reveal pops
-      setTimeout(() => setReveal(res), 550);
+      const [res] = await Promise.all([castLine(power), wait(1400)]);
+      setIsNewCatch(!state?.collection?.[res.fish.id]);
+      setReveal(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Cast failed");
     } finally {
-      setTimeout(() => setCasting(false), 550);
+      setPhase("idle");
+      setMeter(0);
+      meterRef.current = 0;
     }
   }
+
+  // Release even if the pointer leaves the button.
+  useEffect(() => {
+    if (phase !== "charging") return;
+    const up = () => releaseCharge();
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   async function doClaim(questId: string) {
     setBusyQuest(questId);
@@ -114,7 +180,11 @@ export default function PlayPage() {
     );
   }
 
-  const fothActive = foth && foth.endsAt > Date.now();
+  const fothActive = foth && foth.endsAt > clock;
+  const casting = phase === "casting";
+  const charging = phase === "charging";
+  // lure vertical position: idle bobs near shore, cast flies out toward horizon
+  const lureTop = casting ? 34 : 52;
 
   return (
     <div>
@@ -127,59 +197,78 @@ export default function PlayPage() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-3">
-        {([
-          ["cast", "Fishing", FishIcon],
-          ["collection", "Collection", Sparkles],
-          ["leaderboard", "Leaderboard", Trophy],
-        ] as [Tab, string, typeof FishIcon][]).map(([t, label, Icon]) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={cn(
-              "flex items-center gap-1.5 px-3.5 py-1.5 rounded-full border text-[12px] transition",
-              tab === t
-                ? "bg-gold/15 border-border-gold text-gold font-medium"
-                : "bg-card border-border text-text-muted hover:text-text"
-            )}
-          >
-            <Icon className="w-3.5 h-3.5" /> {label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "cast" && (
-        <div className="grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-3">
-          {/* ===== The underwater scene ===== */}
+      {view === "cast" && (
+        <div
+          className="relative overflow-hidden rounded-2xl border border-border-strong select-none"
+          style={{ height: "min(72vh, 560px)" }}
+        >
+          {/* ===== SKY ===== */}
           <div
-            className="relative overflow-hidden rounded-2xl border border-border-strong min-h-[440px] flex flex-col"
+            className="absolute inset-x-0 top-0"
             style={{
-              background:
-                "linear-gradient(180deg,#0e4657 0%,#0b3049 38%,#071f36 72%,#05121f 100%)",
+              height: "52%",
+              background: "linear-gradient(180deg,#3aa0c9 0%,#6cc3dd 45%,#a7e0ec 100%)",
             }}
           >
-            {/* light rays */}
-            {[12, 34, 58, 80].map((left, i) => (
+            {/* sun */}
+            <div
+              className="absolute rounded-full"
+              style={{
+                top: "8%",
+                right: "12%",
+                width: 90,
+                height: 90,
+                background: "radial-gradient(circle,#fff6cf,rgba(255,246,207,0) 70%)",
+              }}
+            />
+            {CLOUDS.map((c, i) => (
               <div
                 key={i}
-                className="absolute -top-10 w-24 h-[130%] pointer-events-none"
+                className="absolute rounded-full bg-white/80"
                 style={{
-                  left: `${left}%`,
-                  background:
-                    "linear-gradient(180deg, rgba(180,255,235,0.35), transparent 70%)",
-                  transform: "rotate(14deg)",
+                  top: c.top,
+                  left: "-20%",
+                  width: 120 * c.scale,
+                  height: 34 * c.scale,
                   filter: "blur(6px)",
-                  animation: `reef-ray ${7 + i}s ease-in-out ${i}s infinite`,
+                  animation: `reef-swim ${c.dur}s linear ${c.delay}s infinite`,
                 }}
               />
             ))}
+          </div>
 
+          {/* ===== WATER ===== */}
+          <div
+            className="absolute inset-x-0"
+            style={{
+              top: "46%",
+              bottom: 0,
+              background: "linear-gradient(180deg,#2bb6c4 0%,#158aa3 40%,#0c5f79 75%,#083c50 100%)",
+            }}
+          >
+            {/* sun reflection column */}
+            <div
+              className="absolute top-0 bottom-0"
+              style={{
+                right: "16%",
+                width: 70,
+                background: "linear-gradient(180deg,rgba(255,246,207,0.5),transparent 60%)",
+                filter: "blur(4px)",
+              }}
+            />
+            {/* shimmer lines */}
+            {[20, 40, 60, 80].map((top, i) => (
+              <div
+                key={i}
+                className="absolute inset-x-0 h-px bg-white/20"
+                style={{ top: `${top}%`, animation: `reef-ray ${5 + i}s ease-in-out ${i}s infinite` }}
+              />
+            ))}
             {/* ambient fish */}
             {AMBIENT.map((a, i) => (
               <span
                 key={i}
-                className="absolute select-none pointer-events-none opacity-40"
+                className="absolute opacity-40 pointer-events-none"
                 style={{
                   top: a.top,
                   left: 0,
@@ -191,75 +280,67 @@ export default function PlayPage() {
                 {a.emoji}
               </span>
             ))}
-
             {/* bubbles */}
-            {BUBBLES.map((_, i) => {
-              const size = 4 + (i % 5) * 3;
+            {Array.from({ length: 12 }).map((_, i) => {
+              const size = 4 + (i % 4) * 3;
               return (
                 <span
                   key={i}
-                  className="absolute rounded-full bg-white/20 pointer-events-none"
+                  className="absolute rounded-full bg-white/25 pointer-events-none"
                   style={{
-                    bottom: 40,
-                    left: `${(i * 6.5 + 4) % 96}%`,
+                    bottom: 20,
+                    left: `${(i * 8 + 5) % 96}%`,
                     width: size,
                     height: size,
-                    animation: `reef-bubble ${5 + (i % 6)}s linear ${(i % 7) * 0.9}s infinite`,
+                    animation: `reef-bubble ${5 + (i % 5)}s linear ${(i % 6) * 0.8}s infinite`,
                   }}
                   aria-hidden
                 />
               );
             })}
+          </div>
 
-            {/* HUD chips */}
-            <div className="relative z-10 flex items-start justify-between p-3">
-              <HudChip icon={<Zap className="w-3.5 h-3.5 text-gold" />} label="Energy" value={`${energy}/${config.dailyEnergy}`} />
-              <HudChip icon={<Sparkles className="w-3.5 h-3.5 text-vault" />} label="Points" value={points.toLocaleString()} accent />
-              <HudChip icon={<Flame className="w-3.5 h-3.5 text-gold" />} label="Streak" value={`${streak}`} />
-            </div>
-
-            {/* fish of the hour banner */}
-            {fothActive && (
-              <div className="relative z-10 mx-3 -mt-1 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/35 backdrop-blur-sm border border-border-gold self-center">
-                <span className="text-base">{emojiFor(foth!.fishId)}</span>
-                <span className="text-[10px] text-gold font-medium">
-                  Fish of the hour: {foth!.fishName} · {Math.max(0, Math.round((foth!.endsAt - Date.now()) / 60000))}m left
-                </span>
-              </div>
+          {/* ===== FISHING LINE + LURE ===== */}
+          <div
+            className="absolute left-[46%] w-px bg-white/50"
+            style={{ top: 0, height: `${lureTop}%`, transition: "height 0.6s cubic-bezier(0.4,0,0.2,1)" }}
+          />
+          <div
+            className="absolute left-[46%] -translate-x-1/2"
+            style={{
+              top: `${lureTop}%`,
+              transition: "top 0.6s cubic-bezier(0.4,0,0.2,1)",
+              animation: casting || charging ? "none" : "reef-bob 2.6s ease-in-out infinite",
+            }}
+          >
+            <div className="w-3.5 h-3.5 rounded-full bg-gold shadow-[0_0_10px_rgba(61,213,152,0.8)] border-2 border-white/80" />
+            {casting && (
+              <>
+                <span
+                  className="absolute left-1/2 top-3 w-12 h-2.5 rounded-[50%] border border-white/60"
+                  style={{ animation: "reef-ripple 0.7s ease-out" }}
+                />
+                <span
+                  className="absolute left-1/2 top-3 w-12 h-2.5 rounded-[50%] border border-white/40"
+                  style={{ animation: "reef-ripple 0.7s ease-out 0.25s" }}
+                />
+              </>
             )}
+          </div>
 
-            {/* fishing line + bobber */}
-            <div className="relative z-[5] flex-1 flex justify-center">
-              <div
-                className="absolute top-0 w-px bg-white/25"
-                style={{ height: casting ? "72%" : "46%", transition: "height 0.5s cubic-bezier(0.4,0,0.2,1)" }}
-              />
-              <div
-                className="absolute -translate-x-1/2 left-1/2"
-                style={{
-                  top: casting ? "70%" : "44%",
-                  transition: "top 0.5s cubic-bezier(0.4,0,0.2,1)",
-                  animation: casting ? "none" : "reef-bob 2.6s ease-in-out infinite",
-                }}
-              >
-                <div className="w-3.5 h-3.5 rounded-full bg-gold shadow-[0_0_10px_rgba(61,213,152,0.7)] border-2 border-white/70" />
-                {casting && (
-                  <span
-                    className="absolute left-1/2 top-3 w-10 h-2 rounded-[50%] border border-white/40"
-                    style={{ animation: "reef-ripple 0.6s ease-out" }}
-                  />
-                )}
-              </div>
-            </div>
-
-            {/* seabed */}
-            <div className="relative z-[4] flex items-end justify-around px-2 pb-2 h-12 pointer-events-none">
-              {SEABED.map((s, i) => (
+          {/* ===== FOREGROUND DECK ===== */}
+          <div
+            className="absolute inset-x-0 bottom-0 h-16"
+            style={{ background: "linear-gradient(180deg,#6b4426 0%,#3f2714 100%)" }}
+          >
+            <div className="absolute inset-x-0 top-0 h-1 bg-[#8a5a30]" />
+            <div className="flex items-start justify-around px-2">
+              {["🌿", "🌿", "🪸", "🌿", "🐚", "🌿", "🪸", "🌿"].map((s, i) => (
                 <span
                   key={i}
-                  className="select-none opacity-60"
+                  className="-mt-2 opacity-80"
                   style={{
-                    fontSize: 20 + (i % 3) * 6,
+                    fontSize: 18 + (i % 3) * 6,
                     transformOrigin: "bottom center",
                     animation: `reef-sway ${3 + (i % 4)}s ease-in-out ${i * 0.3}s infinite`,
                   }}
@@ -269,9 +350,71 @@ export default function PlayPage() {
                 </span>
               ))}
             </div>
+          </div>
 
-            {/* cast button */}
-            <div className="relative z-10 flex flex-col items-center pb-5 pt-1">
+          {/* ===== HUD: top-left currency + refill ===== */}
+          <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5">
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/15">
+              <Sparkles className="w-3.5 h-3.5 text-vault" />
+              <span className="text-[13px] font-mono font-medium text-white">{points.toLocaleString()}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/30 backdrop-blur-sm border border-white/10">
+              <Timer className="w-3 h-3 text-white/70" />
+              <span className="text-[10px] text-white/80">New casts in {msToRefill(clock)}</span>
+            </div>
+          </div>
+
+          {/* streak top-center */}
+          {streak > 0 && (
+            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-sm border border-white/15">
+              <Flame className="w-3.5 h-3.5 text-gold" />
+              <span className="text-[11px] text-white font-medium">{streak} day streak</span>
+            </div>
+          )}
+
+          {/* right-side buttons */}
+          <div className="absolute top-3 right-3 z-10 flex flex-col gap-2">
+            <SceneButton icon={<ScrollText className="w-4 h-4" />} label="Tasks" badge={claimable} onClick={() => setQuestsOpen(true)} />
+            <SceneButton icon={<Trophy className="w-4 h-4" />} label="Ranking" onClick={() => setView("leaderboard")} />
+          </div>
+
+          {/* fish of the hour */}
+          {fothActive && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-sm border border-border-gold">
+              <span className="text-base">{emojiFor(foth!.fishId)}</span>
+              <span className="text-[10px] text-gold font-medium">
+                Fish of the hour: {foth!.fishName} · {Math.max(0, Math.round((foth!.endsAt - clock) / 60000))}m
+              </span>
+            </div>
+          )}
+
+          {/* gallery bottom-left */}
+          <button
+            onClick={() => setView("collection")}
+            className="absolute bottom-20 left-3 z-10 flex flex-col items-center gap-0.5"
+          >
+            <span className="w-11 h-11 rounded-xl bg-black/40 backdrop-blur-sm border border-white/15 flex items-center justify-center text-gold">
+              <BookOpen className="w-5 h-5" />
+            </span>
+            <span className="text-[9px] text-white/80 font-mono">
+              {totalCaught}/{fish.length}
+            </span>
+          </button>
+
+          {/* ===== CAST BUTTON + POWER METER (bottom-right) ===== */}
+          <div className="absolute bottom-20 right-3 z-10 flex items-end gap-2">
+            {/* power meter */}
+            <div className="h-24 w-2.5 rounded-full bg-black/40 border border-white/15 overflow-hidden relative self-center">
+              <div
+                className="absolute inset-x-0 bottom-0 rounded-full"
+                style={{
+                  height: `${(charging ? meter : 0) * 100}%`,
+                  background: "linear-gradient(180deg,#F5C66B,#3DD598)",
+                  transition: charging ? "none" : "height 0.2s",
+                }}
+              />
+            </div>
+            <div className="flex flex-col items-center">
               <div className="relative">
                 <span
                   className="absolute inset-0 rounded-full bg-gold/40 blur-md"
@@ -279,111 +422,144 @@ export default function PlayPage() {
                   aria-hidden
                 />
                 <button
-                  onClick={doCast}
-                  disabled={casting || energy <= 0}
-                  className="relative px-9 py-3.5 bg-gold text-gold-dark rounded-full text-[15px] font-semibold flex items-center gap-2 hover:brightness-110 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-black/40"
+                  onPointerDown={startCharge}
+                  onPointerUp={releaseCharge}
+                  disabled={casting || (energy <= 0 && !charging)}
+                  className={cn(
+                    "relative w-20 h-20 rounded-full text-gold-dark font-semibold flex flex-col items-center justify-center gap-0.5 transition disabled:opacity-50 shadow-lg shadow-black/40 border-4 border-white/60",
+                    charging ? "bg-gold scale-95" : "bg-gold hover:brightness-110"
+                  )}
+                  style={{ touchAction: "none" }}
                 >
                   {casting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Reeling…
-                    </>
-                  ) : energy <= 0 ? (
-                    "Out of energy"
+                    <Loader2 className="w-6 h-6 animate-spin" />
+                  ) : charging ? (
+                    <span className="text-[11px]">Release!</span>
                   ) : (
                     <>
-                      🎣 Cast a line
+                      <FishIcon className="w-6 h-6" />
+                      <span className="text-[9px]">Cast</span>
                     </>
                   )}
                 </button>
+                <span className="absolute -bottom-1 -right-1 text-[10px] font-mono font-bold bg-black/70 text-white px-1.5 py-0.5 rounded-full border border-white/20">
+                  x{energy}
+                </span>
               </div>
-              <p className="text-[10px] text-white/60 mt-2 m-0">{energy} casts left today</p>
+              <p className="text-[9px] text-white/70 mt-2 m-0 text-center max-w-[90px]">
+                {charging ? "Release to cast!" : "Hold to power up"}
+              </p>
             </div>
           </div>
+        </div>
+      )}
 
-          {/* Daily quests */}
+      {view === "collection" && (
+        <div>
+          <BackBar onBack={() => setView("cast")} label="Collection book" />
+          <CollectionBook fish={fish} rarities={config.rarities} caught={state?.collection ?? {}} />
+        </div>
+      )}
+
+      {view === "leaderboard" && (
+        <div>
+          <BackBar onBack={() => setView("cast")} label="Weekly ranking" />
           <Card>
-            <CardHeader title="Daily quests" subtitle="Reset every day" />
-            <div className="flex flex-col gap-2">
-              {config.quests.map((q) => {
-                const progress = questsToday.progress?.[q.id] ?? 0;
-                const claimed = !!questsToday.claimed?.[q.id];
-                const done = progress >= q.target;
-                const pct = Math.min(100, (progress / q.target) * 100);
-                return (
-                  <div key={q.id} className="p-2.5 bg-canvas border border-border rounded-lg">
-                    <div className="flex justify-between items-center mb-1.5">
-                      <span className="text-[11px]">{q.label}</span>
-                      <span className="text-[10px] font-mono text-vault">+{q.reward}</span>
-                    </div>
-                    <div className="h-1 bg-border rounded-full mb-1.5">
-                      <div className="h-full bg-gold rounded-full" style={{ width: `${pct}%` }} />
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-[9px] text-text-subtle font-mono">
-                        {Math.min(progress, q.target)}/{q.target}
-                      </span>
-                      {claimed ? (
-                        <span className="text-[9px] text-green flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" /> Claimed
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => doClaim(q.id)}
-                          disabled={!done || busyQuest === q.id || demoMode}
-                          className="text-[10px] px-2 py-0.5 rounded-md bg-gold/15 text-gold disabled:opacity-40"
-                        >
-                          {busyQuest === q.id ? "…" : "Claim"}
-                        </button>
-                      )}
-                    </div>
+            <CardHeader title="Weekly leaderboard" subtitle="Top anglers · resets Monday" />
+            {leaderboard.length === 0 ? (
+              <p className="text-[11px] text-text-subtle text-center py-8 m-0">
+                No scores yet this week. Be the first to cast!
+              </p>
+            ) : (
+              <div className="flex flex-col">
+                {leaderboard.map((r, i) => (
+                  <div
+                    key={r.uid}
+                    className={cn(
+                      "flex items-center gap-3 py-2",
+                      i < leaderboard.length - 1 && "border-b border-border",
+                      r.uid === user?.uid && "bg-gold/5 -mx-2 px-2 rounded"
+                    )}
+                  >
+                    <span className="w-6 text-center text-[13px]">
+                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+                    </span>
+                    <span className="flex-1 text-[12px] truncate">{r.name}</span>
+                    <span className="text-[12px] font-mono text-vault">{r.weeklyScore.toLocaleString()}</span>
                   </div>
-                );
-              })}
-            </div>
+                ))}
+              </div>
+            )}
           </Card>
         </div>
       )}
 
-      {tab === "collection" && (
-        <CollectionBook fish={fish} rarities={config.rarities} caught={state?.collection ?? {}} />
-      )}
+      {/* ===== Quests drawer ===== */}
+      <AnimatePresence>
+        {questsOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+            onClick={() => setQuestsOpen(false)}
+          >
+            <motion.div
+              initial={{ y: 40, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 40, opacity: 0 }}
+              className="bg-card border border-border rounded-2xl w-full max-w-md p-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-[14px] font-medium m-0">Daily quests</h3>
+                <button onClick={() => setQuestsOpen(false)} className="text-text-muted hover:text-text">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex flex-col gap-2">
+                {config.quests.map((q) => {
+                  const progress = questsToday.progress?.[q.id] ?? 0;
+                  const claimed = !!questsToday.claimed?.[q.id];
+                  const done = progress >= q.target;
+                  const pct = Math.min(100, (progress / q.target) * 100);
+                  return (
+                    <div key={q.id} className="p-2.5 bg-canvas border border-border rounded-lg">
+                      <div className="flex justify-between items-center mb-1.5">
+                        <span className="text-[11px]">{q.label}</span>
+                        <span className="text-[10px] font-mono text-vault">+{q.reward}</span>
+                      </div>
+                      <div className="h-1 bg-border rounded-full mb-1.5">
+                        <div className="h-full bg-gold rounded-full" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[9px] text-text-subtle font-mono">
+                          {Math.min(progress, q.target)}/{q.target}
+                        </span>
+                        {claimed ? (
+                          <span className="text-[9px] text-green flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" /> Claimed
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => doClaim(q.id)}
+                            disabled={!done || busyQuest === q.id || demoMode}
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-gold/15 text-gold disabled:opacity-40"
+                          >
+                            {busyQuest === q.id ? "…" : "Claim"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {tab === "leaderboard" && (
-        <Card>
-          <CardHeader title="Weekly leaderboard" subtitle="Top anglers · resets Monday" />
-          {leaderboard.length === 0 ? (
-            <p className="text-[11px] text-text-subtle text-center py-8 m-0">
-              No scores yet this week. Be the first to cast!
-            </p>
-          ) : (
-            <div className="flex flex-col">
-              {leaderboard.map((r, i) => (
-                <div
-                  key={r.uid}
-                  className={cn(
-                    "flex items-center gap-3 py-2",
-                    i < leaderboard.length - 1 && "border-b border-border",
-                    r.uid === user?.uid && "bg-gold/5 -mx-2 px-2 rounded"
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "w-6 text-center text-[13px]",
-                      i > 2 && "font-mono text-text-subtle text-[12px]"
-                    )}
-                  >
-                    {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
-                  </span>
-                  <span className="flex-1 text-[12px] truncate">{r.name}</span>
-                  <span className="text-[12px] font-mono text-vault">{r.weeklyScore.toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      )}
-
-      {/* Reveal overlay */}
+      {/* ===== Reveal overlay ===== */}
       <AnimatePresence>
         {reveal && (
           <motion.div
@@ -401,7 +577,6 @@ export default function PlayPage() {
               className="relative flex flex-col items-center text-center"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* rarity rays behind the fish */}
               <div
                 className="absolute -z-10 w-72 h-72 rounded-full"
                 style={{
@@ -415,7 +590,6 @@ export default function PlayPage() {
                 className="absolute -z-10 w-52 h-52 rounded-full"
                 style={{ background: `radial-gradient(circle, ${reveal.rarity.color}44, transparent 70%)` }}
               />
-
               {reveal.isFoth && (
                 <p className="text-[11px] text-gold m-0 mb-1 font-semibold tracking-wide">🔥 FISH OF THE HOUR</p>
               )}
@@ -424,7 +598,6 @@ export default function PlayPage() {
                   NEW SPECIES!
                 </span>
               )}
-
               <motion.div
                 className="text-[96px] leading-none select-none"
                 initial={{ rotate: -8 }}
@@ -434,7 +607,6 @@ export default function PlayPage() {
               >
                 {emojiFor(reveal.fish.id)}
               </motion.div>
-
               <p
                 className="text-[11px] uppercase tracking-[0.2em] m-0 mt-1 font-semibold"
                 style={{ color: reveal.rarity.color, textShadow: `0 0 12px ${reveal.rarity.color}` }}
@@ -448,7 +620,6 @@ export default function PlayPage() {
               {reveal.streakBonus > 0 && (
                 <p className="text-[10px] text-white/70 m-0 mt-1">includes +{reveal.streakBonus} streak bonus 🔥</p>
               )}
-
               <div className="flex gap-2 mt-5">
                 <button
                   onClick={() => setReveal(null)}
@@ -456,17 +627,6 @@ export default function PlayPage() {
                 >
                   Nice!
                 </button>
-                {energy > 0 && (
-                  <button
-                    onClick={() => {
-                      setReveal(null);
-                      setTimeout(doCast, 120);
-                    }}
-                    className="px-5 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium hover:brightness-110 transition"
-                  >
-                    Cast again 🎣
-                  </button>
-                )}
               </div>
             </motion.div>
           </motion.div>
@@ -476,32 +636,40 @@ export default function PlayPage() {
   );
 }
 
-function HudChip({
+function SceneButton({
   icon,
   label,
-  value,
-  accent,
+  badge,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
-  accent?: boolean;
+  badge?: number;
+  onClick: () => void;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-black/35 backdrop-blur-sm border",
-        accent ? "border-border-vault" : "border-white/10"
-      )}
+    <button onClick={onClick} className="flex flex-col items-center gap-0.5">
+      <span className="relative w-11 h-11 rounded-xl bg-black/40 backdrop-blur-sm border border-white/15 flex items-center justify-center text-gold">
+        {icon}
+        {badge && badge > 0 ? (
+          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red text-white text-[9px] flex items-center justify-center font-bold">
+            {badge}
+          </span>
+        ) : null}
+      </span>
+      <span className="text-[9px] text-white/80">{label}</span>
+    </button>
+  );
+}
+
+function BackBar({ onBack, label }: { onBack: () => void; label: string }) {
+  return (
+    <button
+      onClick={onBack}
+      className="mb-3 flex items-center gap-1.5 text-[12px] text-text-muted hover:text-text transition"
     >
-      {icon}
-      <div className="leading-none">
-        <p className="text-[8px] text-white/50 uppercase tracking-wider m-0">{label}</p>
-        <p className={cn("text-[12px] font-mono font-medium m-0 mt-0.5", accent ? "text-vault" : "text-white")}>
-          {value}
-        </p>
-      </div>
-    </div>
+      <ChevronLeft className="w-4 h-4" /> {label}
+    </button>
   );
 }
 
@@ -516,7 +684,6 @@ function CollectionBook({
 }) {
   const totalCaught = fish.filter((f) => caught[f.id]).length;
   const pct = fish.length ? Math.round((totalCaught / fish.length) * 100) : 0;
-
   return (
     <Card>
       <CardHeader
@@ -533,10 +700,7 @@ function CollectionBook({
           if (group.length === 0) return null;
           return (
             <div key={r.id} className="mb-4 last:mb-0">
-              <p
-                className="text-[10px] uppercase tracking-wider m-0 mb-2 font-medium"
-                style={{ color: r.color }}
-              >
+              <p className="text-[10px] uppercase tracking-wider m-0 mb-2 font-medium" style={{ color: r.color }}>
                 {r.label}
               </p>
               <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
