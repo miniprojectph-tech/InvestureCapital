@@ -138,16 +138,27 @@ async function processUser(
       completedCount++;
     }
 
+    let vaultLastCompoundedAt = cur.balances?.vaultLastCompoundedAt ?? null;
     let compounded = false;
-    const baseline = cur.balances?.vaultLastCompoundedAt ?? vaultLockStartedAt;
-    if (vault > 0 && baseline) {
-      const daysElapsed = Math.floor((now - baseline) / DAY_MS);
+
+    // Anchor the compounding clock the first time there is a vault balance.
+    // We start from `now`, NOT vaultLockStartedAt — the lock is anchored on
+    // the first plan *activation*, before any vault exists, so using it would
+    // retroactively compound a freshly credited vault for the whole plan term.
+    if (vault > 0 && !vaultLastCompoundedAt) {
+      vaultLastCompoundedAt = now;
+    }
+
+    if (vault > 0 && vaultLastCompoundedAt) {
+      const daysElapsed = Math.floor((now - vaultLastCompoundedAt) / DAY_MS);
       if (daysElapsed >= 1) {
         const rate = vaultDailyRate / 100;
         const grown = vault * Math.pow(1 + rate, daysElapsed);
         const growth = grown - vault;
         vault = grown;
         compounded = true;
+        // Advance by whole days only; keep the sub-day remainder for next run.
+        vaultLastCompoundedAt = vaultLastCompoundedAt + daysElapsed * DAY_MS;
 
         activityWrites.push({
           ref: activityRef(uid),
@@ -160,20 +171,21 @@ async function processUser(
             at: FieldValue.serverTimestamp(),
           },
         });
-
-        tx.update(ref, {
-          "balances.vaultLastCompoundedAt": baseline + daysElapsed * DAY_MS,
-        });
       }
     }
 
-    if (completedCount > 0 || compounded) {
+    // Persist if we completed a plan, compounded, or just anchored the clock.
+    const anchored =
+      vaultLastCompoundedAt !== (cur.balances?.vaultLastCompoundedAt ?? null);
+
+    if (completedCount > 0 || compounded || anchored) {
       tx.update(ref, {
         activePlans: remaining,
         completedPlans,
         "balances.wallet": wallet,
         "balances.vault": vault,
         "balances.vaultLockStartedAt": vaultLockStartedAt,
+        "balances.vaultLastCompoundedAt": vaultLastCompoundedAt,
       });
       for (const write of activityWrites) {
         tx.set(write.ref, write.data);

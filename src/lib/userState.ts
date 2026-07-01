@@ -45,6 +45,8 @@ export type UserState = {
     wallet: number;
     vault: number;
     vaultLockStartedAt: number | null;
+    /** When the vault was last compounded by the scheduled job. */
+    vaultLastCompoundedAt?: number | null;
   };
   activePlans: StoredActivePlan[];
   completedPlans?: CompletedPlan[];
@@ -257,6 +259,11 @@ export async function completePlanForUser(
 
   if (!cur.balances.vaultLockStartedAt) {
     updates["balances.vaultLockStartedAt"] = Date.now();
+  }
+  // Anchor the compounding clock to now on first vault credit, so the
+  // scheduled job compounds from here rather than from the (earlier) lock date.
+  if (!cur.balances.vaultLastCompoundedAt) {
+    updates["balances.vaultLastCompoundedAt"] = Date.now();
   }
 
   await updateDoc(ref, updates);
