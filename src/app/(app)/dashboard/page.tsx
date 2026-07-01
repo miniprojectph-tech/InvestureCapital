@@ -2,11 +2,11 @@
 
 import { motion, type Variants } from "framer-motion";
 import { ArrowDownRight, Lock, Loader2 } from "lucide-react";
-import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { StatStrip } from "@/components/StatStrip";
 import { PortfolioDonut } from "@/components/PortfolioDonut";
+import { DashGrowthArea } from "@/components/DashGrowthArea";
 import { SummaryThemedCard } from "@/components/SummaryThemedCard";
 import { TickingBalance } from "@/components/TickingBalance";
 import { ActivePlansList } from "@/components/ActivePlansList";
@@ -129,23 +129,7 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 <div className="h-[150px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={growthData} margin={{ top: 6, right: 4, bottom: 0, left: 0 }}>
-                      <defs>
-                        <linearGradient id="dashGold" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#3DD598" stopOpacity={0.32} />
-                          <stop offset="100%" stopColor="#3DD598" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <Area
-                        type="monotone"
-                        dataKey="value"
-                        stroke="#3DD598"
-                        strokeWidth={1.8}
-                        fill="url(#dashGold)"
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                  <DashGrowthArea data={growthData} />
                 </div>
               </div>
 

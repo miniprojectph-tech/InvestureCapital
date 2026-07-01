@@ -1,5 +1,5 @@
 // Investure service worker — basic offline shell + cache-first for static
-const CACHE = "investure-v1";
+const CACHE = "investure-v2";
 const APP_SHELL = ["/", "/login", "/dashboard"];
 
 self.addEventListener("install", (event) => {
