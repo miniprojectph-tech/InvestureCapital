@@ -29,6 +29,8 @@ export type TopUpRequest = {
   method: PaymentMethodId;
   methodLabel: string;
   referenceNumber?: string;
+  receiptUrl?: string;
+  receiptPath?: string;
   status: TopUpStatus;
   createdAt: number;
   processedAt?: number;
@@ -50,9 +52,11 @@ export async function requestTopUp(
     amount: number;
     method: PaymentMethodId;
     referenceNumber?: string;
+    receiptUrl?: string;
+    receiptPath?: string;
   }
 ): Promise<string> {
-  const { userId, userName, userEmail, amount, method, referenceNumber } = args;
+  const { userId, userName, userEmail, amount, method, referenceNumber, receiptUrl, receiptPath } = args;
   if (amount <= 0) throw new Error("Amount must be greater than zero");
   const ref = await addDoc(topupsCollection(db), {
     userId,
@@ -62,6 +66,8 @@ export async function requestTopUp(
     method,
     methodLabel: PAYMENT_METHOD_LABELS[method],
     ...(referenceNumber ? { referenceNumber } : {}),
+    ...(receiptUrl ? { receiptUrl } : {}),
+    ...(receiptPath ? { receiptPath } : {}),
     status: "pending",
     createdAt: Date.now(),
   });

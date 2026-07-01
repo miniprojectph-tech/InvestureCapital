@@ -11,13 +11,22 @@ service firebase.storage {
         && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
 
-    // Payment method QR codes — readable by any signed-in user
-    // (so investors can see the QR in the top-up modal), writable only by admin.
+    // Payment method QR codes — readable by any signed-in user, writable only by admin
     match /payment-methods/{file} {
       allow read: if isSignedIn();
       allow write: if isAdmin()
         && request.resource.size < 2 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
+    }
+
+    // Top-up receipts — owner uploads their own (path namespaced by userId).
+    // Admin can read all to verify payments. Owner can read their own (to preview).
+    match /receipts/{userId}/{file} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
     // Default deny

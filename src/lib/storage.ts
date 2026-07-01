@@ -48,3 +48,28 @@ export async function deletePaymentMethodQr(
     // file may already be gone — ignore
   }
 }
+
+const MAX_RECEIPT_BYTES = 5 * 1024 * 1024; // 5 MB — screenshots can be larger than QRs
+
+/**
+ * Upload a top-up payment receipt under /receipts/{userId}/{timestamp}.{ext}.
+ * Path is namespaced by userId so Storage rules can enforce ownership.
+ */
+export async function uploadReceipt(
+  storage: FirebaseStorage,
+  userId: string,
+  file: File
+): Promise<UploadedQr> {
+  if (!ACCEPTED_TYPES.includes(file.type)) {
+    throw new Error("Receipt must be a PNG, JPG, WebP, or GIF image");
+  }
+  if (file.size > MAX_RECEIPT_BYTES) {
+    throw new Error(`Receipt too large (max ${MAX_RECEIPT_BYTES / 1024 / 1024} MB)`);
+  }
+  const ext = (file.name.split(".").pop() || "png").toLowerCase();
+  const path = `receipts/${userId}/${Date.now()}.${ext}`;
+  const ref = storageRef(storage, path);
+  await uploadBytes(ref, file, { contentType: file.type });
+  const url = await getDownloadURL(ref);
+  return { url, path };
+}

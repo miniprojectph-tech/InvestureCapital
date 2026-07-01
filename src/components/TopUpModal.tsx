@@ -11,6 +11,9 @@ import {
   CreditCard,
   Copy,
   Check,
+  Upload,
+  X,
+  ImageIcon,
 } from "lucide-react";
 import { Modal } from "./Modal";
 import { formatPHP, cn } from "@/lib/utils";
@@ -23,6 +26,7 @@ type Props = {
     amount: number;
     method: PaymentMethodId;
     referenceNumber?: string;
+    receiptFile?: File;
   }) => Promise<void>;
 };
 
@@ -41,11 +45,12 @@ export function TopUpModal({ open, onClose, onSubmit }: Props) {
   const [amount, setAmount] = useState(0);
   const [method, setMethod] = useState<PaymentMethodId | null>(null);
   const [refNum, setRefNum] = useState("");
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>("form");
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
 
-  // Auto-select the first enabled method when modal opens
   useEffect(() => {
     if (!open) return;
     const methods = settings.paymentMethods;
@@ -57,6 +62,13 @@ export function TopUpModal({ open, onClose, onSubmit }: Props) {
     if (first) setMethod(first);
   }, [open, settings.paymentMethods, method]);
 
+  // Cleanup blob URL when component unmounts or preview changes
+  useEffect(() => {
+    return () => {
+      if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+    };
+  }, [receiptPreview]);
+
   function close() {
     onClose();
     setTimeout(() => {
@@ -65,7 +77,30 @@ export function TopUpModal({ open, onClose, onSubmit }: Props) {
       setRefNum("");
       setError(null);
       setCopied(null);
+      if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+      setReceiptFile(null);
+      setReceiptPreview(null);
     }, 250);
+  }
+
+  function selectReceipt(file: File | undefined) {
+    if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+    if (!file) {
+      setReceiptFile(null);
+      setReceiptPreview(null);
+      return;
+    }
+    if (!file.type.startsWith("image/")) {
+      setError("Receipt must be an image");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Receipt too large (max 5 MB)");
+      return;
+    }
+    setError(null);
+    setReceiptFile(file);
+    setReceiptPreview(URL.createObjectURL(file));
   }
 
   async function submit() {
@@ -74,7 +109,12 @@ export function TopUpModal({ open, onClose, onSubmit }: Props) {
     setError(null);
     try {
       if (onSubmit) {
-        await onSubmit({ amount, method, referenceNumber: refNum.trim() || undefined });
+        await onSubmit({
+          amount,
+          method,
+          referenceNumber: refNum.trim() || undefined,
+          receiptFile: receiptFile ?? undefined,
+        });
       } else {
         await new Promise((r) => setTimeout(r, 1000));
       }
@@ -174,7 +214,7 @@ export function TopUpModal({ open, onClose, onSubmit }: Props) {
             )}
           </div>
 
-          {/* Payment instructions for selected method */}
+          {/* Payment instructions */}
           {selectedConfig && method && (
             <div className="bg-canvas border border-border rounded-lg p-3.5">
               <p className="text-[10px] text-text-muted uppercase tracking-wider m-0 mb-2">
@@ -228,25 +268,75 @@ export function TopUpModal({ open, onClose, onSubmit }: Props) {
                   />
                 </div>
               </div>
-              <p className="text-[10px] text-text-subtle m-0 mt-2.5">
-                Once you&apos;ve sent the money via {PAYMENT_METHOD_LABELS[method]}, paste the
-                reference / transaction number below so the admin can match your payment.
-              </p>
             </div>
           )}
 
           {/* Reference number */}
           <div>
             <label className="block text-[10px] text-text-muted uppercase tracking-wider mb-1.5">
-              Reference / transaction number (optional)
+              Reference / transaction number
             </label>
             <input
               type="text"
               value={refNum}
               onChange={(e) => setRefNum(e.target.value)}
-              placeholder="e.g. GT-A1B2C3"
+              placeholder="e.g. GT-A1B2C3 (from your payment confirmation)"
               className="w-full bg-canvas border border-border rounded-lg px-3 py-2.5 text-[12px] text-text outline-none focus:border-gold/40 placeholder:text-text-subtle"
             />
+          </div>
+
+          {/* Receipt upload */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-[10px] text-text-muted uppercase tracking-wider">
+                Payment receipt
+              </label>
+              <span className="text-[9px] text-green">Recommended — speeds up approval</span>
+            </div>
+            {receiptPreview ? (
+              <div className="relative bg-canvas border border-border rounded-lg p-2.5 flex items-center gap-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={receiptPreview}
+                  alt="Receipt preview"
+                  className="w-14 h-14 object-cover rounded-md bg-white"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-medium truncate m-0">{receiptFile?.name}</p>
+                  <p className="text-[10px] text-text-subtle m-0 mt-0.5">
+                    {receiptFile ? (receiptFile.size / 1024).toFixed(0) : 0} KB · ready to attach
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => selectReceipt(undefined)}
+                  className="p-1.5 rounded-md text-text-subtle hover:text-red hover:bg-red/10 transition"
+                  aria-label="Remove receipt"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <label className="block bg-canvas border border-dashed border-border-strong rounded-lg px-3 py-4 cursor-pointer hover:border-border-gold hover:bg-gold/5 transition">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) selectReceipt(f);
+                    e.currentTarget.value = "";
+                  }}
+                />
+                <div className="flex items-center justify-center gap-2 text-text-muted">
+                  <Upload className="w-4 h-4" />
+                  <span className="text-[12px]">Tap to upload a screenshot</span>
+                </div>
+                <p className="text-[9px] text-text-subtle text-center mt-1 m-0">
+                  PNG / JPG · max 5 MB
+                </p>
+              </label>
+            )}
           </div>
 
           <div className="flex gap-2 mt-1">
@@ -275,7 +365,9 @@ export function TopUpModal({ open, onClose, onSubmit }: Props) {
       {stage === "processing" && (
         <div className="py-10 flex flex-col items-center gap-3">
           <Loader2 className="w-7 h-7 text-gold animate-spin" />
-          <p className="text-[12px] text-text-muted m-0">Submitting request…</p>
+          <p className="text-[12px] text-text-muted m-0">
+            {receiptFile ? "Uploading receipt + submitting…" : "Submitting request…"}
+          </p>
         </div>
       )}
 
@@ -288,8 +380,9 @@ export function TopUpModal({ open, onClose, onSubmit }: Props) {
             <p className="text-[14px] font-medium m-0">Request submitted</p>
             <p className="text-[11px] text-text-muted mt-1 m-0">
               <span className="font-mono">{formatPHP(amount)}</span> via{" "}
-              {method ? PAYMENT_METHOD_LABELS[method] : ""} — admin will review and credit your
-              wallet once verified.
+              {method ? PAYMENT_METHOD_LABELS[method] : ""}
+              {receiptFile ? " with receipt" : ""} — admin will review and credit your wallet
+              once verified.
             </p>
           </div>
           <button

@@ -14,6 +14,7 @@ import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { requestTopUp, useTopUps, type TopUpStatus } from "@/lib/topups";
 import { useSettings, PAYMENT_METHOD_LABELS, type PaymentMethodId } from "@/lib/settings";
+import { uploadReceipt } from "@/lib/storage";
 import { formatPHP, cn } from "@/lib/utils";
 
 const statusMeta: Record<
@@ -35,10 +36,21 @@ export function TopUpPanel() {
     amount: number;
     method: PaymentMethodId;
     referenceNumber?: string;
+    receiptFile?: File;
   }) {
     if (demoMode || !user) return;
-    const { db } = getFirebase();
+    const { db, storage } = getFirebase();
     if (!db) return;
+
+    // Upload receipt first (if any) so we have the URL to attach to the request
+    let receiptUrl: string | undefined;
+    let receiptPath: string | undefined;
+    if (args.receiptFile && storage) {
+      const uploaded = await uploadReceipt(storage, user.uid, args.receiptFile);
+      receiptUrl = uploaded.url;
+      receiptPath = uploaded.path;
+    }
+
     await requestTopUp(db, {
       userId: user.uid,
       userName: user.name,
@@ -46,6 +58,8 @@ export function TopUpPanel() {
       amount: args.amount,
       method: args.method,
       referenceNumber: args.referenceNumber,
+      receiptUrl,
+      receiptPath,
     });
   }
 

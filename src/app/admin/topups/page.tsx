@@ -1,9 +1,20 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, X, Clock, AlertCircle, Loader2, ArrowDownToLine } from "lucide-react";
+import {
+  Check,
+  X,
+  Clock,
+  AlertCircle,
+  Loader2,
+  ArrowDownToLine,
+  Receipt,
+  ExternalLink,
+  ImageOff,
+} from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
+import { Modal } from "@/components/Modal";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -12,6 +23,7 @@ import {
   approveTopUp,
   rejectTopUp,
   type TopUpStatus,
+  type TopUpRequest,
 } from "@/lib/topups";
 
 const statusMeta = {
@@ -26,6 +38,7 @@ export default function AdminTopUpsPage() {
   const [tab, setTab] = useState<TopUpStatus>("pending");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [viewReceipt, setViewReceipt] = useState<TopUpRequest | null>(null);
 
   const counts = useMemo(
     () => ({
@@ -160,6 +173,32 @@ export default function AdminTopUpsPage() {
                   {r.note && <span className="text-vault-muted ml-1">· {r.note}</span>}
                 </p>
               </div>
+
+              {/* Receipt thumbnail */}
+              <button
+                onClick={() => r.receiptUrl && setViewReceipt(r)}
+                disabled={!r.receiptUrl}
+                className={cn(
+                  "w-11 h-11 rounded-md overflow-hidden border flex items-center justify-center shrink-0 transition",
+                  r.receiptUrl
+                    ? "border-border-strong hover:border-border-gold cursor-zoom-in"
+                    : "border-border cursor-not-allowed"
+                )}
+                aria-label={r.receiptUrl ? "View receipt" : "No receipt"}
+                title={r.receiptUrl ? "Click to view receipt" : "No receipt uploaded"}
+              >
+                {r.receiptUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={r.receiptUrl}
+                    alt="Receipt"
+                    className="w-full h-full object-cover bg-white"
+                  />
+                ) : (
+                  <ImageOff className="w-4 h-4 text-text-dim" />
+                )}
+              </button>
+
               <div className="text-right shrink-0">
                 <p className="text-[13px] font-medium font-mono m-0 text-green">+{formatPHP(r.amount)}</p>
                 <p className="text-[9px] text-text-subtle m-0 mt-0.5">{timeAgo(r.createdAt)}</p>
@@ -197,6 +236,53 @@ export default function AdminTopUpsPage() {
           );
         })}
       </Card>
+
+      {/* Receipt viewer modal */}
+      <Modal
+        open={viewReceipt !== null}
+        onClose={() => setViewReceipt(null)}
+        title="Payment receipt"
+        maxWidth="max-w-2xl"
+      >
+        {viewReceipt && (
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between text-[11px] text-text-muted">
+              <span>
+                {viewReceipt.userName} · {viewReceipt.methodLabel}
+              </span>
+              <span className="font-mono text-green">+{formatPHP(viewReceipt.amount)}</span>
+            </div>
+            {viewReceipt.referenceNumber && (
+              <p className="text-[11px] m-0 px-3 py-2 bg-canvas border border-border rounded-md flex items-center gap-2">
+                <Receipt className="w-3.5 h-3.5 text-text-subtle" />
+                Reference: <span className="font-mono">{viewReceipt.referenceNumber}</span>
+              </p>
+            )}
+            <div className="bg-white rounded-lg overflow-hidden flex items-center justify-center max-h-[70vh]">
+              {viewReceipt.receiptUrl ? (
+                /* eslint-disable-next-line @next/next/no-img-element */
+                <img
+                  src={viewReceipt.receiptUrl}
+                  alt="Receipt"
+                  className="max-w-full max-h-[70vh] object-contain"
+                />
+              ) : (
+                <div className="py-20 text-text-dim">No receipt attached</div>
+              )}
+            </div>
+            {viewReceipt.receiptUrl && (
+              <a
+                href={viewReceipt.receiptUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-gold hover:underline flex items-center justify-center gap-1.5"
+              >
+                <ExternalLink className="w-3 h-3" /> Open original in new tab
+              </a>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
