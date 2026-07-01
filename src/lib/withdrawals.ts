@@ -150,21 +150,24 @@ export function useWithdrawals(scope: Scope = "me") {
       return;
     }
 
+    // The "me" scope filters by userId; we deliberately omit orderBy so the
+    // query needs no composite index (userId + createdAt). Rows are sorted
+    // client-side below — same convention as fetchAllActivity in adminQueries.
+    // The "all" scope has no filter, so a single-field orderBy index suffices.
     const q =
       scope === "me"
-        ? query(
-            withdrawalsCollection(db),
-            where("userId", "==", user.uid),
-            orderBy("createdAt", "desc")
-          )
+        ? query(withdrawalsCollection(db), where("userId", "==", user.uid))
         : query(withdrawalsCollection(db), orderBy("createdAt", "desc"));
 
     const unsub = onSnapshot(
       q,
       (snap) => {
-        setRows(
-          snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<WithdrawalRequest, "id">) }))
-        );
+        const rows = snap.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as Omit<WithdrawalRequest, "id">),
+        }));
+        rows.sort((a, b) => b.createdAt - a.createdAt);
+        setRows(rows);
         setLoading(false);
       },
       (err) => {
