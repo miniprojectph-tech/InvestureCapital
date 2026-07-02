@@ -161,42 +161,90 @@ export type LeaderboardEntry = { uid: string; name: string; weeklyScore: number 
 export const DEFAULT_GAME_CONFIG: GameConfig = {
   dailyEnergy: 20,
   rarities: [
-    { id: "common", label: "Common", color: "#9CA3AF", weight: 60, points: 5 },
-    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 25, points: 20 },
-    { id: "epic", label: "Epic", color: "#A78BFA", weight: 10, points: 60 },
-    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 4, points: 200 },
-    { id: "mythic", label: "Mythic", color: "#3DD598", weight: 1, points: 800 },
+    { id: "common", label: "Common", color: "#9CA3AF", weight: 55, points: 5 },
+    { id: "uncommon", label: "Uncommon", color: "#4ADE80", weight: 25, points: 12 },
+    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 12, points: 30 },
+    { id: "epic", label: "Epic", color: "#A78BFA", weight: 5, points: 80 },
+    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 2, points: 250 },
+    { id: "mythic", label: "Mythic", color: "#FB7185", weight: 0.9, points: 700 },
+    { id: "divine", label: "Divine Secret", color: "#E879F9", weight: 0.1, points: 2500 },
   ],
   streakBonus: [0, 5, 10, 15, 25, 40, 60, 100],
   fothEnabled: true,
   fothChance: 0.15,
   quests: [
     { id: "cast5", label: "Cast 5 times", type: "casts", target: 5, reward: 20 },
-    { id: "rare1", label: "Catch a Rare or better", type: "rarity", rarity: "rare", target: 1, reward: 15 },
+    { id: "rare1", label: "Catch a Rare or better", type: "rarity", rarity: "rare", target: 1, reward: 25 },
     { id: "catch10", label: "Catch 10 fish", type: "catch", target: 10, reward: 30 },
   ],
   leaderboardPrizes: [500, 300, 150, 75, 50],
-  assets: {},
+  assets: {
+    bgFull: "/reef/bg-fishing-spots.webp",
+    rod: "/reef/rod.webp",
+    lure: "/reef/bobber.webp",
+    splash: "/reef/splash-medium.webp",
+    fxPerfectHook: "/reef/perfect-hook.webp",
+    eventLegendaryAlert: "/reef/legendary-catch-bg.webp",
+    iconChest: "/reef/treasure-chest.webp",
+    iconCollectionBook: "/reef/fish-collection.webp",
+  },
 };
 
-/** Starter fish catalog seeded on first admin visit. Emoji = zero-asset visuals. */
+/** Starter sea-creature catalog — the generated art set in /public/reef/fish. */
 export const DEFAULT_FISH: Omit<Fish, "id">[] = [
-  { name: "Sardine", rarity: "common", emoji: "🐟", active: true },
-  { name: "Anchovy", rarity: "common", emoji: "🐠", active: true },
-  { name: "Tilapia", rarity: "common", emoji: "🐡", active: true },
-  { name: "Mackerel", rarity: "common", emoji: "🐟", active: true },
-  { name: "Blue Tang", rarity: "rare", emoji: "🐠", active: true },
-  { name: "Clownfish", rarity: "rare", emoji: "🐠", active: true },
-  { name: "Pufferfish", rarity: "rare", emoji: "🐡", active: true },
-  { name: "Sea Turtle", rarity: "epic", emoji: "🐢", active: true },
-  { name: "Octopus", rarity: "epic", emoji: "🐙", active: true },
-  { name: "Swordfish", rarity: "epic", emoji: "⚔️", active: true },
-  { name: "Great White", rarity: "legendary", emoji: "🦈", active: true },
-  { name: "Blue Whale", rarity: "legendary", emoji: "🐋", active: true },
-  { name: "Dolphin", rarity: "legendary", emoji: "🐬", active: true },
-  { name: "Kraken", rarity: "mythic", emoji: "🦑", active: true },
-  { name: "Golden Koi", rarity: "mythic", emoji: "🎏", active: true },
-  { name: "Megalodon", rarity: "mythic", emoji: "🦈", active: true },
+  { name: "Anchovy", rarity: "common", image: "/reef/fish/common/anchovy.webp", active: true },
+  { name: "Bluegill", rarity: "common", image: "/reef/fish/common/bluegill.webp", active: true },
+  { name: "Carp", rarity: "common", image: "/reef/fish/common/carp.webp", active: true },
+  { name: "Catfish", rarity: "common", image: "/reef/fish/common/catfish.webp", active: true },
+  { name: "Goby", rarity: "common", image: "/reef/fish/common/goby.webp", active: true },
+  { name: "Herring", rarity: "common", image: "/reef/fish/common/herring.webp", active: true },
+  { name: "Mackerel", rarity: "common", image: "/reef/fish/common/mackerel.webp", active: true },
+  { name: "Milkfish", rarity: "common", image: "/reef/fish/common/milkfish.webp", active: true },
+  { name: "Perch", rarity: "common", image: "/reef/fish/common/perch.webp", active: true },
+  { name: "Snapper", rarity: "common", image: "/reef/fish/common/snapper.webp", active: true },
+  { name: "Sardines", rarity: "common", image: "/reef/fish/common/sardines.webp", active: true },
+  { name: "Tilapia", rarity: "common", image: "/reef/fish/common/tilapia.webp", active: true },
+  { name: "Barracuda", rarity: "uncommon", image: "/reef/fish/uncommon/barracuda.webp", active: true },
+  { name: "Butterflyfish", rarity: "uncommon", image: "/reef/fish/uncommon/butterflyfish.webp", active: true },
+  { name: "Lionfish", rarity: "uncommon", image: "/reef/fish/uncommon/lionfish.webp", active: true },
+  { name: "Pufferfish", rarity: "uncommon", image: "/reef/fish/uncommon/pufferfish.webp", active: true },
+  { name: "Red Snapper", rarity: "uncommon", image: "/reef/fish/uncommon/red-snapper.webp", active: true },
+  { name: "Salmon", rarity: "uncommon", image: "/reef/fish/uncommon/salmon.webp", active: true },
+  { name: "Surgeonfish", rarity: "uncommon", image: "/reef/fish/uncommon/surgeonfish.webp", active: true },
+  { name: "Trout", rarity: "uncommon", image: "/reef/fish/uncommon/trout.webp", active: true },
+  { name: "Tuna", rarity: "uncommon", image: "/reef/fish/uncommon/tuna.webp", active: true },
+  { name: "Yellowtail", rarity: "uncommon", image: "/reef/fish/uncommon/yellowtail.webp", active: true },
+  { name: "Angelfish", rarity: "rare", image: "/reef/fish/rare/angelfish.webp", active: true },
+  { name: "Arowana", rarity: "rare", image: "/reef/fish/rare/arowana.webp", active: true },
+  { name: "Clownfish", rarity: "rare", image: "/reef/fish/rare/clownfish.webp", active: true },
+  { name: "Electric Eel", rarity: "rare", image: "/reef/fish/rare/electric-eel.webp", active: true },
+  { name: "Flying Fish", rarity: "rare", image: "/reef/fish/rare/flying-fish.webp", active: true },
+  { name: "Koi", rarity: "rare", image: "/reef/fish/rare/koi.webp", active: true },
+  { name: "Mandarin Fish", rarity: "rare", image: "/reef/fish/rare/mandarin-fish.webp", active: true },
+  { name: "Moorish Idol", rarity: "rare", image: "/reef/fish/rare/moorish-idol.webp", active: true },
+  { name: "Seahorse", rarity: "rare", image: "/reef/fish/rare/seahorse.webp", active: true },
+  { name: "Triggerfish", rarity: "rare", image: "/reef/fish/rare/triggerfish.webp", active: true },
+  { name: "Giant Grouper", rarity: "epic", image: "/reef/fish/epic/giant-grouper.webp", active: true },
+  { name: "Giant Octopus", rarity: "epic", image: "/reef/fish/epic/giant-octopus.webp", active: true },
+  { name: "Giant Stingray", rarity: "epic", image: "/reef/fish/epic/giant-stingray.webp", active: true },
+  { name: "Giant Trevally", rarity: "epic", image: "/reef/fish/epic/giant-trevally.webp", active: true },
+  { name: "Marlin", rarity: "epic", image: "/reef/fish/epic/marlin.webp", active: true },
+  { name: "Napoleon Wrasse", rarity: "epic", image: "/reef/fish/epic/napoleon-wrasse.webp", active: true },
+  { name: "Sailfish", rarity: "epic", image: "/reef/fish/epic/sailfish.webp", active: true },
+  { name: "Sword fish", rarity: "epic", image: "/reef/fish/epic/sword-fish.webp", active: true },
+  { name: "Coelacanth", rarity: "legendary", image: "/reef/fish/legendary/coelacanth.webp", active: true },
+  { name: "Manta Ray", rarity: "legendary", image: "/reef/fish/legendary/manta-ray.webp", active: true },
+  { name: "Oarfish", rarity: "legendary", image: "/reef/fish/legendary/oarfish.webp", active: true },
+  { name: "Sunfish (Mola Mola)", rarity: "legendary", image: "/reef/fish/legendary/sunfish-mola-mola.webp", active: true },
+  { name: "Whale Shark", rarity: "legendary", image: "/reef/fish/legendary/whale-shark.webp", active: true },
+  { name: "Celestial Whale", rarity: "mythic", image: "/reef/fish/mythic/celestial-whale.webp", active: true },
+  { name: "Crystal Koi", rarity: "mythic", image: "/reef/fish/mythic/crystal-koi.webp", active: true },
+  { name: "Golden Dragonfish", rarity: "mythic", image: "/reef/fish/mythic/golden-dragonfish.webp", active: true },
+  { name: "Leviathan Eel", rarity: "mythic", image: "/reef/fish/mythic/leviathan-eel.webp", active: true },
+  { name: "Phantom Shark", rarity: "mythic", image: "/reef/fish/mythic/phantom-shark.webp", active: true },
+  { name: "Ancient Ocean Dragon", rarity: "divine", image: "/reef/fish/divine/ancient-ocean-dragon.webp", active: true },
+  { name: "Poseidon's Guardian", rarity: "divine", image: "/reef/fish/divine/poseidon-s-guardian.webp", active: true },
+  { name: "Sea Phoenix", rarity: "divine", image: "/reef/fish/divine/sea-phoenix.webp", active: true },
 ];
 
 const DEMO_STATE: GameState = {
@@ -316,6 +364,20 @@ export async function seedFishIfEmpty(db: Firestore): Promise<number> {
     batch.set(doc(collection(db, "fish")), f);
   }
   await batch.commit();
+  return DEFAULT_FISH.length;
+}
+
+/** Delete all fish, then load the generated art set. Used to replace old test data. */
+export async function reseedFish(db: Firestore): Promise<number> {
+  const snap = await getDocs(collection(db, "fish"));
+  const del = writeBatch(db);
+  snap.docs.forEach((d) => del.delete(d.ref));
+  await del.commit();
+  const add = writeBatch(db);
+  for (const f of DEFAULT_FISH) {
+    add.set(doc(collection(db, "fish")), f);
+  }
+  await add.commit();
   return DEFAULT_FISH.length;
 }
 

@@ -16,6 +16,7 @@ import {
   saveFish,
   deleteFish,
   seedFishIfEmpty,
+  reseedFish,
   DEFAULT_GAME_CONFIG,
   type GameConfig,
   type GameAssets,
@@ -208,9 +209,21 @@ export default function AdminGamesPage() {
     if (!db) return;
     try {
       const n = await seedFishIfEmpty(db);
-      setMsg(n > 0 ? `Seeded ${n} starter fish.` : "Fish already exist — nothing seeded.");
+      setMsg(n > 0 ? `Seeded ${n} sea creatures.` : "Fish already exist — nothing seeded.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Seed failed");
+    }
+  }
+
+  async function reload() {
+    const { db } = getFirebase();
+    if (!db) return;
+    if (!confirm("Replace ALL current fish with the generated art set (53 creatures)? This deletes existing fish docs.")) return;
+    try {
+      const n = await reseedFish(db);
+      setMsg(`Loaded ${n} generated sea creatures.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Reload failed");
     }
   }
 
@@ -392,9 +405,13 @@ export default function AdminGamesPage() {
           title={`Fish catalog (${fish.length})`}
           right={
             <div className="flex gap-2">
-              {fish.length === 0 && (
+              {fish.length === 0 ? (
                 <button onClick={seed} className="text-[11px] px-2.5 py-1 bg-vault/15 text-vault rounded-md flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> Seed starters
+                  <Sparkles className="w-3 h-3" /> Seed creatures
+                </button>
+              ) : (
+                <button onClick={reload} className="text-[11px] px-2.5 py-1 bg-vault/15 text-vault rounded-md flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> Load generated set
                 </button>
               )}
               <button

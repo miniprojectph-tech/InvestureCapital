@@ -237,6 +237,9 @@ export default function PlayPage() {
   }
 
   const fothActive = foth && foth.endsAt > clock;
+  const revealRank = reveal ? config.rarities.findIndex((r) => r.id === reveal.fish.rarity) : -1;
+  const legendaryIdx = config.rarities.findIndex((r) => r.id === "legendary");
+  const highTierReveal = revealRank >= 0 && legendaryIdx >= 0 && revealRank >= legendaryIdx;
   const casting = phase === "casting";
   const charging = phase === "charging";
   // lure vertical position: idle bobs near shore, cast flies out toward horizon
@@ -670,9 +673,17 @@ export default function PlayPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-hidden"
             onClick={() => setReveal(null)}
           >
+            {highTierReveal && assets.eventLegendaryAlert && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={assets.eventLegendaryAlert}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover opacity-60 pointer-events-none"
+              />
+            )}
             <motion.div
               initial={{ scale: 0.5, y: 30 }}
               animate={{ scale: 1, y: 0 }}

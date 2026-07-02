@@ -44,11 +44,13 @@ type GameState = {
 const DEFAULT_CONFIG: GameConfig = {
   dailyEnergy: 20,
   rarities: [
-    { id: "common", label: "Common", color: "#9CA3AF", weight: 60, points: 5 },
-    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 25, points: 20 },
-    { id: "epic", label: "Epic", color: "#A78BFA", weight: 10, points: 60 },
-    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 4, points: 200 },
-    { id: "mythic", label: "Mythic", color: "#3DD598", weight: 1, points: 800 },
+    { id: "common", label: "Common", color: "#9CA3AF", weight: 55, points: 5 },
+    { id: "uncommon", label: "Uncommon", color: "#4ADE80", weight: 25, points: 12 },
+    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 12, points: 30 },
+    { id: "epic", label: "Epic", color: "#A78BFA", weight: 5, points: 80 },
+    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 2, points: 250 },
+    { id: "mythic", label: "Mythic", color: "#FB7185", weight: 0.9, points: 700 },
+    { id: "divine", label: "Divine Secret", color: "#E879F9", weight: 0.1, points: 2500 },
   ],
   streakBonus: [0, 5, 10, 15, 25, 40, 60, 100],
   fothEnabled: true,
