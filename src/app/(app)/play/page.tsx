@@ -272,7 +272,9 @@ export default function PlayPage() {
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={
-                  castPower < 0.4
+                  castPower >= 0.9
+                    ? "/reef/perfect-hook.webp"
+                    : castPower < 0.4
                     ? "/reef/splash-small.webp"
                     : castPower < 0.75
                     ? "/reef/splash-medium.webp"
@@ -497,15 +499,6 @@ export default function PlayPage() {
                 className="absolute -z-10 w-52 h-52 rounded-full"
                 style={{ background: `radial-gradient(circle, ${reveal.rarity.color}44, transparent 70%)` }}
               />
-              {assets.fxPerfectHook && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={assets.fxPerfectHook}
-                  alt=""
-                  className="absolute -z-10 w-[26rem] h-[26rem] object-contain pointer-events-none"
-                  style={{ animation: "reef-burst 0.9s ease-out" }}
-                />
-              )}
               {reveal.isFoth && (
                 <p className="text-[11px] text-gold m-0 mb-1 font-semibold tracking-wide">🔥 FISH OF THE HOUR</p>
               )}
