@@ -50,6 +50,18 @@ const ROD = {
   tipTop: "5%",
   tipLeft: "80%",
 };
+// Line origin (rod tip) and where the lure lands out in the ocean, in stage %.
+const TIP = { x: 34, y: 47 };
+const LAND = { x: 61, y: 39 };
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+// CURRENT FISH left-panel overlay positions (tunable, stage %).
+const PANEL = {
+  preview: { left: "2.6%", top: "19.5%", width: "12%", height: "17%" },
+  valueLeft: "8%",
+  rarityTop: "43.5%",
+  weightTop: "49.2%",
+  recordTop: "55%",
+};
 
 export default function PlayPage() {
   const router = useRouter();
@@ -65,6 +77,7 @@ export default function PlayPage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [meter, setMeter] = useState(0);
   const [castPower, setCastPower] = useState(0);
+  const [castT, setCastT] = useState(0);
   const [rodAngle, setRodAngle] = useState(0);
   const [aiming, setAiming] = useState(false);
   const aimRef = useRef({ active: false, startX: 0, startAngle: 0 });
@@ -72,6 +85,10 @@ export default function PlayPage() {
   const [progress, setProgress] = useState(0); // fish reeled in (0-100)
   const [tension, setTension] = useState(0); // line tension (0-100)
   const [reelRating, setReelRating] = useState(1);
+  const [lastCatch, setLastCatch] = useState<
+    { fishId: string; name: string; rarityLabel: string; color: string; weight: number } | null
+  >(null);
+  const [bestRecord, setBestRecord] = useState(0);
   const progressRef = useRef(0);
   const tensionRef = useRef(0);
   const reelHoldRef = useRef(false);
@@ -93,6 +110,10 @@ export default function PlayPage() {
   useEffect(() => {
     const t = setInterval(() => setClock(Date.now()), 20_000);
     return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    const v = Number(localStorage.getItem("reef-best-weight") || 0);
+    if (v) setBestRecord(v);
   }, []);
   useEffect(() => {
     return () => {
@@ -276,6 +297,21 @@ export default function PlayPage() {
     setReelRating(rating);
     if (res) {
       setIsNewCatch(!state?.collection?.[res.fish.id]);
+      // Cosmetic weight for the panel, scaled by rarity.
+      const rIdx = Math.max(0, config.rarities.findIndex((r) => r.id === res.fish.rarity));
+      const rarity = config.rarities.find((r) => r.id === res.fish.rarity) ?? config.rarities[0];
+      const base = [1.5, 3, 6, 15, 40, 90, 220][Math.min(rIdx, 6)] ?? 5;
+      const weight = Math.round(base * (0.6 + Math.random() * 0.9) * 10) / 10;
+      setLastCatch({ fishId: res.fish.id, name: res.fish.name, rarityLabel: rarity.label, color: rarity.color, weight });
+      setBestRecord((prev) => {
+        const nb = Math.max(prev, weight);
+        try {
+          localStorage.setItem("reef-best-weight", String(nb));
+        } catch {
+          /* ignore */
+        }
+        return nb;
+      });
       playSfx(assets.catchSfx);
       setReveal(res);
     }
@@ -311,6 +347,23 @@ export default function PlayPage() {
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
     };
+  }, [phase]);
+
+  // Animate the lure's flight while casting (0→1 over ~600ms).
+  useEffect(() => {
+    if (phase !== "casting") {
+      setCastT(0);
+      return;
+    }
+    let raf = 0;
+    const start = performance.now();
+    const loop = (t: number) => {
+      const p = Math.min(1, (t - start) / 600);
+      setCastT(p);
+      if (p < 1) raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
   }, [phase]);
 
   function startAim(e: React.PointerEvent) {
@@ -370,15 +423,16 @@ export default function PlayPage() {
       : phase === "reeling"
       ? 6 + tension * 0.16
       : 0;
-  // Line length in px — flies out, then reels the lure back in as progress fills.
-  const lineLen =
-    phase === "casting" || phase === "waiting"
-      ? 172
-      : phase === "bite"
-      ? 150
+  // Lure position (stage %): arcs out to the ocean on cast, sits while waiting,
+  // then travels back to the rod as you reel it in.
+  const lurePos =
+    phase === "casting"
+      ? { x: lerp(TIP.x, LAND.x, castT), y: lerp(TIP.y, LAND.y, castT) - Math.sin(Math.PI * castT) * 14 }
+      : phase === "waiting" || phase === "bite"
+      ? LAND
       : phase === "reeling"
-      ? 172 - progress * 1.34
-      : 96;
+      ? { x: lerp(LAND.x, TIP.x, progress / 100), y: lerp(LAND.y, TIP.y, progress / 100) }
+      : TIP;
 
   return (
     <div>
@@ -407,7 +461,7 @@ export default function PlayPage() {
             />
           )}
 
-          {/* ── Fishing rod (drag the water to aim) + line + lure ── */}
+          {/* ── Fishing rod (drag the water to aim) ── */}
           {assets.rod && (
             <div
               className={cn("absolute z-[12] pointer-events-none", ROD.wrap)}
@@ -419,49 +473,63 @@ export default function PlayPage() {
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={assets.rod} alt="" className="w-full object-contain select-none" />
-              {/* line + lure hang from the rod tip, counter-rotated to stay vertical */}
-              <div className="absolute" style={{ top: ROD.tipTop, left: ROD.tipLeft }}>
-                <div style={{ transform: `rotate(${-rodAngle}deg)`, transformOrigin: "top center" }}>
-                  <div
-                    className="w-px bg-white/60 mx-auto"
-                    style={{ height: lineLen, transition: "height 0.6s cubic-bezier(0.4,0,0.2,1)" }}
-                  />
-                  <div
-                    className="absolute left-1/2 -translate-x-1/2"
-                    style={{
-                      top: lineLen,
-                      transition: "top 0.6s cubic-bezier(0.4,0,0.2,1)",
-                      animation: charging || inFlight ? "none" : "reef-bob 2.6s ease-in-out infinite",
-                    }}
-                  >
-                    {assets.lure ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={assets.lure} alt="" className="w-[3vw] max-w-[36px] object-contain" />
-                    ) : (
-                      <div className="w-3.5 h-3.5 rounded-full bg-gold border-2 border-white/80" />
-                    )}
-                    {phase === "casting" && (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={
-                          castPower >= 0.9
-                            ? "/reef/perfect-hook.webp"
-                            : castPower < 0.4
-                            ? "/reef/splash-small.webp"
-                            : castPower < 0.75
-                            ? "/reef/splash-medium.webp"
-                            : "/reef/splash-large.webp"
-                        }
-                        alt=""
-                        className="absolute left-1/2 top-0 w-[130px] object-contain pointer-events-none"
-                        style={{ animation: "reef-splash 0.85s ease-out" }}
-                      />
-                    )}
-                  </div>
-                </div>
-              </div>
             </div>
           )}
+
+          {/* fishing line — arcs from the rod tip out to the lure */}
+          <svg
+            className="absolute inset-0 w-full h-full z-[11] pointer-events-none"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+          >
+            <path
+              d={`M ${TIP.x} ${TIP.y} Q ${(TIP.x + lurePos.x) / 2} ${Math.min(TIP.y, lurePos.y) - 8} ${lurePos.x} ${lurePos.y}`}
+              fill="none"
+              stroke="rgba(255,255,255,0.55)"
+              strokeWidth="1"
+              vectorEffect="non-scaling-stroke"
+            />
+          </svg>
+
+          {/* lure + landing splash */}
+          <div
+            className="absolute z-[12] pointer-events-none"
+            style={{
+              left: `${lurePos.x}%`,
+              top: `${lurePos.y}%`,
+              transform: "translate(-50%,-50%)",
+              transition:
+                phase === "casting" || phase === "reeling"
+                  ? "none"
+                  : "left 0.3s ease-out, top 0.3s ease-out",
+            }}
+          >
+            <div style={{ animation: phase === "idle" ? "reef-bob 2.6s ease-in-out infinite" : "none" }}>
+              {assets.lure ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={assets.lure} alt="" className="w-[2.6vw] max-w-[32px] object-contain" />
+              ) : (
+                <div className="w-3 h-3 rounded-full bg-gold border-2 border-white/80" />
+              )}
+              {phase === "waiting" && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={
+                    castPower >= 0.9
+                      ? "/reef/perfect-hook.webp"
+                      : castPower < 0.4
+                      ? "/reef/splash-small.webp"
+                      : castPower < 0.75
+                      ? "/reef/splash-medium.webp"
+                      : "/reef/splash-large.webp"
+                  }
+                  alt=""
+                  className="absolute left-1/2 top-0 w-[110px] object-contain"
+                  style={{ animation: "reef-splash 0.85s ease-out" }}
+                />
+              )}
+            </div>
+          </div>
 
           {/* aim catcher — drag over the open water to swing the rod */}
           <div
@@ -487,6 +555,36 @@ export default function PlayPage() {
           {assets.hud && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={assets.hud} alt="" className="absolute inset-0 w-full h-full object-cover z-10 pointer-events-none" />
+          )}
+
+          {/* ── CURRENT FISH panel: last catch ── */}
+          {lastCatch && (
+            <>
+              <div
+                className="absolute z-20 flex items-center justify-center pointer-events-none"
+                style={{ left: PANEL.preview.left, top: PANEL.preview.top, width: PANEL.preview.width, height: PANEL.preview.height }}
+              >
+                {fishById.get(lastCatch.fishId)?.image && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={fishById.get(lastCatch.fishId)!.image}
+                    alt=""
+                    className="max-w-full max-h-full object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.5)]"
+                  />
+                )}
+              </div>
+              <div className="absolute z-20 -translate-x-1/2 pointer-events-none" style={{ left: PANEL.valueLeft, top: PANEL.rarityTop }}>
+                <span className="text-[clamp(6px,0.78vw,11px)] font-bold" style={{ color: lastCatch.color }}>
+                  {lastCatch.rarityLabel}
+                </span>
+              </div>
+              <div className="absolute z-20 -translate-x-1/2 pointer-events-none" style={{ left: PANEL.valueLeft, top: PANEL.weightTop }}>
+                <span className="text-[clamp(6px,0.78vw,11px)] font-mono text-white">{lastCatch.weight} kg</span>
+              </div>
+              <div className="absolute z-20 -translate-x-1/2 pointer-events-none" style={{ left: PANEL.valueLeft, top: PANEL.recordTop }}>
+                <span className="text-[clamp(6px,0.78vw,11px)] font-mono text-gold">{bestRecord} kg</span>
+              </div>
+            </>
           )}
 
           {/* ── live HUD values (sit on the HUD top bar's empty middle) ── */}
