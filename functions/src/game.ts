@@ -25,6 +25,9 @@ type GameConfig = {
   fothChance: number;
   quests: Quest[];
   leaderboardPrizes: number[];
+  treasureChance: number;
+  treasureMin: number;
+  treasureMax: number;
 };
 type FishDoc = { id: string; name: string; rarity: string; image?: string };
 type Quests = { day: string; progress: Record<string, number>; claimed: Record<string, boolean> };
@@ -61,6 +64,9 @@ const DEFAULT_CONFIG: GameConfig = {
     { id: "catch10", label: "Catch 10 fish", type: "catch", target: 10, reward: 30 },
   ],
   leaderboardPrizes: [500, 300, 150, 75, 50],
+  treasureChance: 0.06,
+  treasureMin: 50,
+  treasureMax: 300,
 };
 
 // ===== Helpers =====
@@ -81,6 +87,9 @@ async function loadConfig(): Promise<GameConfig> {
     fothChance: d.fothChance ?? DEFAULT_CONFIG.fothChance,
     quests: d.quests?.length ? d.quests : DEFAULT_CONFIG.quests,
     leaderboardPrizes: d.leaderboardPrizes?.length ? d.leaderboardPrizes : DEFAULT_CONFIG.leaderboardPrizes,
+    treasureChance: d.treasureChance ?? DEFAULT_CONFIG.treasureChance,
+    treasureMin: d.treasureMin ?? DEFAULT_CONFIG.treasureMin,
+    treasureMax: d.treasureMax ?? DEFAULT_CONFIG.treasureMax,
   };
 }
 
@@ -217,8 +226,15 @@ export const castLine = onCall(async (request) => {
     const rarity = config.rarities.find((r) => r.id === caught.rarity) ?? config.rarities[0];
     const gained = rarity.points + streakBonus;
 
-    points += gained;
-    weeklyScore += gained;
+    // Random treasure chest bonus (server-decided so it can't be forged).
+    let treasure = 0;
+    if (Math.random() < config.treasureChance) {
+      const span = Math.max(0, config.treasureMax - config.treasureMin);
+      treasure = config.treasureMin + Math.floor(Math.random() * (span + 1));
+    }
+
+    points += gained + treasure;
+    weeklyScore += gained + treasure;
     totalCasts += 1;
     const prev = collection[caught.id];
     collection[caught.id] = { count: (prev?.count ?? 0) + 1, firstAt: prev?.firstAt ?? now };
@@ -241,6 +257,7 @@ export const castLine = onCall(async (request) => {
       streak,
       points,
       isFoth: fothActive && caught.id === foth!.fishId,
+      treasure,
     };
   });
 });

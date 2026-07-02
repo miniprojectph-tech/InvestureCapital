@@ -156,3 +156,13 @@ body {
   0%, 100% { opacity: 0.5; transform: scale(1); }
   50%      { opacity: 0.9; transform: scale(1.06); }
 }
+@keyframes reef-splash {
+  0%   { transform: translateX(-50%) scale(0.4); opacity: 0; }
+  30%  { opacity: 0.95; }
+  100% { transform: translateX(-50%) scale(1.25); opacity: 0; }
+}
+@keyframes reef-burst {
+  0%   { transform: scale(0.3); opacity: 0; }
+  25%  { opacity: 0.95; }
+  100% { transform: scale(1.45); opacity: 0; }
+}

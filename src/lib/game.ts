@@ -120,6 +120,9 @@ export type GameConfig = {
   fothChance: number;
   quests: Quest[];
   leaderboardPrizes: number[];
+  treasureChance: number;
+  treasureMin: number;
+  treasureMax: number;
   assets?: GameAssets;
 };
 export type Fish = {
@@ -149,6 +152,7 @@ export type CastResult = {
   streak: number;
   points: number;
   isFoth: boolean;
+  treasure?: number;
 };
 export type FishOfHour = {
   fishId: string;
@@ -179,6 +183,9 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
     { id: "catch10", label: "Catch 10 fish", type: "catch", target: 10, reward: 30 },
   ],
   leaderboardPrizes: [500, 300, 150, 75, 50],
+  treasureChance: 0.06,
+  treasureMin: 50,
+  treasureMax: 300,
   assets: {
     bgFull: "/reef/bg-fishing-spots.webp",
     hud: "/reef/hud.webp",

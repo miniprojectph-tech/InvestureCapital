@@ -57,6 +57,7 @@ export default function PlayPage() {
   const [questsOpen, setQuestsOpen] = useState(false);
   const [phase, setPhase] = useState<Phase>("idle");
   const [meter, setMeter] = useState(0);
+  const [castPower, setCastPower] = useState(0);
   const [reveal, setReveal] = useState<CastResult | null>(null);
   const [isNewCatch, setIsNewCatch] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -161,6 +162,7 @@ export default function PlayPage() {
     if (phase !== "charging") return;
     stopRaf();
     const power = meterRef.current;
+    setCastPower(power);
     setPhase("casting");
     startAmbient();
     playSfx(assets.castSfx);
@@ -262,27 +264,24 @@ export default function PlayPage() {
           >
             {assets.lure ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={assets.lure} alt="" className="w-[3vw] max-w-[34px] object-contain" />
+              <img src={assets.lure} alt="" className="w-[4vw] max-w-[46px] object-contain" />
             ) : (
               <div className="w-3.5 h-3.5 rounded-full bg-gold border-2 border-white/80" />
             )}
             {casting && (
-              <>
-                {assets.splash ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={assets.splash}
-                    alt=""
-                    className="absolute left-1/2 -translate-x-1/2 top-2 w-[7vw] max-w-[90px] object-contain"
-                    style={{ animation: "reef-glow-pulse 0.7s ease-out" }}
-                  />
-                ) : (
-                  <span
-                    className="absolute left-1/2 top-3 w-12 h-2.5 rounded-[50%] border border-white/60"
-                    style={{ animation: "reef-ripple 0.7s ease-out" }}
-                  />
-                )}
-              </>
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={
+                  castPower < 0.4
+                    ? "/reef/splash-small.webp"
+                    : castPower < 0.75
+                    ? "/reef/splash-medium.webp"
+                    : "/reef/splash-large.webp"
+                }
+                alt=""
+                className="absolute left-1/2 top-0 w-[11vw] max-w-[150px] object-contain pointer-events-none"
+                style={{ animation: "reef-splash 0.85s ease-out" }}
+              />
             )}
           </div>
 
@@ -498,6 +497,15 @@ export default function PlayPage() {
                 className="absolute -z-10 w-52 h-52 rounded-full"
                 style={{ background: `radial-gradient(circle, ${reveal.rarity.color}44, transparent 70%)` }}
               />
+              {assets.fxPerfectHook && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={assets.fxPerfectHook}
+                  alt=""
+                  className="absolute -z-10 w-[26rem] h-[26rem] object-contain pointer-events-none"
+                  style={{ animation: "reef-burst 0.9s ease-out" }}
+                />
+              )}
               {reveal.isFoth && (
                 <p className="text-[11px] text-gold m-0 mb-1 font-semibold tracking-wide">🔥 FISH OF THE HOUR</p>
               )}
@@ -527,6 +535,22 @@ export default function PlayPage() {
               {reveal.streakBonus > 0 && (
                 <p className="text-[10px] text-white/70 m-0 mt-1">includes +{reveal.streakBonus} streak bonus 🔥</p>
               )}
+              {reveal.treasure ? (
+                <motion.div
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.35, type: "spring", stiffness: 300, damping: 14 }}
+                  className="flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full bg-gold/15 border border-border-gold"
+                >
+                  {assets.iconChest && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={assets.iconChest} alt="" className="w-6 h-6 object-contain" />
+                  )}
+                  <span className="text-[12px] font-mono text-gold font-semibold">
+                    Treasure! +{reveal.treasure}
+                  </span>
+                </motion.div>
+              ) : null}
               <div className="flex gap-2 mt-5">
                 <button
                   onClick={() => setReveal(null)}
