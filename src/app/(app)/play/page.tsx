@@ -20,7 +20,7 @@ import {
 } from "@/lib/game";
 
 type View = "cast" | "collection" | "leaderboard";
-type Phase = "idle" | "charging" | "casting";
+type Phase = "idle" | "charging" | "casting" | "waiting" | "reeling";
 
 function manilaDay(ts = Date.now()): string {
   return new Date(ts + 8 * 3_600_000).toISOString().slice(0, 10);
@@ -173,18 +173,24 @@ export default function PlayPage() {
     stopRaf();
     const power = meterRef.current;
     setCastPower(power);
-    setPhase("casting");
+    setPhase("casting"); // rod whips forward, lure flies out
     startAmbient();
     playSfx(assets.castSfx);
-    const biteTimer = setTimeout(() => playSfx(assets.biteSfx), 950);
+    const castPromise = castLine(power);
+    castPromise.catch(() => {}); // avoid unhandled-rejection warning; re-thrown on await
     try {
-      const [res] = await Promise.all([castLine(power), wait(1400)]);
+      await wait(650); // cast arc
+      setPhase("waiting"); // lure settles, suspense
+      const biteTimer = setTimeout(() => playSfx(assets.biteSfx), 350);
+      const res = await castPromise;
       clearTimeout(biteTimer);
+      await wait(300); // beat before the tug
+      setPhase("reeling"); // rod bends, reel the line in
+      await wait(850);
       setIsNewCatch(!state?.collection?.[res.fish.id]);
       playSfx(assets.catchSfx);
       setReveal(res);
     } catch (e) {
-      clearTimeout(biteTimer);
       setError(e instanceof Error ? e.message : "Cast failed");
     } finally {
       setPhase("idle");
@@ -245,8 +251,14 @@ export default function PlayPage() {
   const revealRank = reveal ? config.rarities.findIndex((r) => r.id === reveal.fish.rarity) : -1;
   const legendaryIdx = config.rarities.findIndex((r) => r.id === "legendary");
   const highTierReveal = revealRank >= 0 && legendaryIdx >= 0 && revealRank >= legendaryIdx;
-  const casting = phase === "casting";
   const charging = phase === "charging";
+  const inFlight = phase === "casting" || phase === "waiting" || phase === "reeling";
+  // Extra rod rotation per phase — windback on charge, whip on cast, bend under
+  // tension while reeling. Positive = tip dips toward the water.
+  const rodBend =
+    phase === "charging" ? -6 : phase === "casting" ? 13 : phase === "waiting" ? 4 : phase === "reeling" ? 17 : 0;
+  // Line length in px — flies out, then reels the lure back in.
+  const lineLen = phase === "casting" || phase === "waiting" ? 172 : phase === "reeling" ? 38 : 96;
 
   return (
     <div>
@@ -280,9 +292,9 @@ export default function PlayPage() {
             <div
               className={cn("absolute z-[12] pointer-events-none", ROD.wrap)}
               style={{
-                transform: `rotate(${rodAngle}deg)`,
+                transform: `rotate(${rodAngle + rodBend}deg)`,
                 transformOrigin: ROD.origin,
-                transition: aiming ? "none" : "transform 0.5s cubic-bezier(0.34,1.56,0.64,1)",
+                transition: aiming ? "none" : "transform 0.55s cubic-bezier(0.34,1.3,0.64,1)",
               }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -292,14 +304,14 @@ export default function PlayPage() {
                 <div style={{ transform: `rotate(${-rodAngle}deg)`, transformOrigin: "top center" }}>
                   <div
                     className="w-px bg-white/60 mx-auto"
-                    style={{ height: casting ? 150 : 96, transition: "height 0.6s cubic-bezier(0.4,0,0.2,1)" }}
+                    style={{ height: lineLen, transition: "height 0.6s cubic-bezier(0.4,0,0.2,1)" }}
                   />
                   <div
                     className="absolute left-1/2 -translate-x-1/2"
                     style={{
-                      top: casting ? 150 : 96,
+                      top: lineLen,
                       transition: "top 0.6s cubic-bezier(0.4,0,0.2,1)",
-                      animation: casting || charging ? "none" : "reef-bob 2.6s ease-in-out infinite",
+                      animation: charging || inFlight ? "none" : "reef-bob 2.6s ease-in-out infinite",
                     }}
                   >
                     {assets.lure ? (
@@ -308,7 +320,7 @@ export default function PlayPage() {
                     ) : (
                       <div className="w-3.5 h-3.5 rounded-full bg-gold border-2 border-white/80" />
                     )}
-                    {casting && (
+                    {phase === "casting" && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={
@@ -369,14 +381,14 @@ export default function PlayPage() {
           <button
             onPointerDown={startCharge}
             onPointerUp={releaseCharge}
-            disabled={casting || (energy <= 0 && !charging)}
+            disabled={inFlight || (energy <= 0 && !charging)}
             className={cn("absolute z-20 rounded-full", HOT.cast)}
             style={{ touchAction: "none" }}
             aria-label="Cast"
           >
-            {(charging || casting) && (
+            {(charging || inFlight) && (
               <span className="absolute inset-0 flex items-center justify-center">
-                {casting ? (
+                {inFlight ? (
                   <Loader2 className="w-6 h-6 text-white animate-spin drop-shadow" />
                 ) : (
                   <span className="text-[clamp(9px,1vw,13px)] font-bold text-white drop-shadow">
