@@ -20,7 +20,7 @@ import {
 } from "@/lib/game";
 
 type View = "cast" | "collection" | "leaderboard";
-type Phase = "idle" | "charging" | "casting" | "waiting" | "reeling";
+type Phase = "idle" | "charging" | "casting" | "waiting" | "bite" | "reeling";
 
 function manilaDay(ts = Date.now()): string {
   return new Date(ts + 8 * 3_600_000).toISOString().slice(0, 10);
@@ -68,6 +68,17 @@ export default function PlayPage() {
   const [rodAngle, setRodAngle] = useState(0);
   const [aiming, setAiming] = useState(false);
   const aimRef = useRef({ active: false, startX: 0, startAngle: 0 });
+  // Interactive reel state
+  const [progress, setProgress] = useState(0); // fish reeled in (0-100)
+  const [tension, setTension] = useState(0); // line tension (0-100)
+  const [reelRating, setReelRating] = useState(1);
+  const progressRef = useRef(0);
+  const tensionRef = useRef(0);
+  const reelHoldRef = useRef(false);
+  const reelRafRef = useRef<number | null>(null);
+  const pendingCatchRef = useRef<CastResult | null>(null);
+  const greenTimeRef = useRef(0);
+  const totalTimeRef = useRef(0);
   const [reveal, setReveal] = useState<CastResult | null>(null);
   const [isNewCatch, setIsNewCatch] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -173,31 +184,109 @@ export default function PlayPage() {
     stopRaf();
     const power = meterRef.current;
     setCastPower(power);
+    setMeter(0);
+    meterRef.current = 0;
     setPhase("casting"); // rod whips forward, lure flies out
     startAmbient();
     playSfx(assets.castSfx);
-    const castPromise = castLine(power);
-    castPromise.catch(() => {}); // avoid unhandled-rejection warning; re-thrown on await
+    let res: CastResult;
     try {
+      const castPromise = castLine(power);
+      castPromise.catch(() => {}); // avoid unhandled-rejection warning; re-thrown on await
       await wait(650); // cast arc
       setPhase("waiting"); // lure settles, suspense
-      const biteTimer = setTimeout(() => playSfx(assets.biteSfx), 350);
-      const res = await castPromise;
-      clearTimeout(biteTimer);
-      await wait(300); // beat before the tug
-      setPhase("reeling"); // rod bends, reel the line in
-      await wait(850);
+      res = await castPromise;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Cast failed");
+      setPhase("idle");
+      return;
+    }
+    await wait(400 + Math.random() * 500); // fish decides to bite
+    setPhase("bite"); // aggressive bite — rod bends sharply
+    playSfx(assets.biteSfx);
+    await wait(550);
+    startReel(res); // hand off to the interactive reel-in
+  }
+
+  // ── Interactive reel-in: hold Reel to deplete the fish; keep tension out of red ──
+  function startReel(res: CastResult) {
+    pendingCatchRef.current = res;
+    progressRef.current = 0;
+    tensionRef.current = 0;
+    greenTimeRef.current = 0;
+    totalTimeRef.current = 0;
+    reelHoldRef.current = false;
+    setProgress(0);
+    setTension(0);
+    setPhase("reeling");
+
+    const rarityIdx = Math.max(0, config.rarities.findIndex((r) => r.id === res.fish.rarity));
+    const difficulty = 1 + rarityIdx * 0.35; // rarer = tougher / longer fight
+    let last = performance.now();
+    let running = false;
+    let runEnd = 0;
+    let nextRun = last + 800 + Math.random() * 700;
+
+    const loop = (t: number) => {
+      const dt = Math.min(0.06, (t - last) / 1000);
+      last = t;
+      totalTimeRef.current += dt;
+      if (!running && t > nextRun) {
+        running = true;
+        runEnd = t + 400 + Math.random() * 500;
+      }
+      if (running && t > runEnd) {
+        running = false;
+        nextRun = t + 700 + Math.random() * 900;
+      }
+      let tn = tensionRef.current;
+      let pr = progressRef.current;
+      const hold = reelHoldRef.current;
+      if (hold) {
+        // reeling gains progress but builds tension; slows during a fish run
+        // and when tension is high (near snapping).
+        pr += ((running ? 10 : 30) / difficulty) * dt * (tn > 85 ? 0.35 : 1);
+        tn += (running ? 62 : 26) * dt;
+      } else {
+        tn -= 44 * dt;
+        if (running) tn += 26 * dt; // fish pulls even when you're not reeling
+      }
+      tn = Math.max(0, Math.min(100, tn));
+      pr = Math.max(0, Math.min(100, pr));
+      if (tn < 72) greenTimeRef.current += dt;
+      tensionRef.current = tn;
+      progressRef.current = pr;
+      setTension(tn);
+      setProgress(pr);
+      if (pr >= 100) {
+        finishReel();
+        return;
+      }
+      reelRafRef.current = requestAnimationFrame(loop);
+    };
+    reelRafRef.current = requestAnimationFrame(loop);
+  }
+
+  function finishReel() {
+    if (reelRafRef.current) cancelAnimationFrame(reelRafRef.current);
+    reelRafRef.current = null;
+    reelHoldRef.current = false;
+    const res = pendingCatchRef.current;
+    const rating = totalTimeRef.current > 0 ? greenTimeRef.current / totalTimeRef.current : 1;
+    setReelRating(rating);
+    if (res) {
       setIsNewCatch(!state?.collection?.[res.fish.id]);
       playSfx(assets.catchSfx);
       setReveal(res);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Cast failed");
-    } finally {
-      setPhase("idle");
-      setMeter(0);
-      meterRef.current = 0;
     }
+    setPhase("idle");
   }
+
+  useEffect(() => {
+    return () => {
+      if (reelRafRef.current) cancelAnimationFrame(reelRafRef.current);
+    };
+  }, []);
   useEffect(() => {
     if (phase !== "charging") return;
     const up = () => releaseCharge();
@@ -208,6 +297,20 @@ export default function PlayPage() {
       window.removeEventListener("pointercancel", up);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
+  // Release the reel whenever the pointer lifts anywhere.
+  useEffect(() => {
+    if (phase !== "reeling") return;
+    const up = () => {
+      reelHoldRef.current = false;
+    };
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
   }, [phase]);
 
   function startAim(e: React.PointerEvent) {
@@ -252,13 +355,30 @@ export default function PlayPage() {
   const legendaryIdx = config.rarities.findIndex((r) => r.id === "legendary");
   const highTierReveal = revealRank >= 0 && legendaryIdx >= 0 && revealRank >= legendaryIdx;
   const charging = phase === "charging";
-  const inFlight = phase === "casting" || phase === "waiting" || phase === "reeling";
-  // Extra rod rotation per phase — windback on charge, whip on cast, bend under
-  // tension while reeling. Positive = tip dips toward the water.
+  const inFlight = phase !== "idle" && phase !== "charging";
+  // Extra rod rotation per phase — windback on charge, whip on cast, sharp bend
+  // on the bite, then bend proportional to tension while reeling.
   const rodBend =
-    phase === "charging" ? -6 : phase === "casting" ? 13 : phase === "waiting" ? 4 : phase === "reeling" ? 17 : 0;
-  // Line length in px — flies out, then reels the lure back in.
-  const lineLen = phase === "casting" || phase === "waiting" ? 172 : phase === "reeling" ? 38 : 96;
+    phase === "charging"
+      ? -6
+      : phase === "casting"
+      ? 13
+      : phase === "waiting"
+      ? 4
+      : phase === "bite"
+      ? 22
+      : phase === "reeling"
+      ? 6 + tension * 0.16
+      : 0;
+  // Line length in px — flies out, then reels the lure back in as progress fills.
+  const lineLen =
+    phase === "casting" || phase === "waiting"
+      ? 172
+      : phase === "bite"
+      ? 150
+      : phase === "reeling"
+      ? 172 - progress * 1.34
+      : 96;
 
   return (
     <div>
@@ -378,26 +498,43 @@ export default function PlayPage() {
           </div>
 
           {/* ── interactive hotspots (over the HUD art) ── */}
-          <button
-            onPointerDown={startCharge}
-            onPointerUp={releaseCharge}
-            disabled={inFlight || (energy <= 0 && !charging)}
-            className={cn("absolute z-20 rounded-full", HOT.cast)}
-            style={{ touchAction: "none" }}
-            aria-label="Cast"
-          >
-            {(charging || inFlight) && (
-              <span className="absolute inset-0 flex items-center justify-center">
-                {inFlight ? (
-                  <Loader2 className="w-6 h-6 text-white animate-spin drop-shadow" />
-                ) : (
-                  <span className="text-[clamp(9px,1vw,13px)] font-bold text-white drop-shadow">
-                    {Math.round(meter * 100)}%
-                  </span>
-                )}
-              </span>
-            )}
-          </button>
+          {phase === "reeling" ? (
+            <button
+              onPointerDown={() => {
+                reelHoldRef.current = true;
+              }}
+              className={cn(
+                "absolute z-20 rounded-full flex items-center justify-center",
+                HOT.cast,
+                tension > 85 && "animate-pulse"
+              )}
+              style={{ touchAction: "none" }}
+              aria-label="Reel in"
+            >
+              <span className="text-[clamp(10px,1.2vw,16px)] font-bold text-white drop-shadow">REEL</span>
+            </button>
+          ) : (
+            <button
+              onPointerDown={startCharge}
+              onPointerUp={releaseCharge}
+              disabled={inFlight || (energy <= 0 && !charging)}
+              className={cn("absolute z-20 rounded-full", HOT.cast)}
+              style={{ touchAction: "none" }}
+              aria-label="Cast"
+            >
+              {(charging || inFlight) && (
+                <span className="absolute inset-0 flex items-center justify-center">
+                  {charging ? (
+                    <span className="text-[clamp(9px,1vw,13px)] font-bold text-white drop-shadow">
+                      {Math.round(meter * 100)}%
+                    </span>
+                  ) : (
+                    <Loader2 className="w-6 h-6 text-white animate-spin drop-shadow" />
+                  )}
+                </span>
+              )}
+            </button>
+          )}
           <button onClick={() => setQuestsOpen(true)} className={cn("absolute z-20", HOT.quests)} aria-label="Quests">
             {claimable > 0 && (
               <span className="absolute top-0 right-1 w-3.5 h-3.5 rounded-full bg-red text-white text-[8px] flex items-center justify-center font-bold">
@@ -416,6 +553,41 @@ export default function PlayPage() {
               style={{ left: "80%", top: "71%" }}
             >
               Release to cast!
+            </div>
+          )}
+
+          {/* ── reel-in mini-game HUD ── */}
+          {phase === "reeling" && (
+            <div className="absolute z-20 left-1/2 -translate-x-1/2 top-[16%] w-[38%] max-w-[520px] flex flex-col gap-1.5">
+              <div>
+                <div className="flex justify-between text-[clamp(7px,0.8vw,10px)] text-white/90 mb-0.5">
+                  <span>Line tension</span>
+                  <span className={tension > 85 ? "text-red font-bold" : tension > 72 ? "text-gold" : "text-green"}>
+                    {tension > 85 ? "⚠ DANGER" : tension > 72 ? "Careful" : "Safe"}
+                  </span>
+                </div>
+                <div className="h-2.5 rounded-full bg-black/45 overflow-hidden border border-white/10">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${tension}%`,
+                      background: tension > 85 ? "#F87171" : tension > 72 ? "#F5C66B" : "#3DD598",
+                    }}
+                  />
+                </div>
+              </div>
+              <div>
+                <div className="flex justify-between text-[clamp(7px,0.8vw,10px)] text-white/90 mb-0.5">
+                  <span>Reeling in</span>
+                  <span>{Math.round(progress)}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-black/45 overflow-hidden border border-white/10">
+                  <div className="h-full bg-blue rounded-full" style={{ width: `${progress}%` }} />
+                </div>
+              </div>
+              <p className="text-center text-[clamp(8px,0.9vw,11px)] text-white font-medium mt-0.5 drop-shadow">
+                Hold <span className="text-gold">REEL</span> — ease off when it runs!
+              </p>
             </div>
           )}
         </div>
@@ -593,6 +765,9 @@ export default function PlayPage() {
               <p className="text-[15px] font-mono text-gold mt-2 m-0">+{reveal.gained} points</p>
               {reveal.streakBonus > 0 && (
                 <p className="text-[10px] text-white/70 m-0 mt-1">includes +{reveal.streakBonus} streak bonus 🔥</p>
+              )}
+              {reelRating >= 0.85 && (
+                <p className="text-[10px] text-gold m-0 mt-1 font-semibold">✨ Perfect reel!</p>
               )}
               {reveal.treasure ? (
                 <motion.div
