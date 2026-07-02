@@ -3,33 +3,53 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    function isSignedIn() { return request.auth != null; }
-
-    function isAdmin() {
-      return isSignedIn()
-        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
-        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    // Payment method QR codes — readable by any signed-in user, writable only by admin
-    match /payment-methods/{file} {
+    // Admin = whitelisted console emails OR the app's Firestore isAdmin flag.
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'miniprojectph@gmail.com' ||
+        request.auth.token.email == 'danzbusiness2019@gmail.com' ||
+        (
+          firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)) &&
+          firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.isAdmin == true
+        )
+      );
+    }
+
+    // ===== existing project paths =====
+    match /profile-pictures/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+    match /branding/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /mop/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /logo5.png {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /profile-placeholder.png {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ===== Investure app: Reef game + payments =====
+    match /game-assets/{file} {
       allow read: if isSignedIn();
       allow write: if isAdmin()
-        && request.resource.size < 2 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+        && request.resource.size < 25 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*')
+          || request.resource.contentType.matches('audio/.*'));
     }
-
-    // Top-up receipts — owner uploads their own (path namespaced by userId).
-    // Admin can read all to verify payments. Owner can read their own (to preview).
-    match /receipts/{userId}/{file} {
-      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow write: if isSignedIn() && request.auth.uid == userId
-        && request.resource.size < 5 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
-      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-    }
-
-    // Reef game images (fish + rewards) — signed-in read, admin write
     match /fish/{file} {
       allow read: if isSignedIn();
       allow write: if isAdmin()
@@ -42,20 +62,24 @@ service firebase.storage {
         && request.resource.size < 2 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
-
-    // Game skin assets — images, video, or audio loops (admin write)
-    match /game-assets/{file} {
+    match /payment-methods/{file} {
       allow read: if isSignedIn();
       allow write: if isAdmin()
-        && request.resource.size < 25 * 1024 * 1024
-        && (request.resource.contentType.matches('image/.*')
-          || request.resource.contentType.matches('video/.*')
-          || request.resource.contentType.matches('audio/.*'));
+        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+    match /receipts/{userId}/{file} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow write: if isSignedIn() && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
-    // Default deny
+    // ===== catch-all (keep last) =====
     match /{allPaths=**} {
-      allow read, write: if false;
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }
