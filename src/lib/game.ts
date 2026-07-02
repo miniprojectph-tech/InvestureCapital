@@ -274,7 +274,16 @@ export function useGameConfig() {
       doc(db, "settings", "game"),
       (snap) => {
         if (snap.exists()) {
-          setConfig({ ...DEFAULT_GAME_CONFIG, ...(snap.data() as Partial<GameConfig>) });
+          const data = snap.data() as Partial<GameConfig>;
+          setConfig({
+            ...DEFAULT_GAME_CONFIG,
+            ...data,
+            // Deep-merge assets so newly-added default assets (e.g. hud) always
+            // fill in even when Firestore has an older saved assets object.
+            assets: { ...DEFAULT_GAME_CONFIG.assets, ...(data.assets ?? {}) },
+            // Fall back to the 7-tier default rarities if none were saved.
+            rarities: data.rarities?.length ? data.rarities : DEFAULT_GAME_CONFIG.rarities,
+          });
         } else {
           setConfig(DEFAULT_GAME_CONFIG);
         }
