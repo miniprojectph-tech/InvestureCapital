@@ -37,11 +37,11 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // ── Tunable positions over the HUD art (% of the 1672×941 stage). Nudge if art shifts. ──
 const HOT = {
-  cast: "left-[78.5%] top-[75.5%] w-[14%] h-[20%]",
-  quests: "left-[69.2%] top-[10%] w-[6.2%] h-[11%]",
-  ranking: "left-[74.2%] top-[10%] w-[6.2%] h-[11%]",
-  shop: "left-[79.2%] top-[10%] w-[6.2%] h-[11%]",
-  gallery: "left-[0.5%] top-[11%] w-[15.5%] h-[47%]",
+  cast: "left-[83%] top-[75%] w-[15%] h-[23%]",
+  quests: "left-[67.8%] top-[12.5%] w-[6%] h-[9.5%]",
+  ranking: "left-[73.6%] top-[12.5%] w-[6%] h-[9.5%]",
+  shop: "left-[79.4%] top-[12.5%] w-[6%] h-[9.5%]",
+  gallery: "left-[0.5%] top-[16.5%] w-[15.5%] h-[67%]",
 };
 
 export default function PlayPage() {
@@ -302,8 +302,8 @@ export default function PlayPage() {
             <img src={assets.hud} alt="" className="absolute inset-0 w-full h-full object-cover z-10 pointer-events-none" />
           )}
 
-          {/* ── live HUD values (clean glass row in the open sky area) ── */}
-          <div className="absolute z-20 left-1/2 -translate-x-1/2 top-[10.5%] flex items-center gap-1.5">
+          {/* ── live HUD values (sit on the HUD top bar's empty middle) ── */}
+          <div className="absolute z-20 left-[43%] -translate-x-1/2 top-[3.6%] flex items-center gap-1.5">
             <GlassChip>⚡ {energy}/{config.dailyEnergy}</GlassChip>
             <GlassChip>✨ {points.toLocaleString()}</GlassChip>
             {streak > 0 && <GlassChip>🔥 {streak}</GlassChip>}
