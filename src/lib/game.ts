@@ -37,6 +37,7 @@ export type GameAssets = {
   bgSea?: string;
   bgWater?: string;
   bgForeground?: string;
+  hud?: string; // full HUD overlay skin
   // Gear + rod animation states
   rod?: string;
   lure?: string;
@@ -180,6 +181,7 @@ export const DEFAULT_GAME_CONFIG: GameConfig = {
   leaderboardPrizes: [500, 300, 150, 75, 50],
   assets: {
     bgFull: "/reef/bg-fishing-spots.webp",
+    hud: "/reef/hud.webp",
     rod: "/reef/rod.webp",
     lure: "/reef/bobber.webp",
     splash: "/reef/splash-medium.webp",

@@ -49,6 +49,7 @@ const ASSET_GROUPS: AssetGroup[] = [
     fields: [
       { key: "bgFull", label: "Background (image)", hint: "2048×1536", accept: A_IMG },
       { key: "bgVideo", label: "Background (video)", hint: "1920×1080", accept: A_VID },
+      { key: "hud", label: "HUD overlay skin", hint: "16:9", accept: A_IMG },
       { key: "bgSky", label: "Layer · sky", accept: A_IMG },
       { key: "bgSea", label: "Layer · far sea", accept: A_IMG },
       { key: "bgWater", label: "Layer · near water", accept: A_IMG },

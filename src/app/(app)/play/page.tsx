@@ -1,21 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  Loader2,
-  Trophy,
-  Fish as FishIcon,
-  Flame,
-  Sparkles,
-  CheckCircle2,
-  AlertCircle,
-  BookOpen,
-  ScrollText,
-  ChevronLeft,
-  Timer,
-  X,
-} from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, ChevronLeft, X } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { cn } from "@/lib/utils";
@@ -47,18 +35,23 @@ function msToRefill(now: number): string {
 }
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-const AMBIENT = [
-  { emoji: "🐟", top: "58%", dur: 26, delay: 0, size: 18 },
-  { emoji: "🐠", top: "70%", dur: 34, delay: 6, size: 24, rev: true },
-  { emoji: "🐡", top: "82%", dur: 30, delay: 12, size: 20 },
-];
-const CLOUDS = [
-  { top: "8%", dur: 90, delay: 0, scale: 1 },
-  { top: "18%", dur: 130, delay: 20, scale: 0.7 },
-  { top: "4%", dur: 110, delay: 50, scale: 1.3 },
-];
+// ── Tunable positions over the HUD art (% of the 1672×941 stage). Nudge if art shifts. ──
+const HOT = {
+  cast: "left-[78.5%] top-[75.5%] w-[14%] h-[20%]",
+  quests: "left-[69.2%] top-[10%] w-[6.2%] h-[11%]",
+  ranking: "left-[74.2%] top-[10%] w-[6.2%] h-[11%]",
+  shop: "left-[79.2%] top-[10%] w-[6.2%] h-[11%]",
+  gallery: "left-[0.5%] top-[11%] w-[15.5%] h-[47%]",
+};
+const OVER = {
+  name: { left: "10%", top: "3.2%" },
+  energy: { left: "26%", top: "3.6%" },
+  points: { left: "38.5%", top: "3.6%" },
+  streak: { left: "51.5%", top: "3.6%" },
+};
 
 export default function PlayPage() {
+  const router = useRouter();
   const { user, demoMode } = useAuth();
   const { state, loading } = useGameState();
   const { config } = useGameConfig();
@@ -79,24 +72,24 @@ export default function PlayPage() {
   const meterRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const startRef = useRef(0);
+  const ambientRef = useRef<HTMLAudioElement | null>(null);
 
-  // Lightweight clock for countdowns.
   useEffect(() => {
     const t = setInterval(() => setClock(Date.now()), 20_000);
     return () => clearInterval(t);
   }, []);
+  useEffect(() => {
+    return () => {
+      ambientRef.current?.pause();
+      ambientRef.current = null;
+    };
+  }, []);
 
   const fishById = useMemo(() => new Map(fish.map((f) => [f.id, f])), [fish]);
-  const emojiFor = (id: string) => fishById.get(id)?.emoji ?? "🐟";
   const rarityMeta = (rarityId: string) =>
     config.rarities.find((r) => r.id === rarityId) ?? config.rarities[0];
-
   const assets = config.assets ?? {};
-  const fullBg = assets.bgVideo || assets.bgFull;
-  const hasLayers = !!(assets.bgSky || assets.bgSea || assets.bgWater || assets.bgForeground);
-  const noAssetBg = !fullBg && !hasLayers;
 
-  // Render a fish as its uploaded image if present, else the emoji.
   function creature(id: string, size: number) {
     const f = fishById.get(id);
     if (f?.image) {
@@ -110,8 +103,6 @@ export default function PlayPage() {
     );
   }
 
-  // ---- Audio (starts on first user gesture per browser autoplay rules) ----
-  const ambientRef = useRef<HTMLAudioElement | null>(null);
   function playSfx(url?: string, vol = 0.7) {
     if (!url) return;
     try {
@@ -134,12 +125,6 @@ export default function PlayPage() {
       /* ignore */
     }
   }
-  useEffect(() => {
-    return () => {
-      ambientRef.current?.pause();
-      ambientRef.current = null;
-    };
-  }, []);
 
   const today = manilaDay();
   const energy = state?.energy ?? config.dailyEnergy;
@@ -152,7 +137,6 @@ export default function PlayPage() {
   ).length;
   const totalCaught = fish.filter((f) => state?.collection?.[f.id]).length;
 
-  // ---- Cast power meter ----
   function stopRaf() {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
@@ -202,8 +186,6 @@ export default function PlayPage() {
       meterRef.current = 0;
     }
   }
-
-  // Release even if the pointer leaves the button.
   useEffect(() => {
     if (phase !== "charging") return;
     const up = () => releaseCharge();
@@ -242,8 +224,7 @@ export default function PlayPage() {
   const highTierReveal = revealRank >= 0 && legendaryIdx >= 0 && revealRank >= legendaryIdx;
   const casting = phase === "casting";
   const charging = phase === "charging";
-  // lure vertical position: idle bobs near shore, cast flies out toward horizon
-  const lureTop = casting ? 34 : 52;
+  const lureTop = casting ? 60 : 44;
 
   return (
     <div>
@@ -258,155 +239,27 @@ export default function PlayPage() {
 
       {view === "cast" && (
         <div
-          className="relative overflow-hidden rounded-2xl border border-border-strong select-none"
-          style={{ height: "min(72vh, 560px)" }}
+          className="relative w-full mx-auto select-none rounded-2xl overflow-hidden border border-border-strong"
+          style={{ aspectRatio: "1672 / 941" }}
         >
-          {/* ===== uploaded background ===== */}
-          {assets.bgVideo ? (
-            // eslint-disable-next-line jsx-a11y/media-has-caption
-            <video
-              className="absolute inset-0 w-full h-full object-cover"
-              src={assets.bgVideo}
-              autoPlay
-              loop
-              muted
-              playsInline
-            />
-          ) : assets.bgFull ? (
+          {/* background */}
+          {assets.bgFull ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img className="absolute inset-0 w-full h-full object-cover" src={assets.bgFull} alt="" />
-          ) : hasLayers ? (
-            <>
-              {[assets.bgSky, assets.bgSea, assets.bgWater, assets.bgForeground].map(
-                (u, i) =>
-                  u ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img key={i} className="absolute inset-0 w-full h-full object-cover" src={u} alt="" />
-                  ) : null
-              )}
-            </>
-          ) : null}
-
-          {noAssetBg && (
-          <>
-          {/* ===== SKY ===== */}
-          <div
-            className="absolute inset-x-0 top-0"
-            style={{
-              height: "52%",
-              background: "linear-gradient(180deg,#3aa0c9 0%,#6cc3dd 45%,#a7e0ec 100%)",
-            }}
-          >
-            {/* sun */}
+            <img src={assets.bgFull} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
             <div
-              className="absolute rounded-full"
-              style={{
-                top: "8%",
-                right: "12%",
-                width: 90,
-                height: 90,
-                background: "radial-gradient(circle,#fff6cf,rgba(255,246,207,0) 70%)",
-              }}
-            />
-            {CLOUDS.map((c, i) => (
-              <div
-                key={i}
-                className="absolute rounded-full bg-white/80"
-                style={{
-                  top: c.top,
-                  left: "-20%",
-                  width: 120 * c.scale,
-                  height: 34 * c.scale,
-                  filter: "blur(6px)",
-                  animation: `reef-swim ${c.dur}s linear ${c.delay}s infinite`,
-                }}
-              />
-            ))}
-          </div>
-
-          {/* ===== WATER ===== */}
-          <div
-            className="absolute inset-x-0"
-            style={{
-              top: "46%",
-              bottom: 0,
-              background: "linear-gradient(180deg,#2bb6c4 0%,#158aa3 40%,#0c5f79 75%,#083c50 100%)",
-            }}
-          >
-            {/* sun reflection column */}
-            <div
-              className="absolute top-0 bottom-0"
-              style={{
-                right: "16%",
-                width: 70,
-                background: "linear-gradient(180deg,rgba(255,246,207,0.5),transparent 60%)",
-                filter: "blur(4px)",
-              }}
-            />
-            {/* shimmer lines */}
-            {[20, 40, 60, 80].map((top, i) => (
-              <div
-                key={i}
-                className="absolute inset-x-0 h-px bg-white/20"
-                style={{ top: `${top}%`, animation: `reef-ray ${5 + i}s ease-in-out ${i}s infinite` }}
-              />
-            ))}
-            {/* ambient fish */}
-            {AMBIENT.map((a, i) => (
-              <span
-                key={i}
-                className="absolute opacity-40 pointer-events-none"
-                style={{
-                  top: a.top,
-                  left: 0,
-                  fontSize: a.size,
-                  animation: `${a.rev ? "reef-swim-rev" : "reef-swim"} ${a.dur}s linear ${a.delay}s infinite`,
-                }}
-                aria-hidden
-              >
-                {a.emoji}
-              </span>
-            ))}
-            {/* bubbles */}
-            {Array.from({ length: 12 }).map((_, i) => {
-              const size = 4 + (i % 4) * 3;
-              return (
-                <span
-                  key={i}
-                  className="absolute rounded-full bg-white/25 pointer-events-none"
-                  style={{
-                    bottom: 20,
-                    left: `${(i * 8 + 5) % 96}%`,
-                    width: size,
-                    height: size,
-                    animation: `reef-bubble ${5 + (i % 5)}s linear ${(i % 6) * 0.8}s infinite`,
-                  }}
-                  aria-hidden
-                />
-              );
-            })}
-          </div>
-
-          </>
-          )}
-
-          {/* uploaded rod */}
-          {assets.rod && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={assets.rod}
-              alt=""
-              className="absolute bottom-10 left-4 w-16 z-[4] pointer-events-none object-contain"
+              className="absolute inset-0"
+              style={{ background: "linear-gradient(180deg,#3aa0c9,#0c5f79 60%,#05121f)" }}
             />
           )}
 
-          {/* ===== FISHING LINE + LURE ===== */}
+          {/* line + lure + splash in the open center */}
           <div
-            className="absolute left-[46%] w-px bg-white/50"
-            style={{ top: 0, height: `${lureTop}%`, transition: "height 0.6s cubic-bezier(0.4,0,0.2,1)" }}
+            className="absolute left-1/2 top-0 w-px bg-white/50"
+            style={{ height: `${lureTop}%`, transition: "height 0.6s cubic-bezier(0.4,0,0.2,1)" }}
           />
           <div
-            className="absolute left-[46%] -translate-x-1/2"
+            className="absolute left-1/2 -translate-x-1/2"
             style={{
               top: `${lureTop}%`,
               transition: "top 0.6s cubic-bezier(0.4,0,0.2,1)",
@@ -415,149 +268,103 @@ export default function PlayPage() {
           >
             {assets.lure ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={assets.lure} alt="" className="w-7 h-7 object-contain" />
+              <img src={assets.lure} alt="" className="w-[3vw] max-w-[34px] object-contain" />
             ) : (
-              <div className="w-3.5 h-3.5 rounded-full bg-gold shadow-[0_0_10px_rgba(61,213,152,0.8)] border-2 border-white/80" />
+              <div className="w-3.5 h-3.5 rounded-full bg-gold border-2 border-white/80" />
             )}
             {casting && (
               <>
-                <span
-                  className="absolute left-1/2 top-3 w-12 h-2.5 rounded-[50%] border border-white/60"
-                  style={{ animation: "reef-ripple 0.7s ease-out" }}
-                />
-                <span
-                  className="absolute left-1/2 top-3 w-12 h-2.5 rounded-[50%] border border-white/40"
-                  style={{ animation: "reef-ripple 0.7s ease-out 0.25s" }}
-                />
+                {assets.splash ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={assets.splash}
+                    alt=""
+                    className="absolute left-1/2 -translate-x-1/2 top-2 w-[7vw] max-w-[90px] object-contain"
+                    style={{ animation: "reef-glow-pulse 0.7s ease-out" }}
+                  />
+                ) : (
+                  <span
+                    className="absolute left-1/2 top-3 w-12 h-2.5 rounded-[50%] border border-white/60"
+                    style={{ animation: "reef-ripple 0.7s ease-out" }}
+                  />
+                )}
               </>
             )}
           </div>
 
-          {/* ===== FOREGROUND DECK (only when no uploaded background) ===== */}
-          {noAssetBg && (
-          <div
-            className="absolute inset-x-0 bottom-0 h-16"
-            style={{ background: "linear-gradient(180deg,#6b4426 0%,#3f2714 100%)" }}
-          >
-            <div className="absolute inset-x-0 top-0 h-1 bg-[#8a5a30]" />
-            <div className="flex items-start justify-around px-2">
-              {["🌿", "🌿", "🪸", "🌿", "🐚", "🌿", "🪸", "🌿"].map((s, i) => (
-                <span
-                  key={i}
-                  className="-mt-2 opacity-80"
-                  style={{
-                    fontSize: 18 + (i % 3) * 6,
-                    transformOrigin: "bottom center",
-                    animation: `reef-sway ${3 + (i % 4)}s ease-in-out ${i * 0.3}s infinite`,
-                  }}
-                  aria-hidden
-                >
-                  {s}
-                </span>
-              ))}
-            </div>
-          </div>
-          )}
-
-          {/* ===== HUD: top-left currency + refill ===== */}
-          <div className="absolute top-3 left-3 z-10 flex flex-col gap-1.5">
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-black/40 backdrop-blur-sm border border-white/15">
-              <Sparkles className="w-3.5 h-3.5 text-vault" />
-              <span className="text-[13px] font-mono font-medium text-white">{points.toLocaleString()}</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/30 backdrop-blur-sm border border-white/10">
-              <Timer className="w-3 h-3 text-white/70" />
-              <span className="text-[10px] text-white/80">New casts in {msToRefill(clock)}</span>
-            </div>
-          </div>
-
-          {/* streak top-center */}
-          {streak > 0 && (
-            <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/40 backdrop-blur-sm border border-white/15">
-              <Flame className="w-3.5 h-3.5 text-gold" />
-              <span className="text-[11px] text-white font-medium">{streak} day streak</span>
-            </div>
-          )}
-
-          {/* right-side buttons */}
-          <div className="absolute top-3 right-3 z-10 flex flex-col gap-2">
-            <SceneButton icon={<ScrollText className="w-4 h-4" />} label="Tasks" badge={claimable} onClick={() => setQuestsOpen(true)} />
-            <SceneButton icon={<Trophy className="w-4 h-4" />} label="Ranking" onClick={() => setView("leaderboard")} />
-          </div>
-
           {/* fish of the hour */}
           {fothActive && (
-            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-sm border border-border-gold">
-              <span className="text-base">{emojiFor(foth!.fishId)}</span>
-              <span className="text-[10px] text-gold font-medium">
+            <div className="absolute left-1/2 top-[23%] -translate-x-1/2 z-20 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/45 backdrop-blur-sm border border-border-gold">
+              {creature(foth!.fishId, 20)}
+              <span className="text-[clamp(8px,0.9vw,11px)] text-gold font-medium">
                 Fish of the hour: {foth!.fishName} · {Math.max(0, Math.round((foth!.endsAt - clock) / 60000))}m
               </span>
             </div>
           )}
 
-          {/* gallery bottom-left */}
-          <button
-            onClick={() => setView("collection")}
-            className="absolute bottom-20 left-3 z-10 flex flex-col items-center gap-0.5"
-          >
-            <span className="w-11 h-11 rounded-xl bg-black/40 backdrop-blur-sm border border-white/15 flex items-center justify-center text-gold">
-              <BookOpen className="w-5 h-5" />
-            </span>
-            <span className="text-[9px] text-white/80 font-mono">
-              {totalCaught}/{fish.length}
-            </span>
-          </button>
+          {/* HUD overlay skin */}
+          {assets.hud && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={assets.hud} alt="" className="absolute inset-0 w-full h-full object-cover z-10 pointer-events-none" />
+          )}
 
-          {/* ===== CAST BUTTON + POWER METER (bottom-right) ===== */}
-          <div className="absolute bottom-20 right-3 z-10 flex items-end gap-2">
-            {/* power meter */}
-            <div className="h-24 w-2.5 rounded-full bg-black/40 border border-white/15 overflow-hidden relative self-center">
-              <div
-                className="absolute inset-x-0 bottom-0 rounded-full"
-                style={{
-                  height: `${(charging ? meter : 0) * 100}%`,
-                  background: "linear-gradient(180deg,#F5C66B,#3DD598)",
-                  transition: charging ? "none" : "height 0.2s",
-                }}
-              />
-            </div>
-            <div className="flex flex-col items-center">
-              <div className="relative">
-                <span
-                  className="absolute inset-0 rounded-full bg-gold/40 blur-md"
-                  style={{ animation: "reef-glow-pulse 2.4s ease-in-out infinite" }}
-                  aria-hidden
-                />
-                <button
-                  onPointerDown={startCharge}
-                  onPointerUp={releaseCharge}
-                  disabled={casting || (energy <= 0 && !charging)}
-                  className={cn(
-                    "relative w-20 h-20 rounded-full text-gold-dark font-semibold flex flex-col items-center justify-center gap-0.5 transition disabled:opacity-50 shadow-lg shadow-black/40 border-4 border-white/60",
-                    charging ? "bg-gold scale-95" : "bg-gold hover:brightness-110"
-                  )}
-                  style={{ touchAction: "none" }}
-                >
-                  {casting ? (
-                    <Loader2 className="w-6 h-6 animate-spin" />
-                  ) : charging ? (
-                    <span className="text-[11px]">Release!</span>
-                  ) : (
-                    <>
-                      <FishIcon className="w-6 h-6" />
-                      <span className="text-[9px]">Cast</span>
-                    </>
-                  )}
-                </button>
-                <span className="absolute -bottom-1 -right-1 text-[10px] font-mono font-bold bg-black/70 text-white px-1.5 py-0.5 rounded-full border border-white/20">
-                  x{energy}
-                </span>
-              </div>
-              <p className="text-[9px] text-white/70 mt-2 m-0 text-center max-w-[90px]">
-                {charging ? "Release to cast!" : "Hold to power up"}
-              </p>
-            </div>
+          {/* ── live value overlays (mask the baked numbers) ── */}
+          <StageChip style={OVER.name}>{user?.name?.split(" ")[0] ?? "Angler"}</StageChip>
+          <StageChip style={OVER.energy}>
+            ⚡ {energy}/{config.dailyEnergy}
+          </StageChip>
+          <StageChip style={OVER.points}>{points.toLocaleString()}</StageChip>
+          <StageChip style={OVER.streak}>{streak}🔥</StageChip>
+
+          {/* refill countdown under the top bar */}
+          <div
+            className="absolute z-20 text-[clamp(7px,0.8vw,10px)] text-white/80 bg-black/35 px-2 py-0.5 rounded-full"
+            style={{ left: "26%", top: "9.5%" }}
+          >
+            New casts in {msToRefill(clock)}
           </div>
+
+          {/* ── interactive hotspots (over the HUD art) ── */}
+          <button
+            onPointerDown={startCharge}
+            onPointerUp={releaseCharge}
+            disabled={casting || (energy <= 0 && !charging)}
+            className={cn("absolute z-20 rounded-full", HOT.cast)}
+            style={{ touchAction: "none" }}
+            aria-label="Cast"
+          >
+            {(charging || casting) && (
+              <span className="absolute inset-0 flex items-center justify-center">
+                {casting ? (
+                  <Loader2 className="w-6 h-6 text-white animate-spin drop-shadow" />
+                ) : (
+                  <span className="text-[clamp(9px,1vw,13px)] font-bold text-white drop-shadow">
+                    {Math.round(meter * 100)}%
+                  </span>
+                )}
+              </span>
+            )}
+          </button>
+          <button onClick={() => setQuestsOpen(true)} className={cn("absolute z-20", HOT.quests)} aria-label="Quests">
+            {claimable > 0 && (
+              <span className="absolute top-0 right-1 w-3.5 h-3.5 rounded-full bg-red text-white text-[8px] flex items-center justify-center font-bold">
+                {claimable}
+              </span>
+            )}
+          </button>
+          <button onClick={() => setView("leaderboard")} className={cn("absolute z-20", HOT.ranking)} aria-label="Ranking" />
+          <button onClick={() => router.push("/rewards")} className={cn("absolute z-20", HOT.shop)} aria-label="Shop" />
+          <button onClick={() => setView("collection")} className={cn("absolute z-20", HOT.gallery)} aria-label="Collection" />
+
+          {/* charge hint */}
+          {charging && (
+            <div
+              className="absolute z-20 text-[clamp(8px,0.9vw,12px)] text-white font-medium bg-black/50 px-2 py-0.5 rounded-full"
+              style={{ left: "80%", top: "71%" }}
+            >
+              Release to cast!
+            </div>
+          )}
         </div>
       )}
 
@@ -601,7 +408,7 @@ export default function PlayPage() {
         </div>
       )}
 
-      {/* ===== Quests drawer ===== */}
+      {/* Quests drawer */}
       <AnimatePresence>
         {questsOpen && (
           <motion.div
@@ -666,7 +473,7 @@ export default function PlayPage() {
         )}
       </AnimatePresence>
 
-      {/* ===== Reveal overlay ===== */}
+      {/* Reveal overlay */}
       <AnimatePresence>
         {reveal && (
           <motion.div
@@ -692,33 +499,19 @@ export default function PlayPage() {
               className="relative flex flex-col items-center text-center"
               onClick={(e) => e.stopPropagation()}
             >
-              {assets.revealRays ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={assets.revealRays}
-                  alt=""
-                  className="absolute -z-10 w-80 h-80 object-contain"
-                  style={{ animation: "reef-spin 10s linear infinite", opacity: 0.85 }}
-                />
-              ) : (
-                <div
-                  className="absolute -z-10 w-72 h-72 rounded-full"
-                  style={{
-                    background: `conic-gradient(from 0deg, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00)`,
-                    filter: "blur(2px)",
-                    animation: "reef-spin 9s linear infinite",
-                    opacity: 0.55,
-                  }}
-                />
-              )}
+              <div
+                className="absolute -z-10 w-72 h-72 rounded-full"
+                style={{
+                  background: `conic-gradient(from 0deg, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00)`,
+                  filter: "blur(2px)",
+                  animation: "reef-spin 9s linear infinite",
+                  opacity: 0.55,
+                }}
+              />
               <div
                 className="absolute -z-10 w-52 h-52 rounded-full"
                 style={{ background: `radial-gradient(circle, ${reveal.rarity.color}44, transparent 70%)` }}
               />
-              {reveal.rarity.frame && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={reveal.rarity.frame} alt="" className="absolute -z-10 w-64 h-64 object-contain" />
-              )}
               {reveal.isFoth && (
                 <p className="text-[11px] text-gold m-0 mb-1 font-semibold tracking-wide">🔥 FISH OF THE HOUR</p>
               )}
@@ -733,7 +526,7 @@ export default function PlayPage() {
                 animate={{ rotate: [-8, 6, -4, 0] }}
                 transition={{ duration: 0.7 }}
               >
-                {creature(reveal.fish.id, 110)}
+                {creature(reveal.fish.id, 150)}
               </motion.div>
               <p
                 className="text-[11px] uppercase tracking-[0.2em] m-0 mt-1 font-semibold"
@@ -764,29 +557,14 @@ export default function PlayPage() {
   );
 }
 
-function SceneButton({
-  icon,
-  label,
-  badge,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  badge?: number;
-  onClick: () => void;
-}) {
+function StageChip({ style, children }: { style: { left: string; top: string }; children: React.ReactNode }) {
   return (
-    <button onClick={onClick} className="flex flex-col items-center gap-0.5">
-      <span className="relative w-11 h-11 rounded-xl bg-black/40 backdrop-blur-sm border border-white/15 flex items-center justify-center text-gold">
-        {icon}
-        {badge && badge > 0 ? (
-          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red text-white text-[9px] flex items-center justify-center font-bold">
-            {badge}
-          </span>
-        ) : null}
-      </span>
-      <span className="text-[9px] text-white/80">{label}</span>
-    </button>
+    <div
+      className="absolute z-20 flex items-center leading-none text-[clamp(8px,1vw,13px)] font-mono font-semibold text-white bg-[#0b1a33]/90 border border-[#2a4a7a] rounded-md px-1.5 py-0.5"
+      style={style}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -838,7 +616,7 @@ function CollectionBook({
                     <div
                       key={f.id}
                       className={cn(
-                        "aspect-square rounded-lg border flex flex-col items-center justify-center gap-0.5 relative transition",
+                        "aspect-square rounded-lg border flex flex-col items-center justify-center gap-0.5 relative transition p-1",
                         have ? "bg-canvas" : "bg-card-elev/40 opacity-40"
                       )}
                       style={{
@@ -849,7 +627,7 @@ function CollectionBook({
                     >
                       {have && f.image ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={f.image} alt={f.name} className="w-8 h-8 object-contain" />
+                        <img src={f.image} alt={f.name} className="w-10 h-10 object-contain" />
                       ) : (
                         <span className="text-2xl select-none" aria-hidden>
                           {have ? f.emoji ?? "🐟" : "❔"}
