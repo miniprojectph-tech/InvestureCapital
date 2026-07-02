@@ -21,10 +21,8 @@ const COIN_MAP: Record<string, string> = {
   NEAR: "near",
 };
 
-const ENDPOINT =
-  "https://api.coingecko.com/api/v3/simple/price?ids=" +
-  Object.values(COIN_MAP).join(",") +
-  "&vs_currencies=usd&include_24hr_change=true";
+// Same-origin proxy (src/app/api/tickers) — avoids CoinGecko CORS + 429s.
+const ENDPOINT = "/api/tickers";
 
 export type LiveTicker = CoinTicker & {
   direction: "up" | "down" | "flat";
