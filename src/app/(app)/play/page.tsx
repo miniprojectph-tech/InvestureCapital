@@ -20,7 +20,9 @@ import {
 } from "@/lib/game";
 
 type View = "cast" | "collection" | "leaderboard";
-type Phase = "idle" | "charging" | "casting" | "waiting" | "bite" | "reeling";
+type Phase = "idle" | "charging" | "casting" | "waiting" | "biting" | "reeling" | "landing";
+type BiteStage = "nibble" | "test" | "aggressive";
+type AiState = "swim" | "run" | "dive" | "jump";
 
 function manilaDay(ts = Date.now()): string {
   return new Date(ts + 8 * 3_600_000).toISOString().slice(0, 10);
@@ -34,6 +36,14 @@ function msToRefill(now: number): string {
   return `${h}h ${m}m`;
 }
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+function vibrate(p: number | number[]) {
+  try {
+    navigator.vibrate?.(p);
+  } catch {
+    /* unsupported */
+  }
+}
 
 // ── Tunable positions over the HUD art (% of the 1672×941 stage). Nudge if art shifts. ──
 const HOT = {
@@ -62,6 +72,36 @@ const PANEL = {
   weightTop: "49.2%",
   recordTop: "55%",
 };
+// ── Reel Phase-2 tunables ──────────────────────────────────────────────
+// Bite sub-stage durations (ms). The hookset window opens at the start of the
+// "aggressive" stage; a tap inside it is a perfect hook. Missing it auto-hooks.
+const BITE = { nibble: 750, test: 650, aggressive: 950, hooksetWindow: 520 };
+// Fish-fight rates. Progress always climbs to 100 (you always land the catch);
+// these only shape rhythm + the tension bar. Rates are per second.
+const FISHAI = {
+  reelGain: 30, // progress while holding, neutral (÷ difficulty)
+  runReelGain: 9, // progress while holding during a run (fish resists)
+  tensionUp: 27, // tension gain while holding, neutral
+  tensionRun: 66, // tension gain while holding during a run
+  tensionDecay: 46, // tension shed when you ease off
+  runPull: 24, // tension the fish adds on its own during a run
+  careful: 72,
+  danger: 86,
+};
+// Reveal cinematics per rarity index (0 common … 6 divine). Color comes from the
+// rarity itself; these scale the theatrics on top.
+const REVEAL_TIERS = [
+  { rays: 0.0, particles: 0, shake: 0, bg: false }, // common
+  { rays: 0.18, particles: 6, shake: 0, bg: false }, // uncommon
+  { rays: 0.45, particles: 12, shake: 0, bg: false }, // rare (blue)
+  { rays: 0.65, particles: 18, shake: 3, bg: false }, // epic (purple)
+  { rays: 0.9, particles: 26, shake: 6, bg: true }, // legendary (gold)
+  { rays: 1.0, particles: 36, shake: 9, bg: true }, // mythic
+  { rays: 1.0, particles: 48, shake: 12, bg: true }, // divine
+];
+const tierFor = (idx: number) => REVEAL_TIERS[Math.min(Math.max(idx, 0), 6)];
+// A clean reel (green-time ratio ≥ this) keeps the combo alive.
+const COMBO = { cleanRating: 0.82 };
 
 export default function PlayPage() {
   const router = useRouter();
@@ -96,6 +136,21 @@ export default function PlayPage() {
   const pendingCatchRef = useRef<CastResult | null>(null);
   const greenTimeRef = useRef(0);
   const totalTimeRef = useRef(0);
+  // Phase-2: bite stages, fish AI, combo, juice
+  const [biteStage, setBiteStage] = useState<BiteStage | null>(null);
+  const [aiState, setAiState] = useState<AiState>("swim");
+  const [fishPos, setFishPos] = useState({ x: LAND.x, y: LAND.y });
+  const [hooked, setHooked] = useState<CastResult["fish"] | null>(null);
+  const [combo, setCombo] = useState(0);
+  const [perfectHook, setPerfectHook] = useState(false);
+  const [shaking, setShaking] = useState(false);
+  const [shakePx, setShakePx] = useState(0);
+  const [portraitHint, setPortraitHint] = useState(false);
+  const [hintDismissed, setHintDismissed] = useState(false);
+  const perfectHookRef = useRef(false);
+  const hooksetArmedRef = useRef(false);
+  const biteTimersRef = useRef<number[]>([]);
+  const fishRef = useRef({ x: LAND.x, y: LAND.y, state: "swim" as AiState, dir: 1 });
   const [reveal, setReveal] = useState<CastResult | null>(null);
   const [isNewCatch, setIsNewCatch] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,8 +176,29 @@ export default function PlayPage() {
       ambientRef.current = null;
     };
   }, []);
+  // Landscape-first: nudge portrait phones to rotate for the full reef stage.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(orientation: portrait) and (max-width: 900px)");
+    const apply = () => setPortraitHint(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
 
   const fishById = useMemo(() => new Map(fish.map((f) => [f.id, f])), [fish]);
+  // Pre-computed particle burst for the reveal (stable across re-renders).
+  const revealBurst = useMemo(() => {
+    if (!reveal) return [] as { id: number; dx: number; dy: number; delay: number }[];
+    const idx = Math.max(0, config.rarities.findIndex((r) => r.id === reveal.fish.rarity));
+    const n = tierFor(idx).particles;
+    return Array.from({ length: n }, (_, i) => {
+      const a = (i / Math.max(1, n)) * Math.PI * 2 + Math.random() * 0.6;
+      const d = 90 + Math.random() * 150;
+      return { id: i, dx: Math.cos(a) * d, dy: Math.sin(a) * d, delay: Math.random() * 0.2 };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal, config.rarities]);
   const rarityMeta = (rarityId: string) =>
     config.rarities.find((r) => r.id === rarityId) ?? config.rarities[0];
   const assets = config.assets ?? {};
@@ -222,63 +298,150 @@ export default function PlayPage() {
       setPhase("idle");
       return;
     }
-    await wait(400 + Math.random() * 500); // fish decides to bite
-    setPhase("bite"); // aggressive bite — rod bends sharply
-    playSfx(assets.biteSfx);
-    await wait(550);
-    startReel(res); // hand off to the interactive reel-in
+    await wait(400 + Math.random() * 500); // fish approaches
+    runBiteSequence(res); // nibble → test → aggressive, then reel
   }
 
-  // ── Interactive reel-in: hold Reel to deplete the fish; keep tension out of red ──
-  function startReel(res: CastResult) {
+  function clearBiteTimers() {
+    biteTimersRef.current.forEach((id) => clearTimeout(id));
+    biteTimersRef.current = [];
+  }
+
+  // ── Bite stages: nibble → test → aggressive. Tapping inside the aggressive
+  // window sets a perfect hook (calmer reel start); missing it auto-hooks. The
+  // catch is already decided server-side, so the hookset only affects feel. ──
+  function runBiteSequence(res: CastResult) {
     pendingCatchRef.current = res;
+    perfectHookRef.current = false;
+    hooksetArmedRef.current = false;
+    setPerfectHook(false);
+    setPhase("biting");
+    setBiteStage("nibble");
+    playSfx(assets.fxNibble ?? assets.biteSfx, 0.5);
+    vibrate(15);
+    const T = biteTimersRef.current;
+    T.push(
+      window.setTimeout(() => {
+        setBiteStage("test");
+        playSfx(assets.biteSfx, 0.6);
+        vibrate(25);
+      }, BITE.nibble)
+    );
+    T.push(
+      window.setTimeout(() => {
+        setBiteStage("aggressive");
+        playSfx(assets.fxBigBite ?? assets.biteSfx, 0.85);
+        vibrate([30, 40, 30]);
+        hooksetArmedRef.current = true;
+        T.push(window.setTimeout(() => (hooksetArmedRef.current = false), BITE.hooksetWindow));
+        T.push(window.setTimeout(() => startReel(res), BITE.aggressive)); // auto-hook if missed
+      }, BITE.nibble + BITE.test)
+    );
+  }
+
+  function tryHookset() {
+    if (phase !== "biting" || biteStage !== "aggressive") return;
+    if (hooksetArmedRef.current) {
+      perfectHookRef.current = true;
+      setPerfectHook(true);
+      playSfx(assets.fxPerfectHook ?? assets.catchSfx, 0.5);
+      vibrate(60);
+    }
+    clearBiteTimers();
+    hooksetArmedRef.current = false;
+    startReel(pendingCatchRef.current!);
+  }
+
+  // ── Interactive reel-in with fish AI. Hold to reel; ease off when it runs.
+  // One rAF drives tension, progress and the fish's swim/run/dive/jump. Progress
+  // always reaches 100 — you always land what the server already hooked. ──
+  function startReel(res: CastResult) {
+    clearBiteTimers();
+    pendingCatchRef.current = res;
+    setHooked(res.fish);
+    setBiteStage(null);
     progressRef.current = 0;
-    tensionRef.current = 0;
+    tensionRef.current = perfectHookRef.current ? 0 : 14; // perfect hook = calmer start
     greenTimeRef.current = 0;
     totalTimeRef.current = 0;
     reelHoldRef.current = false;
     setProgress(0);
-    setTension(0);
+    setTension(tensionRef.current);
     setPhase("reeling");
+    vibrate(20);
 
     const rarityIdx = Math.max(0, config.rarities.findIndex((r) => r.id === res.fish.rarity));
     const difficulty = 1 + rarityIdx * 0.35; // rarer = tougher / longer fight
+    const fish = fishRef.current;
+    fish.x = LAND.x;
+    fish.y = LAND.y;
+    fish.state = "swim";
+    fish.dir = Math.random() < 0.5 ? -1 : 1;
+    setFishPos({ x: LAND.x, y: LAND.y });
+    setAiState("swim");
+
     let last = performance.now();
-    let running = false;
-    let runEnd = 0;
-    let nextRun = last + 800 + Math.random() * 700;
+    let stateEnd = last + 700 + Math.random() * 600;
+
+    const nextState = (t: number, pr: number) => {
+      const roll = Math.random();
+      const aggro = Math.min(0.78, 0.24 + rarityIdx * 0.08 + pr / 320);
+      if (roll < aggro * 0.5) {
+        fish.state = "run";
+        fish.dir = Math.random() < 0.5 ? -1 : 1;
+        stateEnd = t + 450 + Math.random() * 500;
+        vibrate(35);
+      } else if (roll < aggro * 0.78) {
+        fish.state = "dive";
+        stateEnd = t + 500 + Math.random() * 450;
+      } else if (roll < aggro && pr > 25) {
+        fish.state = "jump";
+        stateEnd = t + 620;
+        vibrate([20, 30]);
+      } else {
+        fish.state = "swim";
+        stateEnd = t + 600 + Math.random() * 700;
+      }
+      setAiState(fish.state);
+    };
 
     const loop = (t: number) => {
-      const dt = Math.min(0.06, (t - last) / 1000);
+      const dt = Math.min(0.05, (t - last) / 1000);
       last = t;
       totalTimeRef.current += dt;
-      if (!running && t > nextRun) {
-        running = true;
-        runEnd = t + 400 + Math.random() * 500;
-      }
-      if (running && t > runEnd) {
-        running = false;
-        nextRun = t + 700 + Math.random() * 900;
-      }
+      if (t > stateEnd) nextState(t, progressRef.current);
+      const running = fish.state === "run";
+      const diving = fish.state === "dive";
       let tn = tensionRef.current;
       let pr = progressRef.current;
       const hold = reelHoldRef.current;
       if (hold) {
-        // reeling gains progress but builds tension; slows during a fish run
-        // and when tension is high (near snapping).
-        pr += ((running ? 10 : 30) / difficulty) * dt * (tn > 85 ? 0.35 : 1);
-        tn += (running ? 62 : 26) * dt;
+        const gain =
+          (running ? FISHAI.runReelGain : diving ? FISHAI.reelGain * 0.6 : FISHAI.reelGain) / difficulty;
+        pr += gain * dt * (tn > FISHAI.danger ? 0.3 : 1);
+        tn += (running ? FISHAI.tensionRun : diving ? FISHAI.tensionUp * 1.2 : FISHAI.tensionUp) * dt;
       } else {
-        tn -= 44 * dt;
-        if (running) tn += 26 * dt; // fish pulls even when you're not reeling
+        tn -= FISHAI.tensionDecay * dt;
+        if (running) tn += FISHAI.runPull * dt; // fish pulls even when you ease off
       }
-      tn = Math.max(0, Math.min(100, tn));
-      pr = Math.max(0, Math.min(100, pr));
-      if (tn < 72) greenTimeRef.current += dt;
+      tn = clamp(tn, 0, 100);
+      pr = clamp(pr, 0, 100);
+      if (tn < FISHAI.careful) greenTimeRef.current += dt;
       tensionRef.current = tn;
       progressRef.current = pr;
       setTension(tn);
       setProgress(pr);
+
+      // Fish shadow drifts from the landing spot toward the rod as it tires.
+      const bx = lerp(LAND.x, TIP.x, pr / 100);
+      const by = lerp(LAND.y, TIP.y, pr / 100);
+      const wob = Math.sin(t / 200) * 1.1;
+      const ox = running ? fish.dir * 5 : 0;
+      const oy = diving ? 5 : fish.state === "jump" ? -6 : 0;
+      fish.x = bx + ox + wob;
+      fish.y = by + oy;
+      setFishPos({ x: fish.x, y: fish.y });
+
       if (pr >= 100) {
         finishReel();
         return;
@@ -288,6 +451,12 @@ export default function PlayPage() {
     reelRafRef.current = requestAnimationFrame(loop);
   }
 
+  function triggerShake(px: number) {
+    setShakePx(px);
+    setShaking(false);
+    requestAnimationFrame(() => setShaking(true));
+  }
+
   function finishReel() {
     if (reelRafRef.current) cancelAnimationFrame(reelRafRef.current);
     reelRafRef.current = null;
@@ -295,32 +464,45 @@ export default function PlayPage() {
     const res = pendingCatchRef.current;
     const rating = totalTimeRef.current > 0 ? greenTimeRef.current / totalTimeRef.current : 1;
     setReelRating(rating);
-    if (res) {
-      setIsNewCatch(!state?.collection?.[res.fish.id]);
-      // Cosmetic weight for the panel, scaled by rarity.
-      const rIdx = Math.max(0, config.rarities.findIndex((r) => r.id === res.fish.rarity));
-      const rarity = config.rarities.find((r) => r.id === res.fish.rarity) ?? config.rarities[0];
-      const base = [1.5, 3, 6, 15, 40, 90, 220][Math.min(rIdx, 6)] ?? 5;
-      const weight = Math.round(base * (0.6 + Math.random() * 0.9) * 10) / 10;
-      setLastCatch({ fishId: res.fish.id, name: res.fish.name, rarityLabel: rarity.label, color: rarity.color, weight });
-      setBestRecord((prev) => {
-        const nb = Math.max(prev, weight);
-        try {
-          localStorage.setItem("reef-best-weight", String(nb));
-        } catch {
-          /* ignore */
-        }
-        return nb;
-      });
+    const clean = rating >= COMBO.cleanRating;
+    setCombo((c) => (clean ? c + 1 : 0));
+    if (!res) {
+      setPhase("idle");
+      return;
+    }
+    setIsNewCatch(!state?.collection?.[res.fish.id]);
+    // Cosmetic weight for the panel, scaled by rarity.
+    const rIdx = Math.max(0, config.rarities.findIndex((r) => r.id === res.fish.rarity));
+    const rarity = config.rarities.find((r) => r.id === res.fish.rarity) ?? config.rarities[0];
+    const base = [1.5, 3, 6, 15, 40, 90, 220][Math.min(rIdx, 6)] ?? 5;
+    const weight = Math.round(base * (0.6 + Math.random() * 0.9) * 10) / 10;
+    setLastCatch({ fishId: res.fish.id, name: res.fish.name, rarityLabel: rarity.label, color: rarity.color, weight });
+    setBestRecord((prev) => {
+      const nb = Math.max(prev, weight);
+      try {
+        localStorage.setItem("reef-best-weight", String(nb));
+      } catch {
+        /* ignore */
+      }
+      return nb;
+    });
+    // A short "fish surfaces" beat before the cinematic reveal.
+    setPhase("landing");
+    vibrate(clean ? [40, 30, 60] : 40);
+    const tier = tierFor(rIdx);
+    window.setTimeout(() => {
+      if (tier.shake > 0) triggerShake(tier.shake);
       playSfx(assets.catchSfx);
       setReveal(res);
-    }
-    setPhase("idle");
+      setPhase("idle");
+      setHooked(null);
+    }, 460);
   }
 
   useEffect(() => {
     return () => {
       if (reelRafRef.current) cancelAnimationFrame(reelRafRef.current);
+      biteTimersRef.current.forEach((id) => clearTimeout(id));
     };
   }, []);
   useEffect(() => {
@@ -405,12 +587,13 @@ export default function PlayPage() {
 
   const fothActive = foth && foth.endsAt > clock;
   const revealRank = reveal ? config.rarities.findIndex((r) => r.id === reveal.fish.rarity) : -1;
-  const legendaryIdx = config.rarities.findIndex((r) => r.id === "legendary");
-  const highTierReveal = revealRank >= 0 && legendaryIdx >= 0 && revealRank >= legendaryIdx;
+  const revealTier = revealRank >= 0 ? tierFor(revealRank) : REVEAL_TIERS[0];
+  const showHint = portraitHint && !hintDismissed && view === "cast";
   const charging = phase === "charging";
   const inFlight = phase !== "idle" && phase !== "charging";
+  const hookedImg = hooked ? fishById.get(hooked.id)?.image ?? hooked.image : undefined;
   // Extra rod rotation per phase — windback on charge, whip on cast, sharp bend
-  // on the bite, then bend proportional to tension while reeling.
+  // on the bite stages, then bend proportional to tension while reeling.
   const rodBend =
     phase === "charging"
       ? -6
@@ -418,20 +601,26 @@ export default function PlayPage() {
       ? 13
       : phase === "waiting"
       ? 4
-      : phase === "bite"
-      ? 22
+      : phase === "biting"
+      ? biteStage === "aggressive"
+        ? 22
+        : biteStage === "test"
+        ? 12
+        : 6
       : phase === "reeling"
-      ? 6 + tension * 0.16
+      ? 6 + tension * 0.16 + (aiState === "run" ? 6 : 0)
+      : phase === "landing"
+      ? 18
       : 0;
-  // Lure position (stage %): arcs out to the ocean on cast, sits while waiting,
-  // then travels back to the rod as you reel it in.
+  // Lure position (stage %): arcs out to the ocean on cast, sits while waiting +
+  // biting, then tracks the hooked fish shadow as you reel it in.
   const lurePos =
     phase === "casting"
       ? { x: lerp(TIP.x, LAND.x, castT), y: lerp(TIP.y, LAND.y, castT) - Math.sin(Math.PI * castT) * 14 }
-      : phase === "waiting" || phase === "bite"
+      : phase === "waiting" || phase === "biting"
       ? LAND
-      : phase === "reeling"
-      ? { x: lerp(LAND.x, TIP.x, progress / 100), y: lerp(LAND.y, TIP.y, progress / 100) }
+      : phase === "reeling" || phase === "landing"
+      ? fishPos
       : TIP;
 
   return (
@@ -447,8 +636,14 @@ export default function PlayPage() {
 
       {view === "cast" && (
         <div
-          className="relative w-full mx-auto select-none rounded-2xl overflow-hidden border border-border-strong"
-          style={{ aspectRatio: "1672 / 941" }}
+          className={cn(
+            "relative w-full mx-auto select-none rounded-2xl overflow-hidden border border-border-strong",
+            shaking && "reef-shake"
+          )}
+          style={{ aspectRatio: "1672 / 941", "--reef-shake": `${shakePx}px` } as React.CSSProperties}
+          onAnimationEnd={(e) => {
+            if (e.animationName === "reef-shake") setShaking(false);
+          }}
         >
           {/* background */}
           {assets.bgFull ? (
@@ -493,6 +688,32 @@ export default function PlayPage() {
             />
           </svg>
 
+          {/* hooked fish shadow — moves with its AI (swim/run/dive/jump). Kept
+              dark + blurred underwater to preserve the reveal surprise. */}
+          {(phase === "reeling" || phase === "landing") && hookedImg && (
+            <div
+              className="absolute z-[11] pointer-events-none"
+              style={{ left: `${fishPos.x}%`, top: `${fishPos.y}%`, transform: "translate(-50%,-50%)" }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={hookedImg}
+                alt=""
+                className="w-[7vw] max-w-[92px] min-w-[44px] object-contain"
+                style={{
+                  filter: aiState === "jump" ? "brightness(0.4) blur(0.4px)" : "brightness(0.12) blur(1.4px)",
+                  opacity: aiState === "jump" ? 0.85 : 0.55,
+                  animation:
+                    aiState === "jump"
+                      ? "reef-jump 0.62s ease-out"
+                      : aiState === "run"
+                      ? "reef-sway 0.5s ease-in-out infinite"
+                      : "reef-bob 2s ease-in-out infinite",
+                }}
+              />
+            </div>
+          )}
+
           {/* lure + landing splash */}
           <div
             className="absolute z-[12] pointer-events-none"
@@ -506,7 +727,20 @@ export default function PlayPage() {
                   : "left 0.3s ease-out, top 0.3s ease-out",
             }}
           >
-            <div style={{ animation: phase === "idle" ? "reef-bob 2.6s ease-in-out infinite" : "none" }}>
+            <div
+              style={{
+                animation:
+                  phase === "idle"
+                    ? "reef-bob 2.6s ease-in-out infinite"
+                    : phase === "biting"
+                    ? biteStage === "nibble"
+                      ? "reef-nibble 0.4s ease-in-out infinite"
+                      : biteStage === "test"
+                      ? "reef-testbite 0.6s ease-in-out infinite"
+                      : "reef-testbite 0.32s ease-in-out infinite"
+                    : "none",
+              }}
+            >
               {assets.lure ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={assets.lure} alt="" className="w-[2.6vw] max-w-[32px] object-contain" />
@@ -594,6 +828,7 @@ export default function PlayPage() {
             <GlassChip>⚡ {energy}/{config.dailyEnergy}</GlassChip>
             <GlassChip>✨ {points.toLocaleString()}</GlassChip>
             {streak > 0 && <GlassChip>🔥 {streak}</GlassChip>}
+            {combo > 1 && <GlassChip>🎣 ×{combo}</GlassChip>}
             <GlassChip>⏱ {msToRefill(clock)}</GlassChip>
           </div>
 
@@ -611,6 +846,21 @@ export default function PlayPage() {
               style={{ touchAction: "none" }}
               aria-label="Reel in"
             />
+          ) : phase === "biting" ? (
+            <button
+              onPointerDown={tryHookset}
+              className={cn(
+                "absolute z-20 rounded-full",
+                HOT.cast,
+                biteStage === "aggressive" ? "ring-4 ring-red/80 animate-pulse" : "ring-2 ring-white/30"
+              )}
+              style={{ touchAction: "none" }}
+              aria-label="Set the hook"
+            >
+              <span className="absolute inset-0 flex items-center justify-center text-[clamp(9px,1vw,13px)] font-bold text-white drop-shadow">
+                {biteStage === "aggressive" ? "HOOK!" : biteStage === "test" ? "Wait…" : "…"}
+              </span>
+            </button>
           ) : (
             <button
               onPointerDown={startCharge}
@@ -654,6 +904,24 @@ export default function PlayPage() {
             </div>
           )}
 
+          {/* bite prompt — builds toward the hookset */}
+          {phase === "biting" && (
+            <div
+              className={cn(
+                "absolute z-20 left-1/2 -translate-x-1/2 top-[20%] px-3 py-1 rounded-full text-[clamp(8px,0.95vw,13px)] font-semibold backdrop-blur-sm border",
+                biteStage === "aggressive"
+                  ? "bg-red/25 border-red/50 text-white animate-pulse"
+                  : "bg-black/45 border-white/15 text-white/90"
+              )}
+            >
+              {biteStage === "nibble"
+                ? "Something's nibbling…"
+                : biteStage === "test"
+                ? "It's testing the bait…"
+                : "STRIKE — set the hook!"}
+            </div>
+          )}
+
           {/* ── reel-in HUD (single clean panel) ── */}
           {phase === "reeling" && (
             <div className="absolute z-20 left-1/2 -translate-x-1/2 top-[28%] w-[30%] max-w-[420px] bg-black/50 backdrop-blur-md border border-white/15 rounded-2xl px-4 py-3 shadow-xl shadow-black/40">
@@ -682,8 +950,39 @@ export default function PlayPage() {
                 <div className="h-full bg-blue rounded-full" style={{ width: `${progress}%` }} />
               </div>
               <p className="text-center text-[clamp(7px,0.85vw,10px)] text-white/80 mt-1.5">
-                Hold the button to reel · ease off when it runs
+                {aiState === "run"
+                  ? "🏃 It's running — ease off!"
+                  : aiState === "dive"
+                  ? "⬇️ Diving deep — steady…"
+                  : aiState === "jump"
+                  ? "🐟 It jumped!"
+                  : "Hold to reel · ease off when it runs"}
               </p>
+              {(perfectHook || combo > 1) && (
+                <div className="flex items-center justify-center gap-2 mt-1">
+                  {perfectHook && <span className="text-[clamp(7px,0.8vw,10px)] text-gold font-semibold">✨ Perfect hook</span>}
+                  {combo > 1 && <span className="text-[clamp(7px,0.8vw,10px)] text-gold font-semibold">🔥 Combo ×{combo}</span>}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* landscape hint — portrait phones render this 16:9 stage tiny */}
+          {showHint && (
+            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-black/80 backdrop-blur-sm text-center px-6">
+              <div className="text-3xl" style={{ animation: "reef-sway 1.6s ease-in-out infinite" }}>
+                📱↻
+              </div>
+              <p className="text-[13px] text-white font-medium m-0">Rotate to landscape</p>
+              <p className="text-[11px] text-white/70 m-0 max-w-[240px]">
+                Investure Reef plays best wide — turn your phone sideways for the full stage.
+              </p>
+              <button
+                onClick={() => setHintDismissed(true)}
+                className="mt-1 px-4 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-[11px] hover:bg-white/15 transition"
+              >
+                Play anyway
+              </button>
             </div>
           )}
         </div>
@@ -804,7 +1103,8 @@ export default function PlayPage() {
             className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 overflow-hidden"
             onClick={() => setReveal(null)}
           >
-            {highTierReveal && assets.eventLegendaryAlert && (
+            {/* legendary+ get the cinematic backdrop */}
+            {revealTier.bg && assets.eventLegendaryAlert && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={assets.eventLegendaryAlert}
@@ -812,6 +1112,35 @@ export default function PlayPage() {
                 className="absolute inset-0 w-full h-full object-cover opacity-60 pointer-events-none"
               />
             )}
+            {/* god-rays — intensity scales with rarity tier */}
+            {revealTier.rays > 0 && (
+              <div
+                className="absolute left-1/2 top-1/2 w-[130vmin] h-[130vmin] -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                style={{
+                  background: `conic-gradient(from 0deg, transparent 0deg, ${reveal.rarity.color}55 12deg, transparent 24deg, transparent 36deg, ${reveal.rarity.color}44 48deg, transparent 60deg)`,
+                  opacity: revealTier.rays * 0.5,
+                  animation: "reef-godrays 1.1s ease-out forwards",
+                  maskImage: "radial-gradient(circle, black 0%, transparent 68%)",
+                  WebkitMaskImage: "radial-gradient(circle, black 0%, transparent 68%)",
+                }}
+              />
+            )}
+            {/* radial particle burst */}
+            {revealBurst.map((p) => (
+              <span
+                key={p.id}
+                className="absolute left-1/2 top-1/2 w-1.5 h-1.5 rounded-full pointer-events-none"
+                style={
+                  {
+                    background: reveal.rarity.color,
+                    boxShadow: `0 0 6px ${reveal.rarity.color}`,
+                    "--px": `${p.dx}px`,
+                    "--py": `${p.dy}px`,
+                    animation: `reef-particle 1s ease-out ${p.delay}s forwards`,
+                  } as React.CSSProperties
+                }
+              />
+            ))}
             <motion.div
               initial={{ scale: 0.5, y: 30 }}
               animate={{ scale: 1, y: 0 }}
@@ -821,17 +1150,27 @@ export default function PlayPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div
-                className="absolute -z-10 w-72 h-72 rounded-full"
+                className="absolute -z-10 rounded-full"
                 style={{
+                  width: `${18 + revealRank * 1.5}rem`,
+                  height: `${18 + revealRank * 1.5}rem`,
+                  left: "50%",
+                  top: "50%",
+                  transform: "translate(-50%,-50%)",
                   background: `conic-gradient(from 0deg, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00)`,
                   filter: "blur(2px)",
-                  animation: "reef-spin 9s linear infinite",
+                  animation: `reef-spin ${Math.max(4, 9 - revealRank)}s linear infinite`,
                   opacity: 0.55,
                 }}
               />
               <div
                 className="absolute -z-10 w-52 h-52 rounded-full"
-                style={{ background: `radial-gradient(circle, ${reveal.rarity.color}44, transparent 70%)` }}
+                style={{
+                  left: "50%",
+                  top: "50%",
+                  transform: "translate(-50%,-50%)",
+                  background: `radial-gradient(circle, ${reveal.rarity.color}44, transparent 70%)`,
+                }}
               />
               {reveal.isFoth && (
                 <p className="text-[11px] text-gold m-0 mb-1 font-semibold tracking-wide">🔥 FISH OF THE HOUR</p>
@@ -863,7 +1202,9 @@ export default function PlayPage() {
                 <p className="text-[10px] text-white/70 m-0 mt-1">includes +{reveal.streakBonus} streak bonus 🔥</p>
               )}
               {reelRating >= 0.85 && (
-                <p className="text-[10px] text-gold m-0 mt-1 font-semibold">✨ Perfect reel!</p>
+                <p className="text-[10px] text-gold m-0 mt-1 font-semibold">
+                  ✨ Perfect reel!{combo > 1 ? ` · 🔥 Combo ×${combo}` : ""}
+                </p>
               )}
               {reveal.treasure ? (
                 <motion.div

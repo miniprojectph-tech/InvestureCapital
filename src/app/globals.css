@@ -166,3 +166,49 @@ body {
   25%  { opacity: 0.95; }
   100% { transform: scale(1.45); opacity: 0; }
 }
+
+/* ===== Reel Phase-2 ===== */
+/* Screen shake for big catches / fish runs. Intensity via --reef-shake (px). */
+@keyframes reef-shake {
+  0%, 100% { transform: translate(0, 0); }
+  10% { transform: translate(calc(var(--reef-shake, 4px) * -1), calc(var(--reef-shake, 4px) * 0.6)); }
+  20% { transform: translate(var(--reef-shake, 4px), calc(var(--reef-shake, 4px) * -0.5)); }
+  30% { transform: translate(calc(var(--reef-shake, 4px) * -0.8), var(--reef-shake, 4px)); }
+  40% { transform: translate(calc(var(--reef-shake, 4px) * 0.7), calc(var(--reef-shake, 4px) * -0.7)); }
+  50% { transform: translate(calc(var(--reef-shake, 4px) * -0.5), calc(var(--reef-shake, 4px) * 0.4)); }
+  60% { transform: translate(calc(var(--reef-shake, 4px) * 0.4), calc(var(--reef-shake, 4px) * 0.5)); }
+  70% { transform: translate(calc(var(--reef-shake, 4px) * -0.3), calc(var(--reef-shake, 4px) * -0.3)); }
+  80% { transform: translate(calc(var(--reef-shake, 4px) * 0.2), calc(var(--reef-shake, 4px) * 0.2)); }
+  90% { transform: translate(calc(var(--reef-shake, 4px) * -0.1), calc(var(--reef-shake, 4px) * -0.1)); }
+}
+.reef-shake { animation: reef-shake 0.5s ease-in-out; }
+/* God-rays fan behind a cinematic reveal. */
+@keyframes reef-godrays {
+  0%   { opacity: 0; transform: rotate(0deg) scale(0.7); }
+  30%  { opacity: 0.85; }
+  100% { opacity: 0.55; transform: rotate(360deg) scale(1); }
+}
+/* A single particle drifting up + out on a catch burst. */
+@keyframes reef-particle {
+  0%   { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  15%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--px, 0px), var(--py, -120px)) scale(1); }
+}
+/* Bobber nibble dip — small, quick tug at the line. */
+@keyframes reef-nibble {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(6px); }
+}
+/* Bigger test-bite dip. */
+@keyframes reef-testbite {
+  0%, 100% { transform: translateY(0); }
+  40%      { transform: translateY(13px) scale(0.96); }
+  70%      { transform: translateY(4px); }
+}
+/* Fish breaks the surface on a jump. */
+@keyframes reef-jump {
+  0%   { transform: translateY(0) scale(1); }
+  45%  { transform: translateY(-38px) scale(1.05) rotate(-6deg); }
+  100% { transform: translateY(0) scale(1); }
+}
+
