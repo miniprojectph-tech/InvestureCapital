@@ -43,6 +43,13 @@ const HOT = {
   shop: "left-[79.4%] top-[12.5%] w-[6%] h-[9.5%]",
   gallery: "left-[0.5%] top-[16.5%] w-[15.5%] h-[67%]",
 };
+// Rod placement (tunable). Pivot at the handle; line hangs from the tip.
+const ROD = {
+  wrap: "left-[22%] bottom-[2%] w-[20%]",
+  origin: "18% 82%",
+  tipTop: "5%",
+  tipLeft: "80%",
+};
 
 export default function PlayPage() {
   const router = useRouter();
@@ -58,6 +65,9 @@ export default function PlayPage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [meter, setMeter] = useState(0);
   const [castPower, setCastPower] = useState(0);
+  const [rodAngle, setRodAngle] = useState(0);
+  const [aiming, setAiming] = useState(false);
+  const aimRef = useRef({ active: false, startX: 0, startAngle: 0 });
   const [reveal, setReveal] = useState<CastResult | null>(null);
   const [isNewCatch, setIsNewCatch] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -194,6 +204,23 @@ export default function PlayPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
+  function startAim(e: React.PointerEvent) {
+    aimRef.current = { active: true, startX: e.clientX, startAngle: rodAngle };
+    setAiming(true);
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+  }
+  function moveAim(e: React.PointerEvent) {
+    if (!aimRef.current.active) return;
+    const w = (e.currentTarget as HTMLElement).offsetWidth || 600;
+    const dx = e.clientX - aimRef.current.startX;
+    const next = Math.max(-18, Math.min(18, aimRef.current.startAngle + (dx / w) * 45));
+    setRodAngle(next);
+  }
+  function endAim() {
+    aimRef.current.active = false;
+    setAiming(false);
+  }
+
   async function doClaim(questId: string) {
     setBusyQuest(questId);
     setError(null);
@@ -220,7 +247,6 @@ export default function PlayPage() {
   const highTierReveal = revealRank >= 0 && legendaryIdx >= 0 && revealRank >= legendaryIdx;
   const casting = phase === "casting";
   const charging = phase === "charging";
-  const lureTop = casting ? 60 : 44;
 
   return (
     <div>
@@ -249,43 +275,71 @@ export default function PlayPage() {
             />
           )}
 
-          {/* line + lure + splash in the open center */}
+          {/* ── Fishing rod (drag the water to aim) + line + lure ── */}
+          {assets.rod && (
+            <div
+              className={cn("absolute z-[12] pointer-events-none", ROD.wrap)}
+              style={{
+                transform: `rotate(${rodAngle}deg)`,
+                transformOrigin: ROD.origin,
+                transition: aiming ? "none" : "transform 0.5s cubic-bezier(0.34,1.56,0.64,1)",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={assets.rod} alt="" className="w-full object-contain select-none" />
+              {/* line + lure hang from the rod tip, counter-rotated to stay vertical */}
+              <div className="absolute" style={{ top: ROD.tipTop, left: ROD.tipLeft }}>
+                <div style={{ transform: `rotate(${-rodAngle}deg)`, transformOrigin: "top center" }}>
+                  <div
+                    className="w-px bg-white/60 mx-auto"
+                    style={{ height: casting ? 150 : 96, transition: "height 0.6s cubic-bezier(0.4,0,0.2,1)" }}
+                  />
+                  <div
+                    className="absolute left-1/2 -translate-x-1/2"
+                    style={{
+                      top: casting ? 150 : 96,
+                      transition: "top 0.6s cubic-bezier(0.4,0,0.2,1)",
+                      animation: casting || charging ? "none" : "reef-bob 2.6s ease-in-out infinite",
+                    }}
+                  >
+                    {assets.lure ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={assets.lure} alt="" className="w-[3vw] max-w-[36px] object-contain" />
+                    ) : (
+                      <div className="w-3.5 h-3.5 rounded-full bg-gold border-2 border-white/80" />
+                    )}
+                    {casting && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={
+                          castPower >= 0.9
+                            ? "/reef/perfect-hook.webp"
+                            : castPower < 0.4
+                            ? "/reef/splash-small.webp"
+                            : castPower < 0.75
+                            ? "/reef/splash-medium.webp"
+                            : "/reef/splash-large.webp"
+                        }
+                        alt=""
+                        className="absolute left-1/2 top-0 w-[130px] object-contain pointer-events-none"
+                        style={{ animation: "reef-splash 0.85s ease-out" }}
+                      />
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* aim catcher — drag over the open water to swing the rod */}
           <div
-            className="absolute left-1/2 top-0 w-px bg-white/50"
-            style={{ height: `${lureTop}%`, transition: "height 0.6s cubic-bezier(0.4,0,0.2,1)" }}
+            className="absolute z-[13] left-[16%] top-[24%] w-[62%] h-[46%] cursor-grab active:cursor-grabbing"
+            onPointerDown={startAim}
+            onPointerMove={moveAim}
+            onPointerUp={endAim}
+            onPointerLeave={endAim}
+            style={{ touchAction: "none" }}
           />
-          <div
-            className="absolute left-1/2 -translate-x-1/2"
-            style={{
-              top: `${lureTop}%`,
-              transition: "top 0.6s cubic-bezier(0.4,0,0.2,1)",
-              animation: casting || charging ? "none" : "reef-bob 2.6s ease-in-out infinite",
-            }}
-          >
-            {assets.lure ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={assets.lure} alt="" className="w-[4vw] max-w-[46px] object-contain" />
-            ) : (
-              <div className="w-3.5 h-3.5 rounded-full bg-gold border-2 border-white/80" />
-            )}
-            {casting && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={
-                  castPower >= 0.9
-                    ? "/reef/perfect-hook.webp"
-                    : castPower < 0.4
-                    ? "/reef/splash-small.webp"
-                    : castPower < 0.75
-                    ? "/reef/splash-medium.webp"
-                    : "/reef/splash-large.webp"
-                }
-                alt=""
-                className="absolute left-1/2 top-0 w-[11vw] max-w-[150px] object-contain pointer-events-none"
-                style={{ animation: "reef-splash 0.85s ease-out" }}
-              />
-            )}
-          </div>
 
           {/* fish of the hour */}
           {fothActive && (
