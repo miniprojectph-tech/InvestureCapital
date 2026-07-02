@@ -43,12 +43,6 @@ const HOT = {
   shop: "left-[79.2%] top-[10%] w-[6.2%] h-[11%]",
   gallery: "left-[0.5%] top-[11%] w-[15.5%] h-[47%]",
 };
-const OVER = {
-  name: { left: "10%", top: "3.2%" },
-  energy: { left: "26%", top: "3.6%" },
-  points: { left: "38.5%", top: "3.6%" },
-  streak: { left: "51.5%", top: "3.6%" },
-};
 
 export default function PlayPage() {
   const router = useRouter();
@@ -308,20 +302,12 @@ export default function PlayPage() {
             <img src={assets.hud} alt="" className="absolute inset-0 w-full h-full object-cover z-10 pointer-events-none" />
           )}
 
-          {/* ── live value overlays (mask the baked numbers) ── */}
-          <StageChip style={OVER.name}>{user?.name?.split(" ")[0] ?? "Angler"}</StageChip>
-          <StageChip style={OVER.energy}>
-            ⚡ {energy}/{config.dailyEnergy}
-          </StageChip>
-          <StageChip style={OVER.points}>{points.toLocaleString()}</StageChip>
-          <StageChip style={OVER.streak}>{streak}🔥</StageChip>
-
-          {/* refill countdown under the top bar */}
-          <div
-            className="absolute z-20 text-[clamp(7px,0.8vw,10px)] text-white/80 bg-black/35 px-2 py-0.5 rounded-full"
-            style={{ left: "26%", top: "9.5%" }}
-          >
-            New casts in {msToRefill(clock)}
+          {/* ── live HUD values (clean glass row in the open sky area) ── */}
+          <div className="absolute z-20 left-1/2 -translate-x-1/2 top-[10.5%] flex items-center gap-1.5">
+            <GlassChip>⚡ {energy}/{config.dailyEnergy}</GlassChip>
+            <GlassChip>✨ {points.toLocaleString()}</GlassChip>
+            {streak > 0 && <GlassChip>🔥 {streak}</GlassChip>}
+            <GlassChip>⏱ {msToRefill(clock)}</GlassChip>
           </div>
 
           {/* ── interactive hotspots (over the HUD art) ── */}
@@ -557,14 +543,11 @@ export default function PlayPage() {
   );
 }
 
-function StageChip({ style, children }: { style: { left: string; top: string }; children: React.ReactNode }) {
+function GlassChip({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className="absolute z-20 flex items-center leading-none text-[clamp(8px,1vw,13px)] font-mono font-semibold text-white bg-[#0b1a33]/90 border border-[#2a4a7a] rounded-md px-1.5 py-0.5"
-      style={style}
-    >
+    <span className="flex items-center leading-none whitespace-nowrap text-[clamp(8px,1vw,13px)] font-mono font-semibold text-white bg-[#0a1830]/80 backdrop-blur-sm border border-[#2a4a7a] rounded-full px-2 py-1">
       {children}
-    </div>
+    </span>
   );
 }
 
