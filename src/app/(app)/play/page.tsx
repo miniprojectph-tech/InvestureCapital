@@ -51,8 +51,8 @@ const ROD = {
   tipLeft: "80%",
 };
 // Line origin (rod tip) and where the lure lands out in the ocean, in stage %.
-const TIP = { x: 34, y: 47 };
-const LAND = { x: 61, y: 39 };
+const TIP = { x: 40, y: 45 };
+const LAND = { x: 55, y: 37 };
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 // CURRENT FISH left-panel overlay positions (tunable, stage %).
 const PANEL = {
@@ -485,9 +485,11 @@ export default function PlayPage() {
             <path
               d={`M ${TIP.x} ${TIP.y} Q ${(TIP.x + lurePos.x) / 2} ${Math.min(TIP.y, lurePos.y) - 8} ${lurePos.x} ${lurePos.y}`}
               fill="none"
-              stroke="rgba(255,255,255,0.55)"
-              strokeWidth="1"
+              stroke="rgba(255,255,255,0.75)"
+              strokeWidth="1.2"
+              strokeLinecap="round"
               vectorEffect="non-scaling-stroke"
+              style={{ filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.35))" }}
             />
           </svg>
 
@@ -602,15 +604,13 @@ export default function PlayPage() {
                 reelHoldRef.current = true;
               }}
               className={cn(
-                "absolute z-20 rounded-full flex items-center justify-center",
+                "absolute z-20 rounded-full",
                 HOT.cast,
-                tension > 85 && "animate-pulse"
+                tension > 85 ? "ring-4 ring-red/70 animate-pulse" : "ring-4 ring-gold/50"
               )}
               style={{ touchAction: "none" }}
               aria-label="Reel in"
-            >
-              <span className="text-[clamp(10px,1.2vw,16px)] font-bold text-white drop-shadow">REEL</span>
-            </button>
+            />
           ) : (
             <button
               onPointerDown={startCharge}
@@ -654,37 +654,35 @@ export default function PlayPage() {
             </div>
           )}
 
-          {/* ── reel-in mini-game HUD ── */}
+          {/* ── reel-in HUD (single clean panel) ── */}
           {phase === "reeling" && (
-            <div className="absolute z-20 left-1/2 -translate-x-1/2 top-[16%] w-[38%] max-w-[520px] flex flex-col gap-1.5">
-              <div>
-                <div className="flex justify-between text-[clamp(7px,0.8vw,10px)] text-white/90 mb-0.5">
-                  <span>Line tension</span>
-                  <span className={tension > 85 ? "text-red font-bold" : tension > 72 ? "text-gold" : "text-green"}>
-                    {tension > 85 ? "⚠ DANGER" : tension > 72 ? "Careful" : "Safe"}
-                  </span>
-                </div>
-                <div className="h-2.5 rounded-full bg-black/45 overflow-hidden border border-white/10">
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${tension}%`,
-                      background: tension > 85 ? "#F87171" : tension > 72 ? "#F5C66B" : "#3DD598",
-                    }}
-                  />
-                </div>
+            <div className="absolute z-20 left-1/2 -translate-x-1/2 top-[28%] w-[30%] max-w-[420px] bg-black/50 backdrop-blur-md border border-white/15 rounded-2xl px-4 py-3 shadow-xl shadow-black/40">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[clamp(9px,1vw,13px)] font-semibold text-white">
+                  Reeling in… {Math.round(progress)}%
+                </span>
+                <span
+                  className={cn(
+                    "text-[clamp(8px,0.9vw,12px)] font-bold",
+                    tension > 85 ? "text-red animate-pulse" : tension > 72 ? "text-gold" : "text-green"
+                  )}
+                >
+                  {tension > 85 ? "DANGER!" : tension > 72 ? "Careful" : "Perfect"}
+                </span>
               </div>
-              <div>
-                <div className="flex justify-between text-[clamp(7px,0.8vw,10px)] text-white/90 mb-0.5">
-                  <span>Reeling in</span>
-                  <span>{Math.round(progress)}%</span>
-                </div>
-                <div className="h-2 rounded-full bg-black/45 overflow-hidden border border-white/10">
-                  <div className="h-full bg-blue rounded-full" style={{ width: `${progress}%` }} />
-                </div>
+              <div className="h-2.5 rounded-full bg-black/50 overflow-hidden relative mb-2">
+                <div
+                  className="h-full rounded-full"
+                  style={{ width: `${tension}%`, background: tension > 85 ? "#F87171" : tension > 72 ? "#F5C66B" : "#3DD598" }}
+                />
+                <span className="absolute top-0 bottom-0 w-px bg-white/40" style={{ left: "72%" }} />
+                <span className="absolute top-0 bottom-0 w-px bg-white/50" style={{ left: "85%" }} />
               </div>
-              <p className="text-center text-[clamp(8px,0.9vw,11px)] text-white font-medium mt-0.5 drop-shadow">
-                Hold <span className="text-gold">REEL</span> — ease off when it runs!
+              <div className="h-1.5 rounded-full bg-black/50 overflow-hidden">
+                <div className="h-full bg-blue rounded-full" style={{ width: `${progress}%` }} />
+              </div>
+              <p className="text-center text-[clamp(7px,0.85vw,10px)] text-white/80 mt-1.5">
+                Hold the button to reel · ease off when it runs
               </p>
             </div>
           )}
