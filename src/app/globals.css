@@ -223,4 +223,14 @@ body {
   60%  { opacity: 0.5; }
   100% { opacity: 0; transform: translateX(6%) skewX(-8deg); }
 }
+/* Glossy sheen sweeping across a progress bar / panel. */
+@keyframes reef-sheen {
+  0%   { transform: translateX(-140%) skewX(-18deg); }
+  55%, 100% { transform: translateX(360%) skewX(-18deg); }
+}
+/* Expanding water ring under the hooked fish. */
+@keyframes reef-wake {
+  0%   { transform: translate(-50%,-50%) scale(0.5); opacity: 0.5; }
+  100% { transform: translate(-50%,-50%) scale(1.6); opacity: 0; }
+}
 

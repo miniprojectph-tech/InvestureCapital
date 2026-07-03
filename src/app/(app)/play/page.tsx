@@ -839,14 +839,28 @@ export default function PlayPage() {
               className="absolute z-[11] pointer-events-none"
               style={{ left: `${fishPos.x}%`, top: `${fishPos.y}%`, transform: "translate(-50%,-50%)" }}
             >
+              {/* water disturbance the fish pushes as it fights */}
+              <span
+                className="absolute left-1/2 top-1/2 rounded-[50%] border border-white/25"
+                style={{
+                  width: "150px",
+                  height: "46px",
+                  transform: "translate(-50%,-50%)",
+                  background: "radial-gradient(ellipse at center, rgba(180,225,255,0.28), transparent 68%)",
+                  animation: "reef-wake 1.7s ease-out infinite",
+                }}
+              />
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={hookedImg}
                 alt=""
-                className="w-[7vw] max-w-[92px] min-w-[44px] object-contain"
+                className="relative w-[9vw] max-w-[128px] min-w-[56px] object-contain"
                 style={{
-                  filter: aiState === "jump" ? "brightness(0.4) blur(0.4px)" : "brightness(0.12) blur(1.4px)",
-                  opacity: aiState === "jump" ? 0.85 : 0.55,
+                  filter:
+                    aiState === "jump"
+                      ? "brightness(0.5) blur(0.3px) drop-shadow(0 0 8px rgba(120,190,255,0.5))"
+                      : "brightness(0.18) blur(1.1px) drop-shadow(0 4px 8px rgba(0,0,0,0.4))",
+                  opacity: aiState === "jump" ? 0.9 : 0.62,
                   animation:
                     aiState === "jump"
                       ? "reef-jump 0.62s ease-out"
@@ -855,6 +869,15 @@ export default function PlayPage() {
                       : "reef-bob 2s ease-in-out infinite",
                 }}
               />
+              {(aiState === "run" || aiState === "jump") && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src="/reef/splash-small.webp"
+                  alt=""
+                  className="absolute left-1/2 -translate-x-1/2 -top-2 w-[64px] object-contain opacity-80"
+                  style={{ animation: "reef-splash 0.8s ease-out infinite" }}
+                />
+              )}
             </div>
           )}
 
@@ -1042,8 +1065,8 @@ export default function PlayPage() {
           {/* charge hint */}
           {charging && (
             <div
-              className="absolute z-20 text-[clamp(8px,0.9vw,12px)] text-white font-medium bg-black/50 px-2 py-0.5 rounded-full"
-              style={{ left: "80%", top: "71%" }}
+              className="absolute z-20 -translate-x-1/2 text-[clamp(8px,0.9vw,12px)] text-gold font-semibold px-3 py-1 rounded-full border border-border-gold tracking-wide"
+              style={{ left: "83%", top: "70%", background: "linear-gradient(180deg,rgba(14,32,56,0.9),rgba(8,17,32,0.9))", boxShadow: "0 0 14px rgba(245,198,107,0.25)" }}
             >
               Release to cast!
             </div>
@@ -1053,48 +1076,102 @@ export default function PlayPage() {
           {phase === "biting" && (
             <div
               className={cn(
-                "absolute z-20 left-1/2 -translate-x-1/2 top-[20%] px-3 py-1 rounded-full text-[clamp(8px,0.95vw,13px)] font-semibold backdrop-blur-sm border",
+                "absolute z-20 left-1/2 -translate-x-1/2 top-[19%] rounded-full font-semibold tracking-wide border backdrop-blur-sm",
                 biteStage === "aggressive"
-                  ? "bg-red/25 border-red/50 text-white animate-pulse"
-                  : "bg-black/45 border-white/15 text-white/90"
+                  ? "px-4 py-1.5 text-[clamp(10px,1.1vw,15px)] text-white border-red/60 animate-pulse"
+                  : "px-3 py-1 text-[clamp(8px,0.95vw,13px)] text-gold border-border-gold"
               )}
+              style={{
+                background:
+                  biteStage === "aggressive"
+                    ? "linear-gradient(180deg,rgba(120,20,20,0.85),rgba(60,10,10,0.9))"
+                    : "linear-gradient(180deg,rgba(14,32,56,0.85),rgba(8,17,32,0.9))",
+                boxShadow:
+                  biteStage === "aggressive"
+                    ? "0 0 22px rgba(248,113,113,0.55)"
+                    : "0 0 14px rgba(245,198,107,0.25)",
+              }}
             >
               {biteStage === "nibble"
-                ? "Something's nibbling…"
+                ? "🫧 Something's nibbling…"
                 : biteStage === "test"
-                ? "It's testing the bait…"
-                : "STRIKE — set the hook!"}
+                ? "👀 It's testing the bait…"
+                : "⚡ STRIKE — set the hook!"}
             </div>
           )}
 
-          {/* ── reel-in HUD (single clean panel) ── */}
+          {/* ── reel-in HUD — ornate gold-framed meter panel ── */}
           {phase === "reeling" && (
-            <div className="absolute z-20 left-1/2 -translate-x-1/2 top-[28%] w-[30%] max-w-[420px] bg-black/50 backdrop-blur-md border border-white/15 rounded-2xl px-4 py-3 shadow-xl shadow-black/40">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[clamp(9px,1vw,13px)] font-semibold text-white">
-                  Reeling in… {Math.round(progress)}%
+            <div
+              className="absolute z-20 left-1/2 -translate-x-1/2 top-[25%] w-[34%] max-w-[440px] min-w-[280px] rounded-2xl border border-border-gold px-4 py-3"
+              style={{
+                background: "linear-gradient(180deg, rgba(14,32,56,0.94), rgba(8,17,32,0.94))",
+                backdropFilter: "blur(8px)",
+                WebkitBackdropFilter: "blur(8px)",
+                boxShadow: "inset 0 0 0 1px rgba(245,198,107,0.18), 0 10px 34px rgba(0,0,0,0.55)",
+              }}
+            >
+              <div className="flex items-center justify-between mb-2.5">
+                <span
+                  className="text-[clamp(10px,1.05vw,14px)] font-semibold tracking-wide text-gold"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  Reeling in
                 </span>
                 <span
                   className={cn(
-                    "text-[clamp(8px,0.9vw,12px)] font-bold",
-                    tension > 85 ? "text-red animate-pulse" : tension > 72 ? "text-gold" : "text-green"
+                    "text-[clamp(7px,0.85vw,11px)] font-bold px-2 py-0.5 rounded-full border tracking-wider",
+                    tension > 85
+                      ? "text-red border-red/50 bg-red/15 animate-pulse"
+                      : tension > 72
+                      ? "text-gold border-border-gold bg-gold/10"
+                      : "text-green border-green/40 bg-green/10"
                   )}
                 >
-                  {tension > 85 ? "DANGER!" : tension > 72 ? "Careful" : "Perfect"}
+                  {tension > 85 ? "DANGER" : tension > 72 ? "CAREFUL" : "PERFECT"}
                 </span>
               </div>
-              <div className="h-2.5 rounded-full bg-black/50 overflow-hidden relative mb-2">
+
+              {/* line tension */}
+              <div className="flex justify-between text-[clamp(6px,0.7vw,9px)] uppercase tracking-wider text-white/45 mb-1">
+                <span>Line tension</span>
+                <span className="font-mono">{Math.round(tension)}%</span>
+              </div>
+              <div className="h-3 rounded-full bg-black/60 border border-white/10 overflow-hidden relative mb-2.5">
+                <div className="absolute inset-y-0 right-0 w-[28%]" style={{ background: "linear-gradient(90deg, transparent, rgba(248,113,113,0.28))" }} />
                 <div
-                  className="h-full rounded-full"
-                  style={{ width: `${tension}%`, background: tension > 85 ? "#F87171" : tension > 72 ? "#F5C66B" : "#3DD598" }}
-                />
-                <span className="absolute top-0 bottom-0 w-px bg-white/40" style={{ left: "72%" }} />
-                <span className="absolute top-0 bottom-0 w-px bg-white/50" style={{ left: "85%" }} />
+                  className="h-full rounded-full relative"
+                  style={{
+                    width: `${tension}%`,
+                    background:
+                      tension > 85
+                        ? "linear-gradient(90deg,#F87171,#ff4d4d)"
+                        : tension > 72
+                        ? "linear-gradient(90deg,#F5C66B,#e0a83a)"
+                        : "linear-gradient(90deg,#3DD598,#2fb7a0)",
+                  }}
+                >
+                  <span className="absolute inset-0" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.55),transparent 55%)" }} />
+                </div>
+                <span className="absolute top-0 bottom-0 w-0.5 bg-white/50" style={{ left: "72%" }} />
+                <span className="absolute top-0 bottom-0 w-0.5 bg-red/70" style={{ left: "85%" }} />
               </div>
-              <div className="h-1.5 rounded-full bg-black/50 overflow-hidden">
-                <div className="h-full bg-blue rounded-full" style={{ width: `${progress}%` }} />
+
+              {/* caught progress */}
+              <div className="flex justify-between text-[clamp(6px,0.7vw,9px)] uppercase tracking-wider text-white/45 mb-1">
+                <span>Caught</span>
+                <span className="font-mono text-gold">{Math.round(progress)}%</span>
               </div>
-              <p className="text-center text-[clamp(7px,0.85vw,10px)] text-white/80 mt-1.5">
+              <div className="h-2.5 rounded-full bg-black/60 border border-white/10 overflow-hidden relative">
+                <div className="h-full rounded-full relative" style={{ width: `${progress}%`, background: "linear-gradient(90deg,#4F8EF7,#7db0ff)" }}>
+                  <span
+                    className="absolute top-0 -left-6 h-full w-6"
+                    style={{ background: "linear-gradient(90deg,transparent,rgba(255,255,255,0.75),transparent)", animation: "reef-sheen 1.5s ease-in-out infinite" }}
+                  />
+                </div>
+              </div>
+
+              <p className="text-center text-[clamp(7px,0.85vw,11px)] text-white/85 mt-2 mb-0 font-medium">
                 {aiState === "run"
                   ? "🏃 It's running — ease off!"
                   : aiState === "dive"
@@ -1104,9 +1181,17 @@ export default function PlayPage() {
                   : "Hold to reel · ease off when it runs"}
               </p>
               {(perfectHook || combo > 1) && (
-                <div className="flex items-center justify-center gap-2 mt-1">
-                  {perfectHook && <span className="text-[clamp(7px,0.8vw,10px)] text-gold font-semibold">✨ Perfect hook</span>}
-                  {combo > 1 && <span className="text-[clamp(7px,0.8vw,10px)] text-gold font-semibold">🔥 Combo ×{combo}</span>}
+                <div className="flex items-center justify-center gap-2 mt-1.5">
+                  {perfectHook && (
+                    <span className="text-[clamp(7px,0.8vw,10px)] text-gold font-semibold px-2 py-0.5 rounded-full bg-gold/10 border border-border-gold">
+                      ✨ Perfect hook
+                    </span>
+                  )}
+                  {combo > 1 && (
+                    <span className="text-[clamp(7px,0.8vw,10px)] text-gold font-semibold px-2 py-0.5 rounded-full bg-gold/10 border border-border-gold">
+                      🔥 Combo ×{combo}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -1287,42 +1372,48 @@ export default function PlayPage() {
                 }
               />
             ))}
+            {/* spinning rarity rays behind the card */}
+            <div
+              className="absolute left-1/2 top-1/2 -z-[1] rounded-full pointer-events-none"
+              style={{
+                width: `${20 + revealRank * 1.6}rem`,
+                height: `${20 + revealRank * 1.6}rem`,
+                transform: "translate(-50%,-50%)",
+                background: `conic-gradient(from 0deg, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00)`,
+                filter: "blur(3px)",
+                animation: `reef-spin ${Math.max(4, 9 - revealRank)}s linear infinite`,
+                opacity: 0.5,
+              }}
+            />
             <motion.div
               initial={{ scale: 0.5, y: 30 }}
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.8, opacity: 0 }}
               transition={{ type: "spring", stiffness: 240, damping: 16 }}
-              className="relative flex flex-col items-center text-center"
+              className="relative flex flex-col items-center text-center rounded-[28px] px-8 py-7 max-w-[86vw]"
+              style={{
+                background: "linear-gradient(180deg, rgba(14,32,56,0.82), rgba(6,13,26,0.9))",
+                border: `1px solid ${reveal.rarity.color}66`,
+                boxShadow: `inset 0 0 0 1px rgba(245,198,107,0.14), 0 0 40px ${reveal.rarity.color}55, 0 20px 50px rgba(0,0,0,0.6)`,
+                backdropFilter: "blur(6px)",
+                WebkitBackdropFilter: "blur(6px)",
+              }}
               onClick={(e) => e.stopPropagation()}
             >
               <div
-                className="absolute -z-10 rounded-full"
-                style={{
-                  width: `${18 + revealRank * 1.5}rem`,
-                  height: `${18 + revealRank * 1.5}rem`,
-                  left: "50%",
-                  top: "50%",
-                  transform: "translate(-50%,-50%)",
-                  background: `conic-gradient(from 0deg, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00, ${reveal.rarity.color}55, ${reveal.rarity.color}00)`,
-                  filter: "blur(2px)",
-                  animation: `reef-spin ${Math.max(4, 9 - revealRank)}s linear infinite`,
-                  opacity: 0.55,
-                }}
-              />
-              <div
-                className="absolute -z-10 w-52 h-52 rounded-full"
+                className="absolute -z-[1] w-52 h-52 rounded-full"
                 style={{
                   left: "50%",
-                  top: "50%",
+                  top: "38%",
                   transform: "translate(-50%,-50%)",
-                  background: `radial-gradient(circle, ${reveal.rarity.color}44, transparent 70%)`,
+                  background: `radial-gradient(circle, ${reveal.rarity.color}55, transparent 70%)`,
                 }}
               />
               {reveal.isFoth && (
                 <p className="text-[11px] text-gold m-0 mb-1 font-semibold tracking-wide">🔥 FISH OF THE HOUR</p>
               )}
               {isNewCatch && (
-                <span className="mb-2 text-[9px] font-bold px-2 py-0.5 rounded-full bg-gold text-gold-dark tracking-wider">
+                <span className="mb-2 text-[9px] font-bold px-2.5 py-0.5 rounded-full bg-gold text-gold-dark tracking-wider shadow-[0_0_12px_rgba(245,198,107,0.5)]">
                   NEW SPECIES!
                 </span>
               )}
@@ -1334,12 +1425,17 @@ export default function PlayPage() {
               >
                 {creature(reveal.fish.id, 150)}
               </motion.div>
-              <p
-                className="text-[11px] uppercase tracking-[0.2em] m-0 mt-1 font-semibold"
-                style={{ color: reveal.rarity.color, textShadow: `0 0 12px ${reveal.rarity.color}` }}
+              {/* rarity ribbon */}
+              <div
+                className="mt-2 px-4 py-0.5 rounded-full text-[11px] uppercase tracking-[0.22em] font-bold"
+                style={{
+                  color: "#fff",
+                  background: `linear-gradient(90deg, transparent, ${reveal.rarity.color}55, transparent)`,
+                  textShadow: `0 0 12px ${reveal.rarity.color}`,
+                }}
               >
                 {rarityMeta(reveal.fish.rarity).label}
-              </p>
+              </div>
               <p className="text-[22px] font-medium m-0 mt-0.5 text-white" style={{ fontFamily: "var(--font-display)" }}>
                 {reveal.fish.name}
               </p>
@@ -1371,9 +1467,9 @@ export default function PlayPage() {
               <div className="flex gap-2 mt-5">
                 <button
                   onClick={() => setReveal(null)}
-                  className="px-5 py-2 bg-white/10 border border-white/20 text-white rounded-lg text-[12px] hover:bg-white/15 transition"
+                  className="px-7 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-semibold hover:brightness-110 transition shadow-[0_0_18px_rgba(245,198,107,0.4)]"
                 >
-                  Nice!
+                  Collect
                 </button>
               </div>
             </motion.div>
