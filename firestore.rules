@@ -99,6 +99,11 @@ service cloud.firestore {
       allow read: if isAdmin();
     }
 
+    // === collectionGroup('game') reads — admins only (per-investor game admin) ===
+    match /{path=**}/game/{gameDoc} {
+      allow read: if isAdmin();
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;
