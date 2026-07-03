@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, CheckCircle2, AlertCircle, ChevronLeft, X } from "lucide-react";
+import { Loader2, CheckCircle2, AlertCircle, ChevronLeft, X, Gift } from "lucide-react";
 import { Card, CardHeader } from "@/components/Card";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -19,6 +19,7 @@ import {
   effectiveDailyCredits,
   type CastResult,
 } from "@/lib/game";
+import { useRewards, redeemReward, type Reward } from "@/lib/rewards";
 
 type View = "cast" | "collection" | "leaderboard";
 type Phase = "idle" | "charging" | "casting" | "waiting" | "biting" | "reeling" | "landing";
@@ -65,7 +66,7 @@ const TOP_ICON_LABELS = [
   { key: "ranking", left: "72.2%", text: "Ranking" },
   { key: "shop", left: "76.6%", text: "Shop" },
 ];
-const TOP_ICON_LABEL_TOP = "9.2%";
+const TOP_ICON_LABEL_TOP = "7.6%";
 // Rod placement (tunable). Pivot at the handle; line hangs from the tip.
 // tipLeft/tipTop mark the rod tip within the art (measured: tip is the
 // top-right corner of rod.webp, ~99% / 0%). Nudge if the line's base drifts.
@@ -157,8 +158,15 @@ export default function PlayPage() {
   const foth = useFishOfHour();
   const { rows: leaderboard } = useLeaderboard();
 
-  const [view, setView] = useState<View>("cast");
+  const [view] = useState<View>("cast");
   const [questsOpen, setQuestsOpen] = useState(false);
+  const [collectionOpen, setCollectionOpen] = useState(false);
+  const [rankingOpen, setRankingOpen] = useState(false);
+  const [shopOpen, setShopOpen] = useState(false);
+  const { rewards } = useRewards();
+  const [shopReward, setShopReward] = useState<Reward | null>(null);
+  const [shopStage, setShopStage] = useState<"list" | "confirm" | "processing" | "done" | "error">("list");
+  const [shopErr, setShopErr] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
   const [meter, setMeter] = useState(0);
   const [castPower, setCastPower] = useState(0);
@@ -342,6 +350,7 @@ export default function PlayPage() {
   const dailyCredits = effectiveDailyCredits(config.dailyEnergy, gamesSettings.universalDailyCredits);
   const energy = state?.energy ?? dailyCredits;
   const points = state?.points ?? 0;
+  const activeRewards = rewards.filter((r) => r.active);
   const streak = state?.streak ?? 0;
   const questsToday =
     state?.quests?.day === today ? state.quests : { day: today, progress: {}, claimed: {} };
@@ -727,6 +736,29 @@ export default function PlayPage() {
       setError(e instanceof Error ? e.message : "Claim failed");
     } finally {
       setBusyQuest(null);
+    }
+  }
+
+  function openShop() {
+    setShopReward(null);
+    setShopStage("list");
+    setShopErr(null);
+    setShopOpen(true);
+  }
+  async function confirmRedeem() {
+    if (!shopReward) return;
+    if (demoMode) {
+      setShopErr("Redeeming isn't available in demo mode.");
+      setShopStage("error");
+      return;
+    }
+    setShopStage("processing");
+    try {
+      await redeemReward(shopReward.id);
+      setShopStage("done");
+    } catch (e) {
+      setShopErr(e instanceof Error ? e.message : "Redemption failed");
+      setShopStage("error");
     }
   }
 
@@ -1171,10 +1203,10 @@ export default function PlayPage() {
               </span>
             )}
           </button>
-          <button onClick={() => setView("collection")} className={cn("absolute z-20", HOT.galleryTop)} aria-label="Collection" />
-          <button onClick={() => setView("leaderboard")} className={cn("absolute z-20", HOT.ranking)} aria-label="Ranking" />
-          <button onClick={() => router.push("/rewards")} className={cn("absolute z-20", HOT.shop)} aria-label="Shop" />
-          <button onClick={() => setView("collection")} className={cn("absolute z-20", HOT.gallery)} aria-label="Collection" />
+          <button onClick={() => setCollectionOpen(true)} className={cn("absolute z-20", HOT.galleryTop)} aria-label="Collection" />
+          <button onClick={() => setRankingOpen(true)} className={cn("absolute z-20", HOT.ranking)} aria-label="Ranking" />
+          <button onClick={openShop} className={cn("absolute z-20", HOT.shop)} aria-label="Shop" />
+          <button onClick={() => setCollectionOpen(true)} className={cn("absolute z-20", HOT.gallery)} aria-label="Collection" />
           {/* AUTO FISH — casts + reels hands-free until energy runs out */}
           <button
             onClick={toggleAutoFish}
@@ -1339,18 +1371,19 @@ export default function PlayPage() {
         </div>
       )}
 
-      {view === "collection" && (
-        <div className="max-w-3xl mx-auto p-4 pt-14">
-          <BackBar onBack={() => setView("cast")} label="Collection book" />
-          <CollectionBook fish={fish} rarities={config.rarities} caught={state?.collection ?? {}} />
-        </div>
-      )}
+      {/* Collection popup */}
+      <AnimatePresence>
+        {collectionOpen && (
+          <ModalShell key="collection" title="Collection book" onClose={() => setCollectionOpen(false)} wide>
+            <CollectionBook fish={fish} rarities={config.rarities} caught={state?.collection ?? {}} />
+          </ModalShell>
+        )}
+      </AnimatePresence>
 
-      {view === "leaderboard" && (
-        <div className="max-w-3xl mx-auto p-4 pt-14">
-          <BackBar onBack={() => setView("cast")} label="Weekly ranking" />
-          <Card>
-            <CardHeader title="Weekly leaderboard" subtitle="Top anglers · resets Monday" />
+      {/* Ranking popup */}
+      <AnimatePresence>
+        {rankingOpen && (
+          <ModalShell key="ranking" title="Weekly ranking" subtitle="Top anglers · resets Monday" onClose={() => setRankingOpen(false)}>
             {leaderboard.length === 0 ? (
               <p className="text-[11px] text-text-subtle text-center py-8 m-0">
                 No scores yet this week. Be the first to cast!
@@ -1375,9 +1408,102 @@ export default function PlayPage() {
                 ))}
               </div>
             )}
-          </Card>
-        </div>
-      )}
+          </ModalShell>
+        )}
+      </AnimatePresence>
+
+      {/* Shop popup */}
+      <AnimatePresence>
+        {shopOpen && (
+          <ModalShell key="shop" title="Rewards shop" subtitle={`${points.toLocaleString()} points`} onClose={() => setShopOpen(false)} wide>
+            {shopStage === "list" &&
+              (activeRewards.length === 0 ? (
+                <p className="text-[11px] text-text-subtle text-center py-8 m-0">No rewards available yet — check back soon.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-2">
+                  {activeRewards.map((r) => {
+                    const affordable = points >= r.cost;
+                    const soldOut = typeof r.stock === "number" && r.stock <= 0;
+                    return (
+                      <div key={r.id} className="p-2 bg-canvas border border-border rounded-lg flex flex-col">
+                        {r.image ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={r.image} alt={r.name} className="w-full h-20 object-cover rounded mb-1.5" />
+                        ) : (
+                          <div className="w-full h-20 rounded mb-1.5 bg-card-elev flex items-center justify-center">
+                            <Gift className="w-6 h-6 text-text-subtle" />
+                          </div>
+                        )}
+                        <p className="text-[11px] font-medium m-0 truncate">{r.name}</p>
+                        <div className="flex items-center justify-between mt-1.5">
+                          <span className="text-[11px] font-mono text-vault">{r.cost.toLocaleString()}</span>
+                          <button
+                            onClick={() => {
+                              setShopReward(r);
+                              setShopStage("confirm");
+                            }}
+                            disabled={!affordable || soldOut}
+                            className="text-[10px] px-2 py-1 rounded-md bg-gold text-gold-dark font-medium disabled:opacity-40"
+                          >
+                            {soldOut ? "Sold out" : affordable ? "Redeem" : "Low"}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            {shopStage === "confirm" && shopReward && (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between px-3 py-2.5 bg-canvas border border-border rounded-lg">
+                  <span className="text-[12px]">{shopReward.name}</span>
+                  <span className="text-[12px] font-mono text-vault">{shopReward.cost.toLocaleString()} pts</span>
+                </div>
+                <p className="text-[10px] text-text-subtle m-0">
+                  Balance after: <span className="font-mono">{(points - shopReward.cost).toLocaleString()} pts</span>
+                </p>
+                <div className="flex gap-2">
+                  <button onClick={() => setShopStage("list")} className="flex-1 py-2 border border-border-strong rounded-lg text-[12px] text-text-muted hover:bg-card-elev transition">
+                    Back
+                  </button>
+                  <button onClick={confirmRedeem} className="flex-1 py-2 rounded-lg text-[12px] font-medium bg-gold text-gold-dark hover:brightness-110 transition">
+                    Confirm redeem
+                  </button>
+                </div>
+              </div>
+            )}
+            {shopStage === "processing" && (
+              <div className="py-8 flex flex-col items-center gap-3">
+                <Loader2 className="w-7 h-7 text-gold animate-spin" />
+                <p className="text-[12px] text-text-muted m-0">Redeeming…</p>
+              </div>
+            )}
+            {shopStage === "done" && (
+              <div className="py-6 flex flex-col items-center text-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-green/15 flex items-center justify-center">
+                  <CheckCircle2 className="w-6 h-6 text-green" />
+                </div>
+                <p className="text-[14px] font-medium m-0">Redeemed!</p>
+                <button onClick={() => setShopStage("list")} className="mt-2 px-5 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium">
+                  Back to shop
+                </button>
+              </div>
+            )}
+            {shopStage === "error" && (
+              <div className="py-6 flex flex-col items-center text-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-red/15 flex items-center justify-center">
+                  <AlertCircle className="w-6 h-6 text-red" />
+                </div>
+                <p className="text-[13px] font-medium m-0">Couldn&apos;t redeem</p>
+                <p className="text-[11px] text-text-muted m-0">{shopErr}</p>
+                <button onClick={() => setShopStage("list")} className="mt-2 px-5 py-2 bg-card-elev border border-border-strong rounded-lg text-[12px]">
+                  Back
+                </button>
+              </div>
+            )}
+          </ModalShell>
+        )}
+      </AnimatePresence>
 
       {/* Quests drawer */}
       <AnimatePresence>
@@ -1608,14 +1734,51 @@ function GlassChip({ children }: { children: React.ReactNode }) {
   );
 }
 
-function BackBar({ onBack, label }: { onBack: () => void; label: string }) {
+// Shared in-game popup shell (backdrop + card) used for the quests/collection/
+// ranking/shop overlays, so nothing leaves the game environment.
+function ModalShell({
+  title,
+  subtitle,
+  onClose,
+  wide,
+  children,
+}: {
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  wide?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <button
-      onClick={onBack}
-      className="mb-3 flex items-center gap-1.5 text-[12px] text-text-muted hover:text-text transition"
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-4"
+      onClick={onClose}
     >
-      <ChevronLeft className="w-4 h-4" /> {label}
-    </button>
+      <motion.div
+        initial={{ y: 40, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 40, opacity: 0 }}
+        className={cn(
+          "bg-card border border-border rounded-2xl w-full p-4 max-h-[85vh] overflow-y-auto",
+          wide ? "max-w-2xl" : "max-w-md"
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <h3 className="text-[14px] font-medium m-0">{title}</h3>
+            {subtitle && <p className="text-[10px] text-text-subtle m-0 mt-0.5">{subtitle}</p>}
+          </div>
+          <button onClick={onClose} className="text-text-muted hover:text-text">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        {children}
+      </motion.div>
+    </motion.div>
   );
 }
 
