@@ -1,5 +1,5 @@
 // Investure service worker — basic offline shell + cache-first for static
-const CACHE = "investure-v2";
+const CACHE = "investure-v3";
 const APP_SHELL = ["/", "/login", "/dashboard"];
 
 self.addEventListener("install", (event) => {
@@ -33,6 +33,17 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   // Skip Next.js dev hot-reload + HMR
   if (url.pathname.startsWith("/_next/webpack-hmr") || url.pathname.startsWith("/__nextjs")) return;
+
+  // Always fetch the PWA manifest + app icons fresh, so an install (and the
+  // home-screen icon it generates) always reflects the current branding rather
+  // than a stale cached copy. Fall back to cache only when offline.
+  if (
+    url.pathname === "/manifest.json" ||
+    /^\/(icon|apple-touch-icon|favicon)/.test(url.pathname)
+  ) {
+    event.respondWith(fetch(request).catch(() => caches.match(request)));
+    return;
+  }
 
   // Network-first for navigation requests (HTML pages)
   if (request.mode === "navigate") {
