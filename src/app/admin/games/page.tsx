@@ -8,7 +8,7 @@ import { Modal } from "@/components/Modal";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
-import { uploadGameImage, uploadGameAsset } from "@/lib/storage";
+import { uploadGameImage, uploadGameAsset, describeStorageError } from "@/lib/storage";
 import {
   useGameConfig,
   useFish,
@@ -530,7 +530,7 @@ function AssetField({
       const { url } = await uploadGameAsset(storage, file);
       await onSet(url);
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Upload failed");
+      onError(describeStorageError(e));
     } finally {
       setBusy(false);
     }
@@ -597,7 +597,7 @@ function FrameUpload({
       const { url } = await uploadGameAsset(storage, file);
       await onSet(url);
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Upload failed");
+      onError(describeStorageError(e));
     } finally {
       setBusy(false);
     }
@@ -664,7 +664,7 @@ function FishEditor({
       const { url } = await uploadGameImage(storage, "fish", file);
       setImage(url);
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Upload failed");
+      onError(describeStorageError(e));
     } finally {
       setBusy(false);
     }

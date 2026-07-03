@@ -211,4 +211,16 @@ body {
   45%  { transform: translateY(-38px) scale(1.05) rotate(-6deg); }
   100% { transform: translateY(0) scale(1); }
 }
+/* Gentle idle "breathing" sway for the rod so it feels alive at rest. */
+@keyframes reef-rod-breathe {
+  0%, 100% { transform: rotate(-0.9deg) translateY(0); }
+  50%      { transform: rotate(0.9deg) translateY(-1px); }
+}
+/* Slow ambient light ray drifting across the water. */
+@keyframes reef-ray-drift {
+  0%   { opacity: 0; transform: translateX(-6%) skewX(-8deg); }
+  40%  { opacity: 0.5; }
+  60%  { opacity: 0.5; }
+  100% { opacity: 0; transform: translateX(6%) skewX(-8deg); }
+}
 

@@ -102,6 +102,20 @@ const REVEAL_TIERS = [
 const tierFor = (idx: number) => REVEAL_TIERS[Math.min(Math.max(idx, 0), 6)];
 // A clean reel (green-time ratio ≥ this) keeps the combo alive.
 const COMBO = { cleanRating: 0.82 };
+// Ambient depth decoration (cosmetic, static positions so they don't re-randomize).
+const AMBIENT_RAYS = [
+  { left: "22%", width: "5%", dur: 11, delay: 0 },
+  { left: "48%", width: "7%", dur: 14, delay: 2.5 },
+  { left: "68%", width: "4%", dur: 9, delay: 1.2 },
+];
+const AMBIENT_BUBBLES = [
+  { left: "30%", size: "6px", dur: 7, delay: 0 },
+  { left: "40%", size: "4px", dur: 9, delay: 1.5 },
+  { left: "52%", size: "5px", dur: 8, delay: 3 },
+  { left: "58%", size: "3px", dur: 6, delay: 0.8 },
+  { left: "64%", size: "7px", dur: 10, delay: 2.2 },
+  { left: "46%", size: "4px", dur: 8.5, delay: 4 },
+];
 
 export default function PlayPage() {
   const router = useRouter();
@@ -656,19 +670,60 @@ export default function PlayPage() {
             />
           )}
 
-          {/* ── Fishing rod (drag the water to aim) ── */}
+          {/* ambient depth — drifting light rays + rising bubbles (cosmetic) */}
+          <div className="absolute inset-0 z-[2] pointer-events-none overflow-hidden">
+            {AMBIENT_RAYS.map((r, i) => (
+              <div
+                key={`ray-${i}`}
+                className="absolute top-0 h-full"
+                style={{
+                  left: r.left,
+                  width: r.width,
+                  background: "linear-gradient(180deg, rgba(255,255,255,0.16), transparent 70%)",
+                  filter: "blur(6px)",
+                  animation: `reef-ray-drift ${r.dur}s ease-in-out ${r.delay}s infinite`,
+                }}
+              />
+            ))}
+            {AMBIENT_BUBBLES.map((b, i) => (
+              <div
+                key={`bub-${i}`}
+                className="absolute bottom-[6%] rounded-full bg-white/25"
+                style={{
+                  left: b.left,
+                  width: b.size,
+                  height: b.size,
+                  animation: `reef-bubble ${b.dur}s ease-in ${b.delay}s infinite`,
+                }}
+              />
+            ))}
+          </div>
+
+          {/* ── Fishing rod (drag the water to aim) — spring-driven for smooth
+              whip + bend; a nested layer breathes gently while idle. ── */}
           {assets.rod && (
-            <div
+            <motion.div
               className={cn("absolute z-[12] pointer-events-none", ROD.wrap)}
-              style={{
-                transform: `rotate(${rodAngle + rodBend}deg)`,
-                transformOrigin: ROD.origin,
-                transition: aiming ? "none" : "transform 0.55s cubic-bezier(0.34,1.3,0.64,1)",
-              }}
+              style={{ transformOrigin: ROD.origin, willChange: "transform" }}
+              animate={{ rotate: rodAngle + rodBend }}
+              transition={
+                aiming
+                  ? { type: "tween", duration: 0 }
+                  : phase === "casting" || phase === "biting"
+                  ? { type: "spring", stiffness: 210, damping: 12, mass: 0.5 }
+                  : { type: "spring", stiffness: 120, damping: 15, mass: 0.6 }
+              }
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={assets.rod} alt="" className="w-full object-contain select-none" />
-            </div>
+              <div
+                style={{
+                  transformOrigin: ROD.origin,
+                  animation: phase === "idle" && !aiming ? "reef-rod-breathe 4.2s ease-in-out infinite" : "none",
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={assets.rod} alt="" className="w-full object-contain select-none" />
+              </div>
+            </motion.div>
           )}
 
           {/* fishing line — arcs from the rod tip out to the lure */}

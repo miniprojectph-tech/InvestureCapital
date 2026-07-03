@@ -14,6 +14,32 @@ export type UploadedQr = {
   path: string;
 };
 
+/**
+ * Turn a Firebase Storage failure into an actionable message. Most "can't
+ * upload" cases are a 403 from Storage rules (not signed in as admin) or from
+ * App Check being *enforced* on Cloud Storage while the client sends no token.
+ */
+export function describeStorageError(e: unknown): string {
+  const code = String((e as { code?: string })?.code ?? "");
+  const msg = e instanceof Error ? e.message : String(e);
+  const hay = `${code} ${msg}`.toLowerCase();
+  if (hay.includes("unauthenticated")) {
+    return "Not signed in — sign in as an admin and try again.";
+  }
+  if (hay.includes("unauthorized") || hay.includes("403") || hay.includes("permission")) {
+    return "Storage denied this upload (403). Check that you're signed in as an admin, and that Firebase App Check is set to Unenforced for Cloud Storage (App Check → APIs → Cloud Storage) — or that a reCAPTCHA key is configured for this site.";
+  }
+  if (hay.includes("app-check") || hay.includes("appcheck")) {
+    return "Blocked by App Check. Set Cloud Storage to Unenforced in the Firebase console, or configure a reCAPTCHA App Check key for this site.";
+  }
+  if (hay.includes("retry-limit") || hay.includes("unknown") || hay.includes("network")) {
+    return "Couldn't reach Cloud Storage (network, App Check, or CORS). Verify your connection and that App Check isn't blocking Storage.";
+  }
+  if (hay.includes("quota")) return "Storage quota exceeded for this project.";
+  if (hay.includes("canceled")) return "Upload canceled.";
+  return msg || "Upload failed";
+}
+
 const ACCEPTED_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
 
 /** Upload a QR image for a payment method. Returns the download URL + storage path. */
