@@ -175,6 +175,10 @@ export default function PlayPage() {
   const rafRef = useRef<number | null>(null);
   const startRef = useRef(0);
   const ambientRef = useRef<HTMLAudioElement | null>(null);
+  // Live rod-tip tracking so the line always starts at the (rotating) rod tip.
+  const stageRef = useRef<HTMLDivElement>(null);
+  const rodTipRef = useRef<HTMLDivElement>(null);
+  const [tip, setTip] = useState(TIP);
 
   useEffect(() => {
     const t = setInterval(() => setClock(Date.now()), 20_000);
@@ -199,6 +203,49 @@ export default function PlayPage() {
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, []);
+  // Keep the fishing-line origin pinned to the rod tip's live screen position.
+  // The rod rotates on aim/cast/bend, so a fixed origin visibly detaches. Track
+  // continuously while the rod moves; when it settles to idle, measure for a
+  // short beat (until the spring finishes) then stop so we don't re-render at
+  // rest. The gentle idle breathing wobble is intentionally ignored.
+  useEffect(() => {
+    if (view !== "cast") return;
+    let raf = 0;
+    let stop = false;
+    const measureOnce = () => {
+      const stage = stageRef.current;
+      const marker = rodTipRef.current;
+      if (!stage || !marker) return;
+      const s = stage.getBoundingClientRect();
+      const m = marker.getBoundingClientRect();
+      if (s.width <= 0 || s.height <= 0) return;
+      const x = ((m.left + m.width / 2 - s.left) / s.width) * 100;
+      const y = ((m.top + m.height / 2 - s.top) / s.height) * 100;
+      setTip((prev) => (Math.abs(prev.x - x) > 0.04 || Math.abs(prev.y - y) > 0.04 ? { x, y } : prev));
+    };
+    const moving = phase !== "idle" || aiming;
+    if (moving) {
+      const loop = () => {
+        measureOnce();
+        if (!stop) raf = requestAnimationFrame(loop);
+      };
+      raf = requestAnimationFrame(loop);
+    } else {
+      const start = performance.now();
+      const settle = () => {
+        measureOnce();
+        if (!stop && performance.now() - start < 750) raf = requestAnimationFrame(settle);
+      };
+      raf = requestAnimationFrame(settle);
+    }
+    const onResize = () => measureOnce();
+    window.addEventListener("resize", onResize);
+    return () => {
+      stop = true;
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [view, phase, aiming]);
 
   const fishById = useMemo(() => new Map(fish.map((f) => [f.id, f])), [fish]);
   // Pre-computed particle burst for the reveal (stable across re-renders).
@@ -630,12 +677,12 @@ export default function PlayPage() {
   // biting, then tracks the hooked fish shadow as you reel it in.
   const lurePos =
     phase === "casting"
-      ? { x: lerp(TIP.x, LAND.x, castT), y: lerp(TIP.y, LAND.y, castT) - Math.sin(Math.PI * castT) * 14 }
+      ? { x: lerp(tip.x, LAND.x, castT), y: lerp(tip.y, LAND.y, castT) - Math.sin(Math.PI * castT) * 14 }
       : phase === "waiting" || phase === "biting"
       ? LAND
       : phase === "reeling" || phase === "landing"
       ? fishPos
-      : TIP;
+      : tip;
 
   return (
     <div>
@@ -650,6 +697,7 @@ export default function PlayPage() {
 
       {view === "cast" && (
         <div
+          ref={stageRef}
           className={cn(
             "relative w-full mx-auto select-none rounded-2xl overflow-hidden border border-border-strong",
             shaking && "reef-shake"
@@ -715,13 +763,21 @@ export default function PlayPage() {
               }
             >
               <div
+                className="relative"
                 style={{
                   transformOrigin: ROD.origin,
                   animation: phase === "idle" && !aiming ? "reef-rod-breathe 4.2s ease-in-out infinite" : "none",
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={assets.rod} alt="" className="w-full object-contain select-none" />
+                <img src={assets.rod} alt="" className="block w-full object-contain select-none" />
+                {/* invisible marker at the rod tip — the line is pinned here.
+                    Nudge ROD.tipLeft / ROD.tipTop to sit it exactly on the tip. */}
+                <div
+                  ref={rodTipRef}
+                  className="absolute w-0 h-0"
+                  style={{ left: ROD.tipLeft, top: ROD.tipTop }}
+                />
               </div>
             </motion.div>
           )}
@@ -733,7 +789,7 @@ export default function PlayPage() {
             preserveAspectRatio="none"
           >
             <path
-              d={`M ${TIP.x} ${TIP.y} Q ${(TIP.x + lurePos.x) / 2} ${Math.min(TIP.y, lurePos.y) - 8} ${lurePos.x} ${lurePos.y}`}
+              d={`M ${tip.x} ${tip.y} Q ${(tip.x + lurePos.x) / 2} ${Math.min(tip.y, lurePos.y) - 8} ${lurePos.x} ${lurePos.y}`}
               fill="none"
               stroke="rgba(255,255,255,0.75)"
               strokeWidth="1.2"
