@@ -56,7 +56,7 @@ const HOT = {
 // tipLeft/tipTop mark the rod tip within the art (measured: tip is the
 // top-right corner of rod.webp, ~99% / 0%). Nudge if the line's base drifts.
 const ROD = {
-  wrap: "left-[22%] bottom-[2%] w-[20%]",
+  wrap: "left-[20%] bottom-[3%] w-[15%]",
   origin: "18% 82%",
   tipTop: "1%",
   tipLeft: "98%",
