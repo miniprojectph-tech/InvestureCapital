@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, CheckCircle2, AlertCircle, ChevronLeft, X } from "lucide-react";
-import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -205,49 +204,51 @@ export default function PlayPage() {
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, []);
-  // Keep the fishing-line origin pinned to the rod tip's live screen position.
-  // The rod rotates on aim/cast/bend, so a fixed origin visibly detaches. Track
-  // continuously while the rod moves; when it settles to idle, measure for a
-  // short beat (until the spring finishes) then stop so we don't re-render at
-  // rest. The gentle idle breathing wobble is intentionally ignored.
+  // Measure the rod tip's live screen position (relative to the stage, in %).
+  const measureTip = useCallback(() => {
+    const stage = stageRef.current;
+    const marker = rodTipRef.current;
+    if (!stage || !marker) return;
+    const s = stage.getBoundingClientRect();
+    const m = marker.getBoundingClientRect();
+    if (s.width <= 0 || s.height <= 0) return;
+    const x = ((m.left + m.width / 2 - s.left) / s.width) * 100;
+    const y = ((m.top + m.height / 2 - s.top) / s.height) * 100;
+    setTip((prev) => (Math.abs(prev.x - x) > 0.04 || Math.abs(prev.y - y) > 0.04 ? { x, y } : prev));
+  }, []);
+
+  // Keep the fishing-line origin pinned to the rod tip. The rod rotates on
+  // aim/cast/bend, so a fixed origin visibly detaches. Track continuously while
+  // the rod moves; when it settles to idle, measure for a short beat (until the
+  // spring finishes) then stop so we don't re-render at rest. Re-runs when the
+  // game finishes loading (rod appears) and on resize. Idle breathing ignored.
   useEffect(() => {
-    if (view !== "cast") return;
+    if (view !== "cast" || loading) return;
     let raf = 0;
     let stop = false;
-    const measureOnce = () => {
-      const stage = stageRef.current;
-      const marker = rodTipRef.current;
-      if (!stage || !marker) return;
-      const s = stage.getBoundingClientRect();
-      const m = marker.getBoundingClientRect();
-      if (s.width <= 0 || s.height <= 0) return;
-      const x = ((m.left + m.width / 2 - s.left) / s.width) * 100;
-      const y = ((m.top + m.height / 2 - s.top) / s.height) * 100;
-      setTip((prev) => (Math.abs(prev.x - x) > 0.04 || Math.abs(prev.y - y) > 0.04 ? { x, y } : prev));
-    };
     const moving = phase !== "idle" || aiming;
     if (moving) {
       const loop = () => {
-        measureOnce();
+        measureTip();
         if (!stop) raf = requestAnimationFrame(loop);
       };
       raf = requestAnimationFrame(loop);
     } else {
       const start = performance.now();
       const settle = () => {
-        measureOnce();
-        if (!stop && performance.now() - start < 750) raf = requestAnimationFrame(settle);
+        measureTip();
+        if (!stop && performance.now() - start < 900) raf = requestAnimationFrame(settle);
       };
       raf = requestAnimationFrame(settle);
     }
-    const onResize = () => measureOnce();
+    const onResize = () => measureTip();
     window.addEventListener("resize", onResize);
     return () => {
       stop = true;
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", onResize);
     };
-  }, [view, phase, aiming]);
+  }, [view, phase, aiming, loading, measureTip]);
 
   const fishById = useMemo(() => new Map(fish.map((f) => [f.id, f])), [fish]);
   // Pre-computed particle burst for the reveal (stable across re-renders).
@@ -687,24 +688,39 @@ export default function PlayPage() {
       : tip;
 
   return (
-    <div>
-      <TopHeader title="Investure Reef" subtitle="Cast a line · collect fish · earn points" />
+    <div className="fixed inset-0 z-40 bg-black overflow-y-auto overscroll-none">
+      {/* leave the immersive game and return to the app */}
+      <button
+        onClick={() => {
+          if (typeof window !== "undefined" && window.history.length > 1) router.back();
+          else router.push("/dashboard");
+        }}
+        className="fixed top-3 left-3 z-[45] flex items-center gap-1 pl-2 pr-3 py-1.5 rounded-full bg-black/55 backdrop-blur-sm border border-white/20 text-white text-[12px] hover:bg-black/70 transition"
+        aria-label="Back to app"
+      >
+        <ChevronLeft className="w-4 h-4" /> Back
+      </button>
 
       {error && (
-        <div className="mb-3 flex items-start gap-2 px-3 py-2 bg-red/10 border border-red/30 rounded-lg text-[11px] text-red">
+        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[45] flex items-start gap-2 px-3 py-2 bg-red/90 border border-red/30 rounded-lg text-[11px] text-white shadow-lg max-w-[90vw]">
           <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
 
       {view === "cast" && (
+        <div className="min-h-[100dvh] w-full flex items-center justify-center">
         <div
           ref={stageRef}
           className={cn(
-            "relative w-full mx-auto select-none rounded-2xl overflow-hidden border border-border-strong",
+            "relative select-none overflow-hidden shadow-2xl shadow-black/60",
             shaking && "reef-shake"
           )}
-          style={{ aspectRatio: "1672 / 941", "--reef-shake": `${shakePx}px` } as React.CSSProperties}
+          style={{
+            aspectRatio: "1672 / 941",
+            width: "min(100vw, 177.68dvh)",
+            "--reef-shake": `${shakePx}px`,
+          } as React.CSSProperties}
           onAnimationEnd={(e) => {
             if (e.animationName === "reef-shake") setShaking(false);
           }}
@@ -772,7 +788,12 @@ export default function PlayPage() {
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={assets.rod} alt="" className="block w-full object-contain select-none" />
+                <img
+                  src={assets.rod}
+                  alt=""
+                  className="block w-full object-contain select-none"
+                  onLoad={measureTip}
+                />
                 {/* invisible marker at the rod tip — the line is pinned here.
                     Nudge ROD.tipLeft / ROD.tipTop to sit it exactly on the tip. */}
                 <div
@@ -1099,17 +1120,18 @@ export default function PlayPage() {
             </div>
           )}
         </div>
+        </div>
       )}
 
       {view === "collection" && (
-        <div>
+        <div className="max-w-3xl mx-auto p-4 pt-14">
           <BackBar onBack={() => setView("cast")} label="Collection book" />
           <CollectionBook fish={fish} rarities={config.rarities} caught={state?.collection ?? {}} />
         </div>
       )}
 
       {view === "leaderboard" && (
-        <div>
+        <div className="max-w-3xl mx-auto p-4 pt-14">
           <BackBar onBack={() => setView("cast")} label="Weekly ranking" />
           <Card>
             <CardHeader title="Weekly leaderboard" subtitle="Top anglers · resets Monday" />
