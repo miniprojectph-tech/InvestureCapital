@@ -58,8 +58,8 @@ const HOT = {
 const ROD = {
   wrap: "left-[22%] bottom-[2%] w-[20%]",
   origin: "18% 82%",
-  tipTop: "2%",
-  tipLeft: "97%",
+  tipTop: "1%",
+  tipLeft: "98%",
 };
 // Line origin (rod tip) and where the lure lands out in the ocean, in stage %.
 const TIP = { x: 40, y: 45 };
@@ -677,7 +677,8 @@ export default function PlayPage() {
       ? 18
       : 0;
   // Lure position (stage %): arcs out to the ocean on cast, sits while waiting +
-  // biting, then tracks the hooked fish shadow as you reel it in.
+  // biting, then tracks the hooked fish shadow as you reel it in. At idle the
+  // lure hangs just below the rod tip so a short line visibly connects them.
   const lurePos =
     phase === "casting"
       ? { x: lerp(tip.x, LAND.x, castT), y: lerp(tip.y, LAND.y, castT) - Math.sin(Math.PI * castT) * 14 }
@@ -685,7 +686,12 @@ export default function PlayPage() {
       ? LAND
       : phase === "reeling" || phase === "landing"
       ? fishPos
-      : tip;
+      : { x: tip.x, y: tip.y + 3 };
+  // Line curve: slack (bows up) only when the lure is far out horizontally; a
+  // near-straight drop when the lure hangs right under the tip.
+  const lineBow = Math.min(9, Math.abs(lurePos.x - tip.x) * 0.35);
+  const lineCtrlX = (tip.x + lurePos.x) / 2;
+  const lineCtrlY = Math.min(tip.y, lurePos.y) - lineBow;
 
   return (
     <div className="fixed inset-0 z-40 bg-black overflow-y-auto overscroll-none">
@@ -812,7 +818,7 @@ export default function PlayPage() {
             preserveAspectRatio="none"
           >
             <path
-              d={`M ${tip.x} ${tip.y} Q ${(tip.x + lurePos.x) / 2} ${Math.min(tip.y, lurePos.y) - 8} ${lurePos.x} ${lurePos.y}`}
+              d={`M ${tip.x} ${tip.y} Q ${lineCtrlX} ${lineCtrlY} ${lurePos.x} ${lurePos.y}`}
               fill="none"
               stroke="rgba(255,255,255,0.75)"
               strokeWidth="1.2"
@@ -848,13 +854,14 @@ export default function PlayPage() {
             </div>
           )}
 
-          {/* lure + landing splash */}
+          {/* lure + landing splash — anchored by its top (where the line ties),
+              so the fishing line always meets the bobber's attachment point. */}
           <div
             className="absolute z-[12] pointer-events-none"
             style={{
               left: `${lurePos.x}%`,
               top: `${lurePos.y}%`,
-              transform: "translate(-50%,-50%)",
+              transform: "translate(-50%,0)",
               transition:
                 phase === "casting" || phase === "reeling"
                   ? "none"
@@ -877,7 +884,7 @@ export default function PlayPage() {
             >
               {assets.lure ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={assets.lure} alt="" className="w-[2.6vw] max-w-[32px] object-contain" />
+                <img src={assets.lure} alt="" className="block mx-auto w-[1.7vw] max-w-[22px] object-contain" />
               ) : (
                 <div className="w-3 h-3 rounded-full bg-gold border-2 border-white/80" />
               )}
