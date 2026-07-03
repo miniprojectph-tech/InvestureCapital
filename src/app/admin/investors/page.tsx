@@ -236,6 +236,41 @@ export default function AdminInvestorsPage() {
     });
   }, [rows, query, sortKey]);
 
+  function exportCsv() {
+    const cell = (v: unknown) => {
+      const s = String(v ?? "");
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const games = sortKey === "games";
+    const header = games
+      ? ["Name", "Email", "Points", "Credits", "Streak", "Weekly", "Casts", "Fish"]
+      : ["Name", "Email", "Plans", "Wallet", "Vault", "Joined", "Role"];
+    const body = games
+      ? gameTable.map((r) =>
+          [r.name, r.email, r.points, r.energy, r.streak, r.weeklyScore, r.totalCasts, r.collectionCount].map(cell).join(",")
+        )
+      : filtered.map((u) =>
+          [
+            u.name,
+            u.email,
+            u.activePlansCount,
+            u.wallet,
+            u.vault,
+            new Date(u.joinedAt).toISOString().slice(0, 10),
+            u.isAdmin ? "Admin" : "Investor",
+          ]
+            .map(cell)
+            .join(",")
+        );
+    const csv = [header.join(","), ...body].join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `investors${games ? "-games" : ""}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-24 gap-3">
@@ -280,7 +315,10 @@ export default function AdminInvestorsPage() {
             </button>
           ))}
         </div>
-        <button className="ml-auto text-[11px] px-3 py-1.5 bg-card border border-border rounded-full text-text-muted hover:text-text flex items-center gap-1.5">
+        <button
+          onClick={exportCsv}
+          className="ml-auto text-[11px] px-3 py-1.5 bg-card border border-border rounded-full text-text-muted hover:text-text flex items-center gap-1.5"
+        >
           <Download className="w-3 h-3" /> Export CSV
         </button>
       </div>
@@ -462,7 +500,14 @@ export default function AdminInvestorsPage() {
                     )}
                   </td>
                   <td className="py-2 text-center">
-                    <button className="text-text-subtle hover:text-text">
+                    <button
+                      onClick={() => {
+                        setQuery(u.email);
+                        setSortKey("games");
+                      }}
+                      title="Manage game credits"
+                      className="text-text-subtle hover:text-gold"
+                    >
                       <MoreVertical className="w-3.5 h-3.5" />
                     </button>
                   </td>

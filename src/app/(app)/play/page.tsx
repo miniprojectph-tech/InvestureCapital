@@ -53,6 +53,7 @@ const HOT = {
   ranking: "left-[73.6%] top-[12.5%] w-[6%] h-[9.5%]",
   shop: "left-[79.4%] top-[12.5%] w-[6%] h-[9.5%]",
   gallery: "left-[0.5%] top-[16.5%] w-[15.5%] h-[67%]",
+  autoFish: "left-[11%] top-[84.5%] w-[10%] h-[13%]",
 };
 // Rod placement (tunable). Pivot at the handle; line hangs from the tip.
 // tipLeft/tipTop mark the rod tip within the art (measured: tip is the
@@ -74,7 +75,22 @@ const PANEL = {
   rarityTop: "43.5%",
   weightTop: "49.2%",
   recordTop: "55%",
+  // LOCATION / WEATHER / TIME info rows (values sit just under the baked labels).
+  infoLeft: "9%",
+  locationTop: "71.5%",
+  weatherTop: "77.3%",
+  timeTop: "83%",
 };
+const REEF_LOCATIONS = [
+  "Azure Shallows",
+  "Coral Gardens",
+  "Sunken Atoll",
+  "Mistvale Cove",
+  "Emerald Lagoon",
+  "Dragon's Reef",
+  "Pearl Bay",
+];
+const REEF_WEATHERS = ["Sunny", "Clear skies", "Breezy", "Calm", "Misty", "Golden haze"];
 // ── Reel Phase-2 tunables ──────────────────────────────────────────────
 // Bite sub-stage durations (ms). The hookset window opens at the start of the
 // "aggressive" stage; a tap inside it is a perfect hook. Missing it auto-hooks.
@@ -169,6 +185,11 @@ export default function PlayPage() {
   const hooksetArmedRef = useRef(false);
   const biteTimersRef = useRef<number[]>([]);
   const fishRef = useRef({ x: LAND.x, y: LAND.y, state: "swim" as AiState, dir: 1 });
+  const [autoFish, setAutoFish] = useState(false);
+  const autoFishRef = useRef(false);
+  useEffect(() => {
+    autoFishRef.current = autoFish;
+  }, [autoFish]);
   const [reveal, setReveal] = useState<CastResult | null>(null);
   const [isNewCatch, setIsNewCatch] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -318,6 +339,14 @@ export default function PlayPage() {
   ).length;
   const totalCaught = fish.filter((f) => state?.collection?.[f.id]).length;
 
+  // Ambient panel flavor: live Manila time, plus a day-stable location & weather.
+  const manilaNow = new Date(clock + 8 * 3_600_000);
+  const mh = manilaNow.getUTCHours();
+  const timeStr = `${((mh + 11) % 12) + 1}:${String(manilaNow.getUTCMinutes()).padStart(2, "0")} ${mh < 12 ? "AM" : "PM"}`;
+  const dayIndex = Math.floor((clock + 8 * 3_600_000) / 86_400_000);
+  const locationStr = REEF_LOCATIONS[dayIndex % REEF_LOCATIONS.length];
+  const weatherStr = mh >= 18 || mh < 5 ? "Moonlit" : REEF_WEATHERS[mh % REEF_WEATHERS.length];
+
   function stopRaf() {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
@@ -347,7 +376,18 @@ export default function PlayPage() {
   async function releaseCharge() {
     if (phase !== "charging") return;
     stopRaf();
-    const power = meterRef.current;
+    await runCast(meterRef.current);
+  }
+
+  // Run one full cast → wait → bite → reel cycle at the given power. Used by both
+  // the manual charge release and AUTO FISH (which drives it hands-free).
+  async function runCast(power: number) {
+    if (demoMode) {
+      setError("Casting isn't available in demo mode — sign in to play.");
+      setAutoFish(false);
+      return;
+    }
+    setError(null);
     setCastPower(power);
     setMeter(0);
     meterRef.current = 0;
@@ -364,10 +404,28 @@ export default function PlayPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Cast failed");
       setPhase("idle");
+      setAutoFish(false);
       return;
     }
     await wait(400 + Math.random() * 500); // fish approaches
     runBiteSequence(res); // nibble → test → aggressive, then reel
+  }
+
+  function toggleAutoFish() {
+    if (demoMode) {
+      setError("Casting isn't available in demo mode — sign in to play.");
+      return;
+    }
+    if (autoFish) {
+      setAutoFish(false); // stop after the current cast finishes
+      return;
+    }
+    if (energy <= 0) {
+      setError("Out of energy — new casts tomorrow!");
+      return;
+    }
+    setAutoFish(true);
+    if (phase === "idle") runCast(0.85 + Math.random() * 0.1);
   }
 
   function clearBiteTimers() {
@@ -482,7 +540,8 @@ export default function PlayPage() {
       const diving = fish.state === "dive";
       let tn = tensionRef.current;
       let pr = progressRef.current;
-      const hold = reelHoldRef.current;
+      // AUTO FISH reels itself: hold while tension is safe, ease off near the red.
+      const hold = autoFishRef.current ? tn < FISHAI.careful : reelHoldRef.current;
       if (hold) {
         const gain =
           (running ? FISHAI.runReelGain : diving ? FISHAI.reelGain * 0.6 : FISHAI.reelGain) / difficulty;
@@ -573,6 +632,21 @@ export default function PlayPage() {
       biteTimersRef.current.forEach((id) => clearTimeout(id));
     };
   }, []);
+  // AUTO FISH: after a catch reveal, auto-dismiss and cast again while energy
+  // remains and auto is still on. Stops when energy hits 0 or you toggle it off.
+  useEffect(() => {
+    if (!reveal || !autoFish) return;
+    const t = window.setTimeout(() => {
+      setReveal(null);
+      if (autoFishRef.current && reveal.energy > 0) {
+        runCast(0.85 + Math.random() * 0.1);
+      } else {
+        setAutoFish(false);
+      }
+    }, 1100);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reveal, autoFish]);
   useEffect(() => {
     if (phase !== "charging") return;
     const up = () => releaseCharge();
@@ -991,6 +1065,17 @@ export default function PlayPage() {
             </>
           )}
 
+          {/* ── panel info rows: location / weather / time ── */}
+          <div className="absolute z-20 -translate-x-1/2 pointer-events-none" style={{ left: PANEL.infoLeft, top: PANEL.locationTop }}>
+            <span className="text-[clamp(6px,0.74vw,10px)] font-medium text-white/90 whitespace-nowrap">{locationStr}</span>
+          </div>
+          <div className="absolute z-20 -translate-x-1/2 pointer-events-none" style={{ left: PANEL.infoLeft, top: PANEL.weatherTop }}>
+            <span className="text-[clamp(6px,0.74vw,10px)] font-medium text-white/90 whitespace-nowrap">{weatherStr}</span>
+          </div>
+          <div className="absolute z-20 -translate-x-1/2 pointer-events-none" style={{ left: PANEL.infoLeft, top: PANEL.timeTop }}>
+            <span className="text-[clamp(6px,0.74vw,10px)] font-mono text-white/90 whitespace-nowrap">{timeStr}</span>
+          </div>
+
           {/* ── live HUD values (sit on the HUD top bar's empty middle) ── */}
           <div className="absolute z-20 left-[43%] -translate-x-1/2 top-[3.6%] flex items-center gap-1.5">
             <GlassChip>⚡ {energy}/{dailyCredits}</GlassChip>
@@ -1061,6 +1146,22 @@ export default function PlayPage() {
           <button onClick={() => setView("leaderboard")} className={cn("absolute z-20", HOT.ranking)} aria-label="Ranking" />
           <button onClick={() => router.push("/rewards")} className={cn("absolute z-20", HOT.shop)} aria-label="Shop" />
           <button onClick={() => setView("collection")} className={cn("absolute z-20", HOT.gallery)} aria-label="Collection" />
+          {/* AUTO FISH — casts + reels hands-free until energy runs out */}
+          <button
+            onClick={toggleAutoFish}
+            className={cn(
+              "absolute z-20 rounded-full transition",
+              HOT.autoFish,
+              autoFish ? "ring-4 ring-green/70 animate-pulse" : ""
+            )}
+            aria-label={autoFish ? "Stop auto fishing" : "Auto fish"}
+          >
+            {autoFish && (
+              <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[clamp(7px,0.8vw,10px)] font-bold text-green bg-black/60 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                AUTO ON
+              </span>
+            )}
+          </button>
 
           {/* charge hint */}
           {charging && (

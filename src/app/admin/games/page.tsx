@@ -361,6 +361,22 @@ export default function AdminGamesPage() {
               {draft.fothEnabled ? "Enabled" : "Disabled"}
             </button>
           </div>
+          <NumField
+            label="Treasure chance"
+            step={0.01}
+            value={draft.treasureChance}
+            onChange={(v) => setDraft({ ...draft, treasureChance: v })}
+          />
+          <NumField
+            label="Treasure min (pts)"
+            value={draft.treasureMin}
+            onChange={(v) => setDraft({ ...draft, treasureMin: v })}
+          />
+          <NumField
+            label="Treasure max (pts)"
+            value={draft.treasureMax}
+            onChange={(v) => setDraft({ ...draft, treasureMax: v })}
+          />
         </div>
 
         {/* Rarities */}
