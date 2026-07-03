@@ -54,11 +54,13 @@ const HOT = {
   gallery: "left-[0.5%] top-[16.5%] w-[15.5%] h-[67%]",
 };
 // Rod placement (tunable). Pivot at the handle; line hangs from the tip.
+// tipLeft/tipTop mark the rod tip within the art (measured: tip is the
+// top-right corner of rod.webp, ~99% / 0%). Nudge if the line's base drifts.
 const ROD = {
   wrap: "left-[22%] bottom-[2%] w-[20%]",
   origin: "18% 82%",
-  tipTop: "5%",
-  tipLeft: "80%",
+  tipTop: "2%",
+  tipLeft: "97%",
 };
 // Line origin (rod tip) and where the lure lands out in the ocean, in stage %.
 const TIP = { x: 40, y: 45 };
