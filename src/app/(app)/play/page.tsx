@@ -49,9 +49,11 @@ function vibrate(p: number | number[]) {
 // ── Tunable positions over the HUD art (% of the 1672×941 stage). Nudge if art shifts. ──
 const HOT = {
   cast: "left-[83%] top-[75%] w-[15%] h-[23%]",
-  quests: "left-[67.8%] top-[12.5%] w-[6%] h-[9.5%]",
-  ranking: "left-[73.6%] top-[12.5%] w-[6%] h-[9.5%]",
-  shop: "left-[79.4%] top-[12.5%] w-[6%] h-[9.5%]",
+  // Top-bar icon row (new HUD): shield · book · crown · crate.
+  quests: "left-[61.2%] top-[2.5%] w-[4.6%] h-[9.5%]",
+  galleryTop: "left-[65.6%] top-[2.5%] w-[4.6%] h-[9.5%]",
+  ranking: "left-[70%] top-[2.5%] w-[4.6%] h-[9.5%]",
+  shop: "left-[74.4%] top-[2.5%] w-[4.6%] h-[9.5%]",
   gallery: "left-[0.5%] top-[16.5%] w-[15.5%] h-[67%]",
   autoFish: "left-[11%] top-[84.5%] w-[10%] h-[13%]",
 };
@@ -1143,6 +1145,7 @@ export default function PlayPage() {
               </span>
             )}
           </button>
+          <button onClick={() => setView("collection")} className={cn("absolute z-20", HOT.galleryTop)} aria-label="Collection" />
           <button onClick={() => setView("leaderboard")} className={cn("absolute z-20", HOT.ranking)} aria-label="Ranking" />
           <button onClick={() => router.push("/rewards")} className={cn("absolute z-20", HOT.shop)} aria-label="Shop" />
           <button onClick={() => setView("collection")} className={cn("absolute z-20", HOT.gallery)} aria-label="Collection" />
@@ -1205,7 +1208,7 @@ export default function PlayPage() {
               button, so it never covers the fish being reeled in ── */}
           {phase === "reeling" && (
             <div
-              className="absolute z-20 left-[82%] top-[39%] w-[15%] min-w-[132px] max-w-[210px] rounded-2xl border border-border-gold px-3 py-2.5"
+              className="absolute z-20 left-[82%] top-[16%] w-[15.5%] min-w-[140px] max-w-[220px] rounded-2xl border border-border-gold px-3 py-3"
               style={{
                 background: "linear-gradient(180deg, rgba(14,32,56,0.94), rgba(8,17,32,0.94))",
                 backdropFilter: "blur(8px)",
@@ -1235,10 +1238,10 @@ export default function PlayPage() {
               </div>
 
               {/* twin vertical meters (fill bottom → top) */}
-              <div className="flex items-stretch justify-center gap-4" style={{ height: "clamp(84px,15vh,148px)" }}>
+              <div className="flex items-stretch justify-center gap-5" style={{ height: "clamp(160px,42vh,380px)" }}>
                 {/* line tension */}
                 <div className="flex flex-col items-center gap-1">
-                  <div className="relative w-3.5 flex-1 rounded-full bg-black/60 border border-white/10 overflow-hidden">
+                  <div className="relative w-4 flex-1 rounded-full bg-black/60 border border-white/10 overflow-hidden">
                     <div className="absolute top-0 inset-x-0 h-[28%]" style={{ background: "linear-gradient(0deg, transparent, rgba(248,113,113,0.3))" }} />
                     <div
                       className="absolute bottom-0 inset-x-0 rounded-full"
@@ -1260,7 +1263,7 @@ export default function PlayPage() {
                 </div>
                 {/* caught */}
                 <div className="flex flex-col items-center gap-1">
-                  <div className="relative w-3.5 flex-1 rounded-full bg-black/60 border border-white/10 overflow-hidden">
+                  <div className="relative w-4 flex-1 rounded-full bg-black/60 border border-white/10 overflow-hidden">
                     <div className="absolute bottom-0 inset-x-0 rounded-full" style={{ height: `${progress}%`, background: "linear-gradient(0deg,#4F8EF7,#7db0ff)" }}>
                       <span className="absolute inset-x-0 top-0 h-2" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.55),transparent)" }} />
                     </div>
