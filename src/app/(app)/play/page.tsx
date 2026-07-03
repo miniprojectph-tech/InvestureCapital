@@ -57,6 +57,15 @@ const HOT = {
   gallery: "left-[0.5%] top-[16.5%] w-[15.5%] h-[67%]",
   autoFish: "left-[11%] top-[84.5%] w-[10%] h-[13%]",
 };
+// Readable labels overlaid on the top-bar icons (baked art labels are illegible).
+// left = icon center %, top = the label-pill row. Tunable.
+const TOP_ICON_LABELS = [
+  { key: "quests", left: "63.4%", text: "Quests" },
+  { key: "collection", left: "67.8%", text: "Collection" },
+  { key: "ranking", left: "72.2%", text: "Ranking" },
+  { key: "shop", left: "76.6%", text: "Shop" },
+];
+const TOP_ICON_LABEL_TOP = "9.2%";
 // Rod placement (tunable). Pivot at the handle; line hangs from the tip.
 // tipLeft/tipTop mark the rod tip within the art (measured: tip is the
 // top-right corner of rod.webp, ~99% / 0%). Nudge if the line's base drifts.
@@ -1036,6 +1045,23 @@ export default function PlayPage() {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={assets.hud} alt="" className="absolute inset-0 w-full h-full object-cover z-10 pointer-events-none" />
           )}
+
+          {/* readable labels over the top-bar icons (baked labels are illegible) */}
+          {assets.hud &&
+            TOP_ICON_LABELS.map((l) => (
+              <span
+                key={l.key}
+                className="absolute z-20 pointer-events-none text-[clamp(5px,0.58vw,9px)] font-semibold uppercase tracking-wide text-white whitespace-nowrap px-1 py-0.5 rounded-full border border-border-gold"
+                style={{
+                  left: l.left,
+                  top: TOP_ICON_LABEL_TOP,
+                  transform: "translate(-50%,-50%)",
+                  background: "linear-gradient(180deg,rgba(12,26,46,0.96),rgba(7,14,26,0.98))",
+                }}
+              >
+                {l.text}
+              </span>
+            ))}
 
           {/* ── CURRENT FISH panel: last catch ── */}
           {lastCatch && (
