@@ -10,11 +10,13 @@ import { useAuth } from "@/lib/auth";
 import {
   useGameState,
   useGameConfig,
+  useGamesSettings,
   useFish,
   useFishOfHour,
   useLeaderboard,
   castLine,
   claimQuest,
+  effectiveDailyCredits,
   type CastResult,
 } from "@/lib/game";
 
@@ -123,6 +125,7 @@ export default function PlayPage() {
   const { user, demoMode } = useAuth();
   const { state, loading } = useGameState();
   const { config } = useGameConfig();
+  const { settings: gamesSettings } = useGamesSettings();
   const { fish } = useFish();
   const foth = useFishOfHour();
   const { rows: leaderboard } = useLeaderboard();
@@ -304,7 +307,8 @@ export default function PlayPage() {
   }
 
   const today = manilaDay();
-  const energy = state?.energy ?? config.dailyEnergy;
+  const dailyCredits = effectiveDailyCredits(config.dailyEnergy, gamesSettings.universalDailyCredits);
+  const energy = state?.energy ?? dailyCredits;
   const points = state?.points ?? 0;
   const streak = state?.streak ?? 0;
   const questsToday =
@@ -966,7 +970,7 @@ export default function PlayPage() {
 
           {/* ── live HUD values (sit on the HUD top bar's empty middle) ── */}
           <div className="absolute z-20 left-[43%] -translate-x-1/2 top-[3.6%] flex items-center gap-1.5">
-            <GlassChip>⚡ {energy}/{config.dailyEnergy}</GlassChip>
+            <GlassChip>⚡ {energy}/{dailyCredits}</GlassChip>
             <GlassChip>✨ {points.toLocaleString()}</GlassChip>
             {streak > 0 && <GlassChip>🔥 {streak}</GlassChip>}
             {combo > 1 && <GlassChip>🎣 ×{combo}</GlassChip>}

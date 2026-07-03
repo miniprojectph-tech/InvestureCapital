@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   collection,
+  collectionGroup,
   doc,
   deleteDoc,
   getDocs,
@@ -310,6 +311,54 @@ export async function saveGameConfig(db: Firestore, patch: Partial<GameConfig>):
   await setDoc(doc(db, "settings", "game"), patch, { merge: true });
 }
 
+// ===== General (cross-game) settings =====
+// Universal knobs that apply to every game (Reef today, more later). Stored in
+// settings/games — separate from the Reef-specific settings/game config.
+export type GamesSettings = {
+  universalDailyCredits: number;
+};
+export const DEFAULT_GAMES_SETTINGS: GamesSettings = {
+  universalDailyCredits: 20,
+};
+
+/** A game's effective daily credits: its own value if it overrides (>0), else universal. */
+export function effectiveDailyCredits(gameDailyEnergy: number | undefined, universal: number): number {
+  return gameDailyEnergy && gameDailyEnergy > 0 ? gameDailyEnergy : universal;
+}
+
+export function useGamesSettings() {
+  const [settings, setSettings] = useState<GamesSettings>(DEFAULT_GAMES_SETTINGS);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const { db } = getFirebase();
+    if (!db) {
+      setLoading(false);
+      return;
+    }
+    const unsub = onSnapshot(
+      doc(db, "settings", "games"),
+      (snap) => {
+        setSettings(
+          snap.exists()
+            ? { ...DEFAULT_GAMES_SETTINGS, ...(snap.data() as Partial<GamesSettings>) }
+            : DEFAULT_GAMES_SETTINGS
+        );
+        setLoading(false);
+      },
+      () => {
+        setSettings(DEFAULT_GAMES_SETTINGS);
+        setLoading(false);
+      }
+    );
+    return unsub;
+  }, []);
+  return { settings, loading };
+}
+
+export async function saveGamesSettings(db: Firestore, patch: Partial<GamesSettings>): Promise<void> {
+  await setDoc(doc(db, "settings", "games"), patch, { merge: true });
+}
+
 // ===== Per-user game state =====
 export function useGameState() {
   const { user, demoMode } = useAuth();
@@ -406,6 +455,63 @@ export async function saveFish(db: Firestore, id: string | null, data: Omit<Fish
 
 export async function deleteFish(db: Firestore, id: string): Promise<void> {
   await deleteDoc(doc(db, "fish", id));
+}
+
+// ===== Admin: per-investor game state (admin has read/write per Firestore rules) =====
+export type AdminGameRow = {
+  uid: string;
+  points: number;
+  energy: number;
+  streak: number;
+  weeklyScore: number;
+  totalCasts: number;
+  collectionCount: number;
+};
+
+/** Read every investor's game state in one collection-group query. Admin only. */
+export async function adminListGameStates(db: Firestore): Promise<AdminGameRow[]> {
+  const snap = await getDocs(collectionGroup(db, "game"));
+  const rows: AdminGameRow[] = [];
+  snap.docs.forEach((d) => {
+    if (d.id !== "state") return;
+    const uid = d.ref.parent.parent?.id;
+    if (!uid) return;
+    const g = d.data() as Partial<GameState>;
+    rows.push({
+      uid,
+      points: g.points ?? 0,
+      energy: g.energy ?? 0,
+      streak: g.streak ?? 0,
+      weeklyScore: g.weeklyScore ?? 0,
+      totalCasts: g.totalCasts ?? 0,
+      collectionCount: g.collection ? Object.keys(g.collection).length : 0,
+    });
+  });
+  return rows;
+}
+
+/** Patch an investor's game state (e.g. credits/streak/weekly). Admin only. */
+export async function adminSaveGameState(
+  db: Firestore,
+  uid: string,
+  patch: Partial<GameState>
+): Promise<void> {
+  await setDoc(doc(db, "users", uid, "game", "state"), patch, { merge: true });
+}
+
+/** Reset an investor's game state to a fresh default. Admin only. */
+export async function adminResetGameState(db: Firestore, uid: string, dailyEnergy: number): Promise<void> {
+  const fresh: GameState = {
+    points: 0,
+    weeklyScore: 0,
+    energy: dailyEnergy,
+    lastDay: "",
+    streak: 0,
+    totalCasts: 0,
+    collection: {},
+    quests: { day: "", progress: {}, claimed: {} },
+  };
+  await setDoc(doc(db, "users", uid, "game", "state"), fresh);
 }
 
 // ===== Fish of the hour =====

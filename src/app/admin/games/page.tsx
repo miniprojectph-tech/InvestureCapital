@@ -11,6 +11,8 @@ import { getFirebase } from "@/lib/firebase";
 import { uploadGameImage, uploadGameAsset, describeStorageError } from "@/lib/storage";
 import {
   useGameConfig,
+  useGamesSettings,
+  saveGamesSettings,
   useFish,
   saveGameConfig,
   saveFish,
@@ -20,6 +22,7 @@ import {
   DEFAULT_GAME_CONFIG,
   type GameConfig,
   type GameAssets,
+  type GamesSettings,
   type Fish,
 } from "@/lib/game";
 
@@ -173,6 +176,11 @@ export default function AdminGamesPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // General (cross-game) settings
+  const { settings: gamesSettings } = useGamesSettings();
+  const [univDraft, setUnivDraft] = useState<GamesSettings | null>(null);
+  const [savingUniv, setSavingUniv] = useState(false);
+
   // Fish editor
   const [editing, setEditing] = useState<Fish | null>(null);
   const [isNew, setIsNew] = useState(false);
@@ -180,6 +188,9 @@ export default function AdminGamesPage() {
   useEffect(() => {
     if (!loading && !draft) setDraft(config);
   }, [loading, config, draft]);
+  useEffect(() => {
+    if (univDraft === null) setUnivDraft(gamesSettings);
+  }, [gamesSettings, univDraft]);
 
   if (loading || !draft) {
     return (
@@ -202,6 +213,24 @@ export default function AdminGamesPage() {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSavingCfg(false);
+    }
+  }
+
+  async function saveUniversal() {
+    const { db } = getFirebase();
+    if (!db || !user?.isAdmin || !univDraft) return;
+    setSavingUniv(true);
+    setError(null);
+    setMsg(null);
+    try {
+      await saveGamesSettings(db, {
+        universalDailyCredits: Math.max(0, Math.round(univDraft.universalDailyCredits)),
+      });
+      setMsg("General settings saved.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSavingUniv(false);
     }
   }
 
@@ -258,7 +287,7 @@ export default function AdminGamesPage() {
 
   return (
     <div>
-      <TopHeader title="Reef game" subtitle="Fish catalog, drop rates & economy" />
+      <TopHeader title="Game Settings" subtitle="Universal settings · Reef economy, fish & assets" />
 
       {msg && (
         <div className="mb-3 flex items-center gap-2 px-3 py-2 bg-green/10 border border-green/30 rounded-lg text-[11px] text-green">
@@ -271,12 +300,42 @@ export default function AdminGamesPage() {
         </div>
       )}
 
+      {/* General (cross-game) settings */}
+      <Card className="mb-3">
+        <CardHeader
+          title="General settings"
+          subtitle="Universal defaults that apply to every game — a game may override its own value"
+        />
+        {univDraft && (
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-40">
+              <NumField
+                label="Universal daily credits"
+                value={univDraft.universalDailyCredits}
+                onChange={(v) => setUnivDraft({ ...univDraft, universalDailyCredits: v })}
+              />
+            </div>
+            <p className="text-[10px] text-text-subtle m-0 flex-1 min-w-[180px] pb-2">
+              Baseline cast credits refilled daily. Reef uses this unless it sets its own override below (a value &gt; 0).
+            </p>
+            <button
+              onClick={saveUniversal}
+              disabled={savingUniv}
+              className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center gap-1.5 disabled:opacity-60"
+            >
+              {savingUniv ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              Save general
+            </button>
+          </div>
+        )}
+      </Card>
+
       {/* Economy config */}
       <Card className="mb-3">
-        <CardHeader title="Economy" subtitle="Energy, rarities, streak, prizes" />
+        <CardHeader title="Reef · Economy" subtitle="Energy, rarities, streak, prizes" />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           <NumField
-            label="Daily energy (casts)"
+            label="Daily credits (0 = universal)"
             value={draft.dailyEnergy}
             onChange={(v) => setDraft({ ...draft, dailyEnergy: v })}
           />

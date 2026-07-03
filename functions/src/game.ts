@@ -75,11 +75,19 @@ function dayKey(ts: number): string {
   return new Date(ts + 8 * HOUR_MS).toISOString().slice(0, 10);
 }
 
+/** Universal daily credits (settings/games) — the cross-game baseline. */
+async function loadUniversalDailyCredits(): Promise<number> {
+  const snap = await db.doc("settings/games").get();
+  const d = snap.exists ? (snap.data() as { universalDailyCredits?: number }) : {};
+  return d.universalDailyCredits ?? DEFAULT_CONFIG.dailyEnergy;
+}
+
 async function loadConfig(): Promise<GameConfig> {
   const snap = await db.doc("settings/game").get();
   if (!snap.exists) return DEFAULT_CONFIG;
   const d = snap.data() as Partial<GameConfig>;
   return {
+    // Keep 0/unset as-is so it can inherit the universal default at cast time.
     dailyEnergy: d.dailyEnergy ?? DEFAULT_CONFIG.dailyEnergy,
     rarities: d.rarities?.length ? d.rarities : DEFAULT_CONFIG.rarities,
     streakBonus: d.streakBonus?.length ? d.streakBonus : DEFAULT_CONFIG.streakBonus,
@@ -178,8 +186,14 @@ export const castLine = onCall(async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
-  const [config, fish] = await Promise.all([loadConfig(), loadFish()]);
+  const [config, fish, universalCredits] = await Promise.all([
+    loadConfig(),
+    loadFish(),
+    loadUniversalDailyCredits(),
+  ]);
   if (fish.length === 0) throw new HttpsError("failed-precondition", "No fish configured yet.");
+  // A game overrides the universal default only when it sets its own value (> 0).
+  const dailyEnergy = config.dailyEnergy && config.dailyEnergy > 0 ? config.dailyEnergy : universalCredits;
 
   const power = Math.max(0, Math.min(1, (request.data as { power?: number })?.power ?? 0));
   const now = Date.now();
@@ -198,7 +212,7 @@ export const castLine = onCall(async (request) => {
     const snap = await tx.get(stateRef);
     const cur = (snap.exists ? snap.data() : {}) as Partial<GameState>;
 
-    let energy = cur.energy ?? config.dailyEnergy;
+    let energy = cur.energy ?? dailyEnergy;
     let streak = cur.streak ?? 0;
     let points = cur.points ?? 0;
     let weeklyScore = cur.weeklyScore ?? 0;
@@ -207,7 +221,7 @@ export const castLine = onCall(async (request) => {
     let streakBonus = 0;
 
     if (cur.lastDay !== today) {
-      energy = config.dailyEnergy;
+      energy = dailyEnergy;
       streak = cur.lastDay === yesterday ? (cur.streak ?? 0) + 1 : 1;
       streakBonus = config.streakBonus[Math.min(streak - 1, config.streakBonus.length - 1)] ?? 0;
     }

@@ -78,9 +78,9 @@ export const adminNav: NavGroup[] = [
     ],
   },
   {
-    label: "Reef game",
+    label: "Games",
     items: [
-      { label: "Fish & config", href: "/admin/games", icon: "fish" },
+      { label: "Game Settings", href: "/admin/games", icon: "fish" },
       { label: "Rewards & redemptions", href: "/admin/rewards", icon: "gift" },
     ],
   },
