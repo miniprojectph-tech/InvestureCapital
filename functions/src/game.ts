@@ -8,7 +8,7 @@ const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 
 // ===== Types =====
-type Rarity = { id: string; label: string; color: string; weight: number; points: number };
+type Rarity = { id: string; label: string; color: string; weight: number; points: number; completionBonus?: number };
 type Quest = {
   id: string;
   label: string;
@@ -39,6 +39,7 @@ type GameState = {
   streak: number;
   totalCasts: number;
   collection: Record<string, { count: number; firstAt: number }>;
+  completedRarities?: Record<string, number>;
   quests: Quests;
 };
 
@@ -47,13 +48,13 @@ type GameState = {
 const DEFAULT_CONFIG: GameConfig = {
   dailyEnergy: 20,
   rarities: [
-    { id: "common", label: "Common", color: "#9CA3AF", weight: 55, points: 5 },
-    { id: "uncommon", label: "Uncommon", color: "#4ADE80", weight: 25, points: 12 },
-    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 12, points: 30 },
-    { id: "epic", label: "Epic", color: "#A78BFA", weight: 5, points: 80 },
-    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 2, points: 250 },
-    { id: "mythic", label: "Mythic", color: "#FB7185", weight: 0.9, points: 700 },
-    { id: "divine", label: "Divine Secret", color: "#E879F9", weight: 0.1, points: 2500 },
+    { id: "common", label: "Common", color: "#9CA3AF", weight: 55, points: 5, completionBonus: 50 },
+    { id: "uncommon", label: "Uncommon", color: "#4ADE80", weight: 25, points: 12, completionBonus: 120 },
+    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 12, points: 30, completionBonus: 300 },
+    { id: "epic", label: "Epic", color: "#A78BFA", weight: 5, points: 80, completionBonus: 800 },
+    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 2, points: 250, completionBonus: 2000 },
+    { id: "mythic", label: "Mythic", color: "#FB7185", weight: 0.9, points: 700, completionBonus: 5000 },
+    { id: "divine", label: "Divine Secret", color: "#E879F9", weight: 0.1, points: 2500, completionBonus: 15000 },
   ],
   streakBonus: [0, 5, 10, 15, 25, 40, 60, 100],
   fothEnabled: true,
@@ -253,11 +254,27 @@ export const castLine = onCall(async (request) => {
     const prev = collection[caught.id];
     collection[caught.id] = { count: (prev?.count ?? 0) + 1, firstAt: prev?.firstAt ?? now };
 
+    // Category completion bonus: awarded once when every catchable fish of this
+    // rarity is collected (server-side so points can't be forged client-side).
+    const completedRarities: Record<string, number> = { ...(cur.completedRarities ?? {}) };
+    let completionBonus: { rarity: string; label: string; points: number } | undefined;
+    const bonus = rarity.completionBonus ?? 0;
+    if (bonus > 0 && !completedRarities[caught.rarity]) {
+      const rarityFish = fish.filter((f) => f.rarity === caught.rarity);
+      const allCaught = rarityFish.length > 0 && rarityFish.every((f) => collection[f.id]);
+      if (allCaught) {
+        points += bonus;
+        weeklyScore += bonus;
+        completedRarities[caught.rarity] = bonus;
+        completionBonus = { rarity: caught.rarity, label: rarity.label, points: bonus };
+      }
+    }
+
     const quests = bumpQuests(cur.quests, config, { casts: 1, catches: 1, rarity: caught.rarity }, today);
 
     tx.set(
       stateRef,
-      { points, weeklyScore, energy, streak, totalCasts, collection, quests, lastDay: today },
+      { points, weeklyScore, energy, streak, totalCasts, collection, completedRarities, quests, lastDay: today },
       { merge: true }
     );
     tx.set(lbRef, { uid, name, weeklyScore, updatedAt: now }, { merge: true });
@@ -272,6 +289,7 @@ export const castLine = onCall(async (request) => {
       points,
       isFoth: fothActive && caught.id === foth!.fishId,
       treasure,
+      ...(completionBonus ? { completionBonus } : {}),
     };
   });
 });

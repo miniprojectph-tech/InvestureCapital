@@ -1409,7 +1409,12 @@ export default function PlayPage() {
       <AnimatePresence>
         {collectionOpen && (
           <ModalShell key="collection" title="Collection book" onClose={() => setCollectionOpen(false)} wide>
-            <CollectionBook fish={fish} rarities={config.rarities} caught={state?.collection ?? {}} />
+            <CollectionBook
+              fish={fish}
+              rarities={config.rarities}
+              caught={state?.collection ?? {}}
+              completed={state?.completedRarities ?? {}}
+            />
           </ModalShell>
         )}
       </AnimatePresence>
@@ -1739,6 +1744,18 @@ export default function PlayPage() {
                   ✨ Perfect reel!{combo > 1 ? ` · 🔥 Combo ×${combo}` : ""}
                 </p>
               )}
+              {reveal.completionBonus && (
+                <motion.div
+                  initial={{ scale: 0, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ delay: 0.25, type: "spring", stiffness: 300, damping: 14 }}
+                  className="flex items-center gap-1.5 mt-2 px-3 py-1 rounded-full bg-gold/20 border border-border-gold"
+                >
+                  <span className="text-[12px] font-semibold text-gold">
+                    🏆 {reveal.completionBonus.label} complete! +{reveal.completionBonus.points.toLocaleString()}
+                  </span>
+                </motion.div>
+              )}
               {reveal.treasure ? (
                 <motion.div
                   initial={{ scale: 0, opacity: 0 }}
@@ -1831,10 +1848,12 @@ function CollectionBook({
   fish,
   rarities,
   caught,
+  completed,
 }: {
   fish: { id: string; name: string; rarity: string; emoji?: string; image?: string }[];
-  rarities: { id: string; label: string; color: string }[];
+  rarities: { id: string; label: string; color: string; completionBonus?: number }[];
   caught: Record<string, { count: number; firstAt: number }>;
+  completed: Record<string, number>;
 }) {
   const totalCaught = fish.filter((f) => caught[f.id]).length;
   const pct = fish.length ? Math.round((totalCaught / fish.length) * 100) : 0;
@@ -1885,6 +1904,32 @@ function CollectionBook({
           );
         })}
       </div>
+
+      {/* active category: completion % + bonus */}
+      {active &&
+        (() => {
+          const g = fish.filter((f) => f.rarity === active.id);
+          const c = g.filter((f) => caught[f.id]).length;
+          const p = g.length ? Math.round((c / g.length) * 100) : 0;
+          const bonus = active.completionBonus ?? 0;
+          const done = !!completed[active.id];
+          return (
+            <div
+              className="flex items-center justify-between gap-2 mb-3 px-3 py-2 rounded-lg border"
+              style={{ borderColor: `${active.color}44`, background: `${active.color}12` }}
+            >
+              <span className="text-[11px] font-medium" style={{ color: active.color }}>
+                {c}/{g.length} · {p}% complete
+              </span>
+              {bonus > 0 &&
+                (done ? (
+                  <span className="text-[10px] text-green font-semibold whitespace-nowrap">✓ Bonus earned · +{bonus.toLocaleString()}</span>
+                ) : (
+                  <span className="text-[10px] text-gold font-semibold whitespace-nowrap">🏆 Complete for +{bonus.toLocaleString()} pts</span>
+                ))}
+            </div>
+          );
+        })()}
 
       {/* fish of the selected rarity — bigger cells */}
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">

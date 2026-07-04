@@ -26,6 +26,7 @@ export type Rarity = {
   color: string;
   weight: number;
   points: number;
+  completionBonus?: number; // one-time points for collecting every fish of this rarity
   frame?: string; // optional uploaded rarity frame image
 };
 
@@ -142,6 +143,7 @@ export type GameState = {
   streak: number;
   totalCasts: number;
   collection: Record<string, { count: number; firstAt: number }>;
+  completedRarities?: Record<string, number>; // rarityId → bonus points already awarded
   quests: { day: string; progress: Record<string, number>; claimed: Record<string, boolean> };
 };
 export type CastResult = {
@@ -154,6 +156,7 @@ export type CastResult = {
   points: number;
   isFoth: boolean;
   treasure?: number;
+  completionBonus?: { rarity: string; label: string; points: number };
 };
 export type FishOfHour = {
   fishId: string;
@@ -167,13 +170,13 @@ export type LeaderboardEntry = { uid: string; name: string; weeklyScore: number 
 export const DEFAULT_GAME_CONFIG: GameConfig = {
   dailyEnergy: 20,
   rarities: [
-    { id: "common", label: "Common", color: "#9CA3AF", weight: 55, points: 5 },
-    { id: "uncommon", label: "Uncommon", color: "#4ADE80", weight: 25, points: 12 },
-    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 12, points: 30 },
-    { id: "epic", label: "Epic", color: "#A78BFA", weight: 5, points: 80 },
-    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 2, points: 250 },
-    { id: "mythic", label: "Mythic", color: "#FB7185", weight: 0.9, points: 700 },
-    { id: "divine", label: "Divine Secret", color: "#E879F9", weight: 0.1, points: 2500 },
+    { id: "common", label: "Common", color: "#9CA3AF", weight: 55, points: 5, completionBonus: 50 },
+    { id: "uncommon", label: "Uncommon", color: "#4ADE80", weight: 25, points: 12, completionBonus: 120 },
+    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 12, points: 30, completionBonus: 300 },
+    { id: "epic", label: "Epic", color: "#A78BFA", weight: 5, points: 80, completionBonus: 800 },
+    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 2, points: 250, completionBonus: 2000 },
+    { id: "mythic", label: "Mythic", color: "#FB7185", weight: 0.9, points: 700, completionBonus: 5000 },
+    { id: "divine", label: "Divine Secret", color: "#E879F9", weight: 0.1, points: 2500, completionBonus: 15000 },
   ],
   streakBonus: [0, 5, 10, 15, 25, 40, 60, 100],
   fothEnabled: true,

@@ -380,10 +380,12 @@ export default function AdminGamesPage() {
         </div>
 
         {/* Rarities */}
-        <p className="text-[11px] font-medium m-0 mb-2">Rarities (weight = relative drop chance)</p>
+        <p className="text-[11px] font-medium m-0 mb-2">
+          Rarities (weight = drop chance · completion = one-time points for catching every fish of the tier)
+        </p>
         <div className="flex flex-col gap-1.5 mb-4">
           {draft.rarities.map((r, i) => (
-            <div key={r.id} className="flex items-center gap-2">
+            <div key={r.id} className="flex items-center gap-2 flex-wrap">
               <span className="w-24 text-[11px]" style={{ color: r.color }}>
                 {r.label}
               </span>
@@ -405,6 +407,17 @@ export default function AdminGamesPage() {
                 onChange={(e) => {
                   const rarities = [...draft.rarities];
                   rarities[i] = { ...r, points: Number(e.target.value) };
+                  setDraft({ ...draft, rarities });
+                }}
+                className="w-20 px-2 py-1 bg-canvas border border-border rounded text-[11px] font-mono"
+              />
+              <label className="text-[9px] text-text-subtle">completion</label>
+              <input
+                type="number"
+                value={r.completionBonus ?? 0}
+                onChange={(e) => {
+                  const rarities = [...draft.rarities];
+                  rarities[i] = { ...r, completionBonus: Number(e.target.value) };
                   setDraft({ ...draft, rarities });
                 }}
                 className="w-20 px-2 py-1 bg-canvas border border-border rounded text-[11px] font-mono"
