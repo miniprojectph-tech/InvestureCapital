@@ -21,7 +21,7 @@ type Mode = "signin" | "signup";
 
 export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
   const router = useRouter();
-  const { signIn, signUp, demoMode } = useAuth();
+  const { signIn, signUp, resetPassword, demoMode } = useAuth();
   const [mode, setMode] = useState<Mode>(defaultMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -30,7 +30,9 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
   const [remember, setRemember] = useState(true);
   const [agree, setAgree] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const isSignup = mode === "signup";
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -38,6 +40,30 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
   function switchMode(next: Mode) {
     setMode(next);
     setError(null);
+    setNotice(null);
+  }
+
+  async function onForgotPassword() {
+    setNotice(null);
+    if (!emailOk) {
+      setError("Enter your email above, then tap “Forgot?” to get a reset link.");
+      return;
+    }
+    setError(null);
+    setResetting(true);
+    try {
+      if (demoMode) {
+        setNotice(`Demo mode — a reset link would be sent to ${email}.`);
+        return;
+      }
+      await resetPassword(email);
+      setNotice(`Password reset link sent to ${email}. Check your inbox and spam.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Couldn’t send reset email";
+      setError(msg.replace("Firebase: ", "").replace(/\(auth\/[^)]+\)\.?$/, "").trim());
+    } finally {
+      setResetting(false);
+    }
   }
 
   async function onSubmit(e: FormEvent) {
@@ -47,6 +73,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
       return;
     }
     setError(null);
+    setNotice(null);
     setBusy(true);
     try {
       if (demoMode) {
@@ -221,7 +248,13 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
               )}
             </Field>
 
-            <Field label="Password" icon={Lock} rightLabel={!isSignup ? "Forgot?" : undefined}>
+            <Field
+              label="Password"
+              icon={Lock}
+              rightLabel={!isSignup ? (resetting ? "Sending…" : "Forgot?") : undefined}
+              onRightLabelClick={!isSignup ? onForgotPassword : undefined}
+              rightLabelDisabled={resetting}
+            >
               <input
                 type={showPassword ? "text" : "password"}
                 value={password}
@@ -266,6 +299,13 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
               </label>
             )}
 
+            {notice && (
+              <div className="flex items-start gap-2 px-3 py-2 bg-green/15 border border-green/30 rounded-lg text-[11px] text-green">
+                <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>{notice}</span>
+              </div>
+            )}
+
             {error && (
               <div className="flex items-start gap-2 px-3 py-2 bg-red/15 border border-red/30 rounded-lg text-[11px] text-red">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
@@ -303,11 +343,15 @@ function Field({
   label,
   icon: Icon,
   rightLabel,
+  onRightLabelClick,
+  rightLabelDisabled,
   children,
 }: {
   label: string;
   icon: typeof Mail;
   rightLabel?: string;
+  onRightLabelClick?: () => void;
+  rightLabelDisabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -315,9 +359,14 @@ function Field({
       <div className="flex justify-between mb-1.5">
         <label className="text-[10px] text-white/45 uppercase tracking-wider">{label}</label>
         {rightLabel && (
-          <a href="#" className="text-[10px] text-gold hover:underline">
+          <button
+            type="button"
+            onClick={onRightLabelClick}
+            disabled={rightLabelDisabled}
+            className="text-[10px] text-gold hover:underline disabled:opacity-60 disabled:cursor-not-allowed"
+          >
             {rightLabel}
-          </a>
+          </button>
         )}
       </div>
       <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/[0.05] border border-white/10 focus-within:border-gold/50 transition">

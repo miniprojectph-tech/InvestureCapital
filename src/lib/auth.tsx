@@ -11,6 +11,7 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut as fbSignOut,
   updateProfile,
   type User,
@@ -34,6 +35,7 @@ type AuthContextValue = {
   demoMode: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
+  resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -131,13 +133,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  async function resetPassword(email: string) {
+    if (!auth) throw new Error("Firebase is not configured. Add your keys to .env.local.");
+    await sendPasswordResetEmail(auth, email);
+  }
+
   async function signOut() {
     if (!auth) return;
     await fbSignOut(auth);
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, demoMode, signIn, signUp, signOut }}>
+    <AuthContext.Provider value={{ user, loading, demoMode, signIn, signUp, resetPassword, signOut }}>
       {children}
     </AuthContext.Provider>
   );
