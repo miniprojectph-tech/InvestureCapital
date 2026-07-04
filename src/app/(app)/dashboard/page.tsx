@@ -19,7 +19,6 @@ import { usePlans } from "@/lib/plans";
 import {
   computeDailyIncome,
   computeDeployed,
-  computePendingVaultCredits,
 } from "@/lib/userState";
 
 const stagger: Variants = {
@@ -52,7 +51,6 @@ export default function DashboardPage() {
 
   const deployed = computeDeployed(state.activePlans);
   const dailyIncome = computeDailyIncome(state.activePlans, plans);
-  const pendingVault = computePendingVaultCredits(state.activePlans, plans);
   const total = state.balances.wallet + deployed + state.balances.vault;
   const todayCompound =
     state.balances.vault - state.balances.vault / (1 + rate);
@@ -176,7 +174,7 @@ export default function DashboardPage() {
               theme="vault"
               title="Future Growth Vault"
               subtitle={`Locked · compounding ${settings.vaultDailyRate}% daily`}
-              caption={{ label: "Pending", value: `+${formatPHP(pendingVault, { short: true })}` }}
+              caption={{ label: "Active plans", value: String(state.activePlans.length) }}
               valueLabel="Vault balance"
               value={<TickingBalance base={state.balances.vault} decimals={2} />}
               trend={{

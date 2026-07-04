@@ -120,6 +120,9 @@ async function processUser(
         continue;
       }
 
+      // Earnings were credited to the vault when the plan was activated — so on
+      // completion we only return the capital to the wallet (vaultCredited is
+      // kept on the record for history, but not added to the vault again).
       const vaultCredit = plan.capital * (dailyRate / 100) * durationDays;
       completedPlans.push({
         ...plan,
@@ -127,7 +130,6 @@ async function processUser(
         vaultCredited: vaultCredit,
         capitalReturned: plan.capital,
       });
-      vault += vaultCredit;
       wallet += plan.capital;
       if (!vaultLockStartedAt) vaultLockStartedAt = now;
 
@@ -136,9 +138,9 @@ async function processUser(
         data: {
           type: "plan-complete",
           title: `Plan completed — ${name}`,
-          subtitle: `Vault credited ${vaultCredit.toFixed(2)} · capital ${plan.capital} returned`,
-          amount: vaultCredit,
-          amountKind: "neutral",
+          subtitle: `Capital ${plan.capital} returned · earnings credited at activation`,
+          amount: plan.capital,
+          amountKind: "in",
           at: FieldValue.serverTimestamp(),
         },
       });
