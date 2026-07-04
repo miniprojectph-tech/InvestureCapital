@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, CheckCircle2, AlertCircle, ChevronLeft, X, Gift } from "lucide-react";
-import { Card, CardHeader } from "@/components/Card";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import {
@@ -1671,7 +1670,7 @@ export default function PlayPage() {
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.8, opacity: 0 }}
               transition={{ type: "spring", stiffness: 240, damping: 16 }}
-              className="relative flex flex-col items-center text-center rounded-[28px] px-8 py-7 max-w-[86vw]"
+              className="relative flex flex-col items-center text-center rounded-[28px] px-6 sm:px-8 py-6 sm:py-7 max-w-[90vw]"
               style={{
                 background: "linear-gradient(180deg, rgba(14,32,56,0.82), rgba(6,13,26,0.9))",
                 border: `1px solid ${reveal.rarity.color}66`,
@@ -1699,12 +1698,23 @@ export default function PlayPage() {
                 </span>
               )}
               <motion.div
-                className="leading-none select-none"
+                className="leading-none select-none w-[clamp(170px,44vw,240px)] flex items-center justify-center"
                 initial={{ rotate: -8 }}
                 animate={{ rotate: [-8, 6, -4, 0] }}
                 transition={{ duration: 0.7 }}
               >
-                {creature(reveal.fish.id, 150)}
+                {(fishById.get(reveal.fish.id)?.image ?? reveal.fish.image) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={fishById.get(reveal.fish.id)?.image ?? reveal.fish.image}
+                    alt={reveal.fish.name}
+                    className="w-full h-auto object-contain drop-shadow-[0_6px_16px_rgba(0,0,0,0.45)]"
+                  />
+                ) : (
+                  <span className="text-[clamp(90px,30vw,150px)]" aria-hidden>
+                    {fishById.get(reveal.fish.id)?.emoji ?? "🐟"}
+                  </span>
+                )}
               </motion.div>
               {/* rarity ribbon */}
               <div
@@ -1828,65 +1838,89 @@ function CollectionBook({
 }) {
   const totalCaught = fish.filter((f) => caught[f.id]).length;
   const pct = fish.length ? Math.round((totalCaught / fish.length) * 100) : 0;
+  const rarityList = rarities.filter((r) => fish.some((f) => f.rarity === r.id));
+  const [tab, setTab] = useState(rarityList[0]?.id ?? "");
+  const active = rarityList.find((r) => r.id === tab) ?? rarityList[0];
+
+  if (fish.length === 0) {
+    return (
+      <p className="text-[11px] text-text-subtle text-center py-8 m-0">
+        No fish in the sea yet — the admin needs to stock the reef.
+      </p>
+    );
+  }
+
+  const group = active ? fish.filter((f) => f.rarity === active.id) : [];
+
   return (
-    <Card>
-      <CardHeader
-        title="Collection book"
-        subtitle={`${totalCaught} of ${fish.length} species · ${pct}% complete`}
-      />
-      {fish.length === 0 ? (
-        <p className="text-[11px] text-text-subtle text-center py-8 m-0">
-          No fish in the sea yet — the admin needs to stock the reef.
-        </p>
-      ) : (
-        rarities.map((r) => {
-          const group = fish.filter((f) => f.rarity === r.id);
-          if (group.length === 0) return null;
+    <div>
+      {/* overall progress */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex-1 h-1.5 rounded-full bg-black/40 overflow-hidden">
+          <div className="h-full bg-gold rounded-full" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="text-[10px] font-mono text-text-subtle whitespace-nowrap">
+          {totalCaught}/{fish.length} · {pct}%
+        </span>
+      </div>
+
+      {/* rarity tabs (scroll horizontally on small screens) */}
+      <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+        {rarityList.map((r) => {
+          const g = fish.filter((f) => f.rarity === r.id);
+          const c = g.filter((f) => caught[f.id]).length;
+          const on = r.id === active?.id;
           return (
-            <div key={r.id} className="mb-4 last:mb-0">
-              <p className="text-[10px] uppercase tracking-wider m-0 mb-2 font-medium" style={{ color: r.color }}>
-                {r.label}
-              </p>
-              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
-                {group.map((f) => {
-                  const have = caught[f.id];
-                  return (
-                    <div
-                      key={f.id}
-                      className={cn(
-                        "aspect-square rounded-lg border flex flex-col items-center justify-center gap-0.5 relative transition p-1",
-                        have ? "bg-canvas" : "bg-card-elev/40 opacity-40"
-                      )}
-                      style={{
-                        borderColor: have ? `${r.color}66` : undefined,
-                        boxShadow: have ? `0 0 14px -4px ${r.color}88` : undefined,
-                      }}
-                      title={have ? `${f.name} ×${have.count}` : "Not yet caught"}
-                    >
-                      {have && f.image ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={f.image} alt={f.name} className="w-10 h-10 object-contain" />
-                      ) : (
-                        <span className="text-2xl select-none" aria-hidden>
-                          {have ? f.emoji ?? "🐟" : "❔"}
-                        </span>
-                      )}
-                      <span className="text-[8px] text-text-subtle truncate max-w-full px-1">
-                        {have ? f.name : "???"}
-                      </span>
-                      {have && have.count > 1 && (
-                        <span className="absolute top-0.5 right-1 text-[8px] font-mono text-text-subtle">
-                          ×{have.count}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+            <button
+              key={r.id}
+              onClick={() => setTab(r.id)}
+              className={cn(
+                "shrink-0 px-3 py-1.5 rounded-full text-[11px] font-medium border transition whitespace-nowrap",
+                !on && "text-text-subtle border-border hover:text-text"
+              )}
+              style={on ? { color: r.color, borderColor: `${r.color}88`, background: `${r.color}1a` } : undefined}
+            >
+              {r.label} <span className="font-mono opacity-70">{c}/{g.length}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* fish of the selected rarity — bigger cells */}
+      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
+        {group.map((f) => {
+          const have = caught[f.id];
+          return (
+            <div
+              key={f.id}
+              className={cn(
+                "aspect-square rounded-xl border flex flex-col items-center justify-center gap-1 relative p-2",
+                have ? "bg-canvas" : "bg-card-elev/40 opacity-45"
+              )}
+              style={{
+                borderColor: have && active ? `${active.color}66` : undefined,
+                boxShadow: have && active ? `0 0 16px -4px ${active.color}88` : undefined,
+              }}
+              title={have ? `${f.name} ×${have.count}` : "Not yet caught"}
+            >
+              {have && f.image ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={f.image} alt={f.name} className="w-16 h-16 sm:w-[72px] sm:h-[72px] object-contain" />
+              ) : (
+                <span className="text-4xl select-none" aria-hidden>
+                  {have ? f.emoji ?? "🐟" : "❔"}
+                </span>
+              )}
+              <span className={cn("text-[10px] text-center truncate max-w-full px-0.5", !have && "text-text-subtle")}>
+                {have ? f.name : "???"}
+              </span>
+              {have && have.count > 1 && (
+                <span className="absolute top-1 right-1.5 text-[9px] font-mono text-text-subtle">×{have.count}</span>
+              )}
             </div>
           );
-        })
-      )}
-    </Card>
+        })}
+      </div>
+    </div>
   );
 }
