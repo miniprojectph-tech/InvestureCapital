@@ -102,7 +102,7 @@ export default function DashboardPage() {
                 },
                 {
                   label: "Capital invested",
-                  value: formatPHP(deployed, { short: true }),
+                  value: formatPHP(totalInvestedEver, { short: true }),
                 },
                 {
                   label: "Total earned",
