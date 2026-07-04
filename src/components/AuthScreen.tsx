@@ -10,6 +10,7 @@ import {
   EyeOff,
   ArrowRight,
   TrendingUp,
+  Wallet,
   Loader2,
   AlertCircle,
   CheckCircle2,
@@ -132,23 +133,31 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
       <main className="relative z-10 flex-1 flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-16 px-6 sm:px-10 pb-12">
         {/* headline */}
         <div className="max-w-md text-center lg:text-left">
-          <p className="text-[11px] tracking-[0.22em] text-vault-muted m-0 mb-3">ONE INVESTMENT · TWO INCOME STREAMS</p>
+          <p className="text-[11px] tracking-[0.22em] text-vault-muted m-0 mb-3">ONE PLAN · TWO INCOME PATHS</p>
           <h1
             className="m-0 leading-tight"
             style={{ fontFamily: "var(--font-display)", fontSize: "clamp(30px,4.6vw,46px)" }}
           >
-            Invest once.
+            One plan.
             <br />
-            <span className="text-gold">Compound for 365 days.</span>
+            <span className="text-gold">Two income paths.</span>
           </h1>
           <p className="text-[13px] text-white/60 mt-4 m-0 leading-relaxed max-w-sm mx-auto lg:mx-0">
-            One 30-day plan seeds a Future Growth Vault that compounds 1% daily — daily income to your wallet, earnings to
-            your vault.
+            Activate one short-term plan and earn from both at once.
           </p>
-          <div className="hidden lg:flex items-center gap-5 mt-6">
-            <Stat value="1,284" label="Investors" />
-            <Stat value="₱4.8M" label="Managed" />
-            <Stat value="37.78×" label="Annual" gold />
+          <div className="flex flex-col gap-2.5 mt-6 max-w-sm mx-auto lg:mx-0">
+            <PathCard
+              icon={Wallet}
+              tone="green"
+              title="Active Daily Income"
+              body="Short-term earning paid to your wallet, day by day."
+            />
+            <PathCard
+              icon={Lock}
+              tone="vault"
+              title="Future Reserve Vault"
+              body="A long-term reserve that grows into a big payout."
+            />
           </div>
         </div>
 
@@ -319,13 +328,30 @@ function Field({
   );
 }
 
-function Stat({ value, label, gold }: { value: string; label: string; gold?: boolean }) {
+function PathCard({
+  icon: Icon,
+  tone,
+  title,
+  body,
+}: {
+  icon: typeof Wallet;
+  tone: "green" | "vault";
+  title: string;
+  body: string;
+}) {
+  const color = tone === "vault" ? "#A78BFA" : "#3DD598";
   return (
-    <div>
-      <p className={`m-0 font-mono text-[16px] ${gold ? "text-gold" : "text-white"}`} style={{ fontFamily: "var(--font-display)" }}>
-        {value}
-      </p>
-      <p className="m-0 text-[10px] text-white/45 mt-0.5">{label}</p>
+    <div className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3 text-left">
+      <div
+        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+        style={{ background: `${color}22`, color }}
+      >
+        <Icon className="w-4 h-4" />
+      </div>
+      <div>
+        <p className="m-0 text-[13px] font-medium text-white">{title}</p>
+        <p className="m-0 text-[11px] text-white/55 mt-0.5 leading-snug">{body}</p>
+      </div>
     </div>
   );
 }
