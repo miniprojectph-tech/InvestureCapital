@@ -120,6 +120,37 @@ export async function listAllCompletedPlans(db: Firestore): Promise<CompletedPla
   return rows.sort((a, b) => b.completedAt - a.completedAt);
 }
 
+// ===== Cross-investor vault listing =====
+
+export type VaultRow = {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  vault: number;
+  vaultLockStartedAt: number | null;
+  vaultLastCompoundedAt: number | null;
+};
+
+/** Every investor holding a vault balance, with their lock/compound anchors. */
+export async function listActiveVaults(db: Firestore): Promise<VaultRow[]> {
+  const snap = await getDocs(collection(db, "users"));
+  const rows: VaultRow[] = [];
+  for (const userDoc of snap.docs) {
+    const data = userDoc.data() as UserState;
+    const vault = data.balances?.vault ?? 0;
+    if (vault <= 0) continue;
+    rows.push({
+      userId: userDoc.id,
+      userName: data.profile?.name ?? "—",
+      userEmail: data.profile?.email ?? "",
+      vault,
+      vaultLockStartedAt: data.balances?.vaultLockStartedAt ?? null,
+      vaultLastCompoundedAt: data.balances?.vaultLastCompoundedAt ?? null,
+    });
+  }
+  return rows.sort((a, b) => b.vault - a.vault);
+}
+
 // ===== Cross-investor activity (collectionGroup) =====
 
 export type AdminActivityRow = {

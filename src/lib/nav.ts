@@ -73,6 +73,7 @@ export const adminNav: NavGroup[] = [
     label: "Operations",
     items: [
       { label: "Active plans", href: "/admin/active-plans", icon: "timer" },
+      { label: "Active vaults", href: "/admin/active-vaults", icon: "lock" },
       { label: "Transactions", href: "/admin/transactions", icon: "receipt" },
       { label: "Activity log", href: "/admin/activity", icon: "activity" },
     ],
