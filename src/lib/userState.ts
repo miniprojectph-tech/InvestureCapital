@@ -297,9 +297,15 @@ export async function advanceUserByDays(db: Firestore, userId: string, days: num
   const shift = days * 86_400_000;
   const updates: Record<string, unknown> = {};
 
+  // Rewind the compounding clock so maintenance compounds N more days.
   const lc = cur.balances?.vaultLastCompoundedAt ?? null;
   if (lc) updates["balances.vaultLastCompoundedAt"] = lc - shift;
   else if ((cur.balances?.vault ?? 0) > 0) updates["balances.vaultLastCompoundedAt"] = Date.now() - shift;
+
+  // Rewind the lock clock so the vault's "Day X of 365 / % complete / unlock
+  // date" all advance too.
+  const lockStart = cur.balances?.vaultLockStartedAt ?? null;
+  if (lockStart) updates["balances.vaultLockStartedAt"] = lockStart - shift;
 
   if (cur.activePlans?.length) {
     updates["activePlans"] = cur.activePlans.map((p) => ({ ...p, startedAt: p.startedAt - shift }));
