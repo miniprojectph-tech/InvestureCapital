@@ -238,7 +238,7 @@ export default function PlayPage() {
       ambientRef.current = null;
     };
   }, []);
-  // Landscape-first: nudge portrait phones to rotate for the full reef stage.
+  // Landscape-first: detect a portrait phone (letterbox + rotate/immersive prompt).
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mq = window.matchMedia("(orientation: portrait) and (max-width: 900px)");
@@ -247,6 +247,15 @@ export default function PlayPage() {
     mq.addEventListener("change", apply);
     return () => mq.removeEventListener("change", apply);
   }, []);
+  // Auto-landscape on mobile: on the first tap, go fullscreen and lock landscape
+  // (Android). iOS Safari can't lock — it just falls back to the rotate prompt.
+  useEffect(() => {
+    if (!portraitHint) return;
+    const go = () => enterImmersive();
+    window.addEventListener("pointerdown", go, { once: true });
+    return () => window.removeEventListener("pointerdown", go);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [portraitHint]);
   // Measure the rod tip's live screen position (relative to the stage, in %).
   const measureTip = useCallback(() => {
     const stage = stageRef.current;
@@ -745,6 +754,18 @@ export default function PlayPage() {
     setShopErr(null);
     setShopOpen(true);
   }
+
+  // Go fullscreen + lock to landscape (Android). No-op/soft-fail on iOS Safari.
+  async function enterImmersive() {
+    try {
+      const el = document.documentElement as HTMLElement & { requestFullscreen?: () => Promise<void> };
+      if (el.requestFullscreen && !document.fullscreenElement) await el.requestFullscreen();
+      const orient = screen.orientation as (ScreenOrientation & { lock?: (o: string) => Promise<void> }) | undefined;
+      await orient?.lock?.("landscape");
+    } catch {
+      /* unsupported (iOS) — the rotate prompt stays as the fallback */
+    }
+  }
   async function confirmRedeem() {
     if (!shopReward) return;
     if (demoMode) {
@@ -813,6 +834,9 @@ export default function PlayPage() {
   const lineBow = Math.min(9, Math.abs(lurePos.x - tip.x) * 0.35);
   const lineCtrlX = (tip.x + lurePos.x) / 2;
   const lineCtrlY = Math.min(tip.y, lurePos.y) - lineBow;
+  // Fill the whole viewport in landscape (desktop or rotated phone); only a
+  // portrait phone keeps the 16:9 letterbox (+ the rotate prompt).
+  const fill = !portraitHint;
 
   return (
     <div className="fixed inset-0 z-40 bg-black overflow-y-auto overscroll-none">
@@ -843,11 +867,14 @@ export default function PlayPage() {
             "relative select-none overflow-hidden shadow-2xl shadow-black/60",
             shaking && "reef-shake"
           )}
-          style={{
-            aspectRatio: "1672 / 941",
-            width: "min(100vw, 177.68dvh)",
-            "--reef-shake": `${shakePx}px`,
-          } as React.CSSProperties}
+          style={
+            {
+              "--reef-shake": `${shakePx}px`,
+              ...(fill
+                ? { width: "100vw", height: "100dvh" }
+                : { aspectRatio: "1672 / 941", width: "min(100vw, 177.68dvh)" }),
+            } as unknown as React.CSSProperties
+          }
           onAnimationEnd={(e) => {
             if (e.animationName === "reef-shake") setShaking(false);
           }}
@@ -1072,10 +1099,11 @@ export default function PlayPage() {
             </div>
           )}
 
-          {/* HUD overlay skin */}
+          {/* HUD overlay skin — object-fill so it tracks the stage box exactly and
+              the % hotspots stay aligned when the stage fills a non-16:9 screen */}
           {assets.hud && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={assets.hud} alt="" className="absolute inset-0 w-full h-full object-cover z-10 pointer-events-none" />
+            <img src={assets.hud} alt="" className="absolute inset-0 w-full h-full object-fill z-10 pointer-events-none" />
           )}
 
           {/* readable labels over the top-bar icons (baked labels are illegible) */}
@@ -1349,19 +1377,26 @@ export default function PlayPage() {
             </div>
           )}
 
-          {/* landscape hint — portrait phones render this 16:9 stage tiny */}
+          {/* landscape prompt — portrait phones; the button attempts a real
+              fullscreen landscape lock (Android), else the player rotates. */}
           {showHint && (
-            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-black/80 backdrop-blur-sm text-center px-6">
+            <div className="absolute inset-0 z-40 flex flex-col items-center justify-center gap-3 bg-black/85 backdrop-blur-sm text-center px-6">
               <div className="text-3xl" style={{ animation: "reef-sway 1.6s ease-in-out infinite" }}>
                 📱↻
               </div>
-              <p className="text-[13px] text-white font-medium m-0">Rotate to landscape</p>
-              <p className="text-[11px] text-white/70 m-0 max-w-[240px]">
-                Investure Reef plays best wide — turn your phone sideways for the full stage.
+              <p className="text-[13px] text-white font-medium m-0">Play in landscape</p>
+              <p className="text-[11px] text-white/70 m-0 max-w-[250px]">
+                Investure Reef is a wide, full-screen game — tap below (or just turn your phone sideways).
               </p>
               <button
+                onClick={enterImmersive}
+                className="mt-1 px-5 py-2 rounded-lg bg-gold text-gold-dark text-[12px] font-semibold hover:brightness-110 transition"
+              >
+                Go full-screen
+              </button>
+              <button
                 onClick={() => setHintDismissed(true)}
-                className="mt-1 px-4 py-1.5 rounded-lg bg-white/10 border border-white/20 text-white text-[11px] hover:bg-white/15 transition"
+                className="text-white/60 text-[11px] hover:text-white transition"
               >
                 Play anyway
               </button>
