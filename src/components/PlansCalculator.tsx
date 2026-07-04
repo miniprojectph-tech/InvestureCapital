@@ -86,9 +86,10 @@ export function PlansCalculator() {
 
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden flex flex-col">
-      {/* Tabs row */}
-      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border">
-        <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto">
+      {/* Tabs row — plan chips (scroll on mobile) + Single/Monthly toggle,
+          which drops below the chips on small screens so nothing crams. */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5 border-b border-border">
+        <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
           {plans.map((p) => {
             const active = p.id === selected.id;
             return (
@@ -96,7 +97,7 @@ export function PlansCalculator() {
                 key={p.id}
                 onClick={() => setSelectedId(p.id)}
                 className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] transition shrink-0",
+                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] transition shrink-0 whitespace-nowrap",
                   active
                     ? "bg-card-elev text-text font-medium"
                     : "text-text-muted hover:text-text"
@@ -104,22 +105,22 @@ export function PlansCalculator() {
               >
                 <span
                   className={cn(
-                    "w-2.5 h-2.5 rounded-full ring-2 transition",
+                    "w-2.5 h-2.5 rounded-full ring-2 transition shrink-0",
                     active ? "bg-green ring-green/30" : "bg-transparent ring-text-subtle/40"
                   )}
                 />
                 {p.name}
-                {p.featured && <Sparkles className="w-2.5 h-2.5 text-gold" />}
+                {p.featured && <Sparkles className="w-2.5 h-2.5 text-gold shrink-0" />}
               </button>
             );
           })}
         </div>
 
-        <div className="flex items-center gap-0.5 bg-canvas border border-border rounded-full p-0.5 shrink-0">
+        <div className="flex items-center gap-0.5 bg-canvas border border-border rounded-full p-0.5 shrink-0 self-start sm:self-auto">
           <button
             onClick={() => setMode("single")}
             className={cn(
-              "text-[9px] px-2 py-0.5 rounded-full transition",
+              "text-[10px] px-2.5 py-1 rounded-full transition",
               mode === "single"
                 ? "bg-gold text-gold-dark font-medium"
                 : "text-text-muted hover:text-text"
@@ -130,7 +131,7 @@ export function PlansCalculator() {
           <button
             onClick={() => setMode("monthly")}
             className={cn(
-              "text-[9px] px-2 py-0.5 rounded-full transition",
+              "text-[10px] px-2.5 py-1 rounded-full transition",
               mode === "monthly"
                 ? "bg-gold text-gold-dark font-medium"
                 : "text-text-muted hover:text-text"
