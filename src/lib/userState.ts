@@ -281,6 +281,33 @@ export async function completePlanForUser(
   });
 }
 
+/**
+ * Admin-only testing tool: fast-forward a user's clock by `days`. Rewinds the
+ * vault compounding anchor and every active plan's start date, so the next
+ * maintenance run compounds the vault by `days` more days and completes any
+ * plans whose term has now elapsed. Produces the normal maintenance activity
+ * entries (no special "test" labelling).
+ */
+export async function advanceUserByDays(db: Firestore, userId: string, days: number): Promise<void> {
+  if (days <= 0) return;
+  const ref = doc(db, "users", userId);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("User not found");
+  const cur = snap.data() as UserState;
+  const shift = days * 86_400_000;
+  const updates: Record<string, unknown> = {};
+
+  const lc = cur.balances?.vaultLastCompoundedAt ?? null;
+  if (lc) updates["balances.vaultLastCompoundedAt"] = lc - shift;
+  else if ((cur.balances?.vault ?? 0) > 0) updates["balances.vaultLastCompoundedAt"] = Date.now() - shift;
+
+  if (cur.activePlans?.length) {
+    updates["activePlans"] = cur.activePlans.map((p) => ({ ...p, startedAt: p.startedAt - shift }));
+  }
+
+  if (Object.keys(updates).length) await updateDoc(ref, updates);
+}
+
 export async function activatePlanFor(
   db: Firestore,
   uid: string,

@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { httpsCallable } from "firebase/functions";
-import { Loader2, Lock, LockOpen, CheckCircle2, AlertCircle, Search, Zap } from "lucide-react";
+import { Loader2, Lock, LockOpen, CheckCircle2, AlertCircle, Search, Zap, FastForward } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { listActiveVaults, type VaultRow } from "@/lib/adminQueries";
-import { computeVaultLockDay } from "@/lib/userState";
+import { computeVaultLockDay, advanceUserByDays } from "@/lib/userState";
 import { useSettings } from "@/lib/settings";
 
 type Tab = "locked" | "unlocked";
@@ -29,6 +29,28 @@ export default function AdminActiveVaultsPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [runningMaintenance, setRunningMaintenance] = useState(false);
   const [maintenanceMsg, setMaintenanceMsg] = useState<string | null>(null);
+  const [advanceDays, setAdvanceDays] = useState(30);
+  const [advancing, setAdvancing] = useState<string | null>(null);
+
+  async function advance(row: VaultRow) {
+    const { db, functions } = getFirebase();
+    if (!db || !functions || !user?.isAdmin) {
+      setError("Admin role required.");
+      return;
+    }
+    setAdvancing(row.userId);
+    setError(null);
+    try {
+      await advanceUserByDays(db, row.userId, advanceDays);
+      await httpsCallable(functions, "runMaintenanceNow")();
+      setMaintenanceMsg(`Advanced ${row.userName} by ${advanceDays} day${advanceDays === 1 ? "" : "s"}.`);
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Advance failed");
+    } finally {
+      setAdvancing(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -142,6 +164,18 @@ export default function AdminActiveVaultsPage() {
           {runningMaintenance ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Zap className="w-3.5 h-3.5" />}
           Run maintenance now
         </button>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-card border border-border rounded-full text-[11px] text-text-muted">
+          <span>Advance</span>
+          <input
+            type="number"
+            min={1}
+            value={advanceDays}
+            onChange={(e) => setAdvanceDays(Math.max(1, Number(e.target.value) || 1))}
+            className="w-12 px-1.5 py-0.5 bg-canvas border border-border rounded text-[11px] font-mono text-center outline-none focus:border-gold/40"
+            title="Days to fast-forward a vault's investor when you click Advance"
+          />
+          <span>days →</span>
+        </div>
         <button
           onClick={() => setTab("locked")}
           className={cn(
@@ -198,14 +232,15 @@ export default function AdminActiveVaultsPage() {
             </p>
           ) : (
             <div className="overflow-x-auto -mx-1">
-              <table className="w-full text-[11px] table-fixed min-w-[720px]">
+              <table className="w-full text-[11px] table-fixed min-w-[800px]">
                 <colgroup>
-                  <col style={{ width: "28%" }} />
-                  <col style={{ width: "16%" }} />
+                  <col style={{ width: "24%" }} />
                   <col style={{ width: "14%" }} />
-                  <col style={{ width: "16%" }} />
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "15%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "10%" }} />
                 </colgroup>
                 <thead>
                   <tr className="text-text-subtle text-left">
@@ -215,6 +250,7 @@ export default function AdminActiveVaultsPage() {
                     <th className="font-normal py-2">Lock progress</th>
                     <th className="font-normal py-2 text-right">Projected (unlock)</th>
                     <th className="font-normal py-2">Last compounded</th>
+                    <th className="font-normal py-2"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -252,6 +288,21 @@ export default function AdminActiveVaultsPage() {
                           {r.vaultLastCompoundedAt
                             ? new Date(r.vaultLastCompoundedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })
                             : "—"}
+                        </td>
+                        <td className="py-2 text-right">
+                          <button
+                            onClick={() => advance(r)}
+                            disabled={advancing === r.userId}
+                            className="text-[10px] px-2.5 py-1.5 bg-green/15 text-green rounded-md hover:bg-green/25 transition flex items-center gap-1.5 ml-auto disabled:opacity-60"
+                            title={`Fast-forward this investor by ${advanceDays} day(s) — compounds the vault and completes any due plans`}
+                          >
+                            {advancing === r.userId ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <FastForward className="w-3 h-3" />
+                            )}
+                            +{advanceDays}d
+                          </button>
                         </td>
                       </tr>
                     );

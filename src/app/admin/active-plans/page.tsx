@@ -14,7 +14,7 @@ import {
   type ActivePlanRow,
   type CompletedPlanRow,
 } from "@/lib/adminQueries";
-import { completePlanForUser } from "@/lib/userState";
+import { completePlanForUser, advanceUserByDays } from "@/lib/userState";
 import { usePlans } from "@/lib/plans";
 
 type Tab = "active" | "expired";
@@ -32,6 +32,8 @@ export default function AdminActivePlansPage() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [runningMaintenance, setRunningMaintenance] = useState(false);
   const [maintenanceMsg, setMaintenanceMsg] = useState<string | null>(null);
+  const [advanceDays, setAdvanceDays] = useState(30);
+  const [advancing, setAdvancing] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,6 +131,29 @@ export default function AdminActivePlansPage() {
     }
   }
 
+  async function advance(row: ActivePlanRow) {
+    const { db, functions } = getFirebase();
+    if (!db || !functions || !user?.isAdmin) {
+      setError("Admin role required.");
+      return;
+    }
+    setAdvancing(row.userId);
+    setError(null);
+    try {
+      // Rewind the user's clock, then let the deployed maintenance job compound
+      // the vault + complete any now-due plans (produces the normal entries).
+      await advanceUserByDays(db, row.userId, advanceDays);
+      const call = httpsCallable(functions, "runMaintenanceNow");
+      await call();
+      setMaintenanceMsg(`Advanced ${row.userName} by ${advanceDays} day${advanceDays === 1 ? "" : "s"}.`);
+      setRefreshKey((k) => k + 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Advance failed");
+    } finally {
+      setAdvancing(null);
+    }
+  }
+
   const filteredActive = useMemo(() => {
     const q = query.toLowerCase();
     return active.filter(
@@ -186,6 +211,18 @@ export default function AdminActivePlansPage() {
           )}
           Run maintenance now
         </button>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 bg-card border border-border rounded-full text-[11px] text-text-muted">
+          <span>Advance</span>
+          <input
+            type="number"
+            min={1}
+            value={advanceDays}
+            onChange={(e) => setAdvanceDays(Math.max(1, Number(e.target.value) || 1))}
+            className="w-12 px-1.5 py-0.5 bg-canvas border border-border rounded text-[11px] font-mono text-center outline-none focus:border-gold/40"
+            title="Days to fast-forward a row's investor when you click Advance"
+          />
+          <span>days →</span>
+        </div>
         <button
           onClick={() => setTab("active")}
           className={cn(
@@ -312,19 +349,30 @@ export default function AdminActivePlansPage() {
                           })}
                         </td>
                         <td className="py-2 text-right">
-                          <button
-                            onClick={() => pushToComplete(r)}
-                            disabled={isBusy}
-                            className="text-[10px] px-2.5 py-1.5 bg-vault/15 text-vault rounded-md hover:bg-vault/25 transition flex items-center gap-1.5 ml-auto disabled:opacity-60"
-                            title="Fast-forward this plan to completion — credits vault and returns capital"
-                          >
-                            {isBusy ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <FastForward className="w-3 h-3" />
-                            )}
-                            Push to complete
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              onClick={() => advance(r)}
+                              disabled={isBusy || advancing === r.userId}
+                              className="text-[10px] px-2.5 py-1.5 bg-green/15 text-green rounded-md hover:bg-green/25 transition flex items-center gap-1.5 disabled:opacity-60"
+                              title={`Fast-forward this investor by ${advanceDays} day(s) — compounds the vault and completes any due plans`}
+                            >
+                              {advancing === r.userId ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <FastForward className="w-3 h-3" />
+                              )}
+                              +{advanceDays}d
+                            </button>
+                            <button
+                              onClick={() => pushToComplete(r)}
+                              disabled={isBusy}
+                              className="text-[10px] px-2.5 py-1.5 bg-vault/15 text-vault rounded-md hover:bg-vault/25 transition flex items-center gap-1.5 disabled:opacity-60"
+                              title="Fast-forward this plan to completion — returns capital"
+                            >
+                              {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                              Complete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
