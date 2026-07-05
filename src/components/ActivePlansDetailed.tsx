@@ -52,9 +52,12 @@ export function ActivePlansDetailed() {
         ) : (
           activePlans.map((ap, i) => {
             const plan = plans.find((p) => p.id === ap.planId);
-            const name = plan?.name ?? ap.planId;
-            const duration = plan?.durationDays ?? 0;
-            const dailyRate = plan?.dailyRate ?? 0;
+            // Prefer the terms snapshotted on the plan at activation; fall back to
+            // the live template. This keeps a plan readable even if its template
+            // was later edited, deleted, or recreated with a new id.
+            const name = plan?.name ?? ap.planName ?? ap.planId;
+            const duration = ap.durationDays ?? plan?.durationDays ?? 0;
+            const dailyRate = ap.dailyRate ?? plan?.dailyRate ?? 0;
             const day = duration ? getDayProgress(ap, duration) : 1;
             const pct = duration ? (day / duration) * 100 : 0;
             const dailyIncome = ap.capital * (dailyRate / 100);
