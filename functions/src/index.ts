@@ -15,6 +15,17 @@ export { castLine, claimQuest, redeemReward, fishOfTheHour, weeklyReef } from ".
 import { onReferralClaim, releaseLockedReferrals } from "./referrals";
 export { onReferralClaim };
 
+// Community Tongits (Phase 1): room + economy callables + stale-room reaper.
+import { reapStaleTongitsRooms } from "./tongits";
+export {
+  createTongitsRoom,
+  joinTongitsRoom,
+  setTongitsReady,
+  confirmTongitsChallenge,
+  leaveTongitsRoom,
+  cancelTongitsRoom,
+} from "./tongits";
+
 const DAY_MS = 86_400_000;
 
 type StoredActivePlan = {
@@ -222,6 +233,14 @@ async function runMaintenance(): Promise<{ usersScanned: number; usersUpdated: n
     if (released > 0) logger.info(`released ${released} locked referral bonus(es)`);
   } catch (err) {
     logger.error("releaseLockedReferrals failed", err);
+  }
+
+  // Reap abandoned Tongits rooms (refunding any locked stakes).
+  try {
+    const reaped = await reapStaleTongitsRooms(now);
+    if (reaped > 0) logger.info(`reaped ${reaped} stale Tongits room(s)`);
+  } catch (err) {
+    logger.error("reapStaleTongitsRooms failed", err);
   }
 
   const usersSnap = await db.collection("users").get();

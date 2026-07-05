@@ -120,6 +120,45 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // === Community Tongits: rooms (Phase 1) ===
+    // Public lobby → any signed-in user can read. All mutations go through Cloud
+    // Functions (admin SDK bypasses rules); direct client writes are denied.
+    match /game_rooms/{code} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+
+      // Chat: only players listed in the room may post/read; messages are
+      // author-stamped and length-limited. Reads limited to room members.
+      match /chat/{msgId} {
+        allow read: if isSignedIn()
+          && (isAdmin()
+              || get(/databases/$(database)/documents/game_rooms/$(code)).data.players[request.auth.uid] != null);
+        allow create: if isSignedIn()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.message is string
+          && request.resource.data.message.size() > 0
+          && request.resource.data.message.size() <= 300
+          && get(/databases/$(database)/documents/game_rooms/$(code)).data.players[request.auth.uid] != null
+          && get(/databases/$(database)/documents/game_rooms/$(code)).data.chatEnabled == true;
+        allow update: if false;
+        allow delete: if isAdmin();
+      }
+    }
+
+    // === Community Tongits: chat reports (players file, admins moderate) ===
+    match /game_chat_reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.reporterUserId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // === Community Tongits: point transaction ledger (Functions write) ===
+    match /game_point_transactions/{txnId} {
+      allow read: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
     // === collectionGroup('activity') reads — admins only across all users ===
     match /{path=**}/activity/{activityId} {
       allow read: if isAdmin();

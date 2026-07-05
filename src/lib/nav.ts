@@ -16,7 +16,8 @@ export type IconName =
   | "play"
   | "gift"
   | "fish"
-  | "share";
+  | "share"
+  | "spade";
 
 export type NavItem = {
   label: string;
@@ -50,6 +51,10 @@ export const investorNav: NavGroup[] = [
       { label: "Play", href: "/play", icon: "play" },
       { label: "Rewards", href: "/rewards", icon: "gift" },
     ],
+  },
+  {
+    label: "Community",
+    items: [{ label: "Tongits", href: "/tongits", icon: "spade" }],
   },
   {
     items: [

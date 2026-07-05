@@ -145,6 +145,9 @@ export type GameState = {
   collection: Record<string, { count: number; firstAt: number }>;
   completedRarities?: Record<string, number>; // rarityId → bonus points already awarded
   quests: { day: string; progress: Record<string, number>; claimed: Record<string, boolean> };
+  // Shared economy fields used by Community Tongits (Function-written).
+  lockedPoints?: number; // points escrowed in an active/ready Tongits challenge
+  rankingPoints?: number; // competitive ranking score (leaderboards)
 };
 export type CastResult = {
   fish: { id: string; name: string; rarity: string; image?: string };
