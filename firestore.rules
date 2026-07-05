@@ -94,6 +94,32 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // === Referral code index (code -> uid) ===
+    // Publicly readable by signed-in users so a new signup can resolve ?ref=CODE
+    // to the referrer's uid (they can't query the users collection). A user may
+    // only claim a code that points at their own uid, and never overwrite one.
+    match /referralCodes/{code} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // === Referral transactions (the affiliate ledger) ===
+    // The referred user files a 'queued' claim for their own activation; a Cloud
+    // Function (admin SDK, bypasses rules) validates it and credits the referrer.
+    // Both parties can read their own rows; only admins/functions mutate.
+    match /referral_transactions/{txnId} {
+      allow read: if isSignedIn()
+        && (resource.data.referrerUserId == request.auth.uid
+            || resource.data.referredUserId == request.auth.uid
+            || isAdmin());
+      allow create: if isSignedIn()
+        && request.resource.data.referredUserId == request.auth.uid
+        && request.resource.data.status == 'queued';
+      allow update, delete: if isAdmin();
+    }
+
     // === collectionGroup('activity') reads — admins only across all users ===
     match /{path=**}/activity/{activityId} {
       allow read: if isAdmin();

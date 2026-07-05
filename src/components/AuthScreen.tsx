@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   Mail,
@@ -14,6 +14,7 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle2,
+  Gift,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
@@ -33,9 +34,21 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [referralCode, setReferralCode] = useState<string | null>(null);
 
   const isSignup = mode === "signup";
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  // Capture an inbound referral code (?ref=CODE). Read from window to stay
+  // SSR-safe and avoid a useSearchParams Suspense boundary on this route.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ref = new URLSearchParams(window.location.search).get("ref");
+    if (ref) {
+      setReferralCode(ref.trim().toUpperCase());
+      setMode("signup"); // an invite implies they're creating an account
+    }
+  }, []);
 
   function switchMode(next: Mode) {
     setMode(next);
@@ -80,7 +93,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
         router.push("/dashboard");
         return;
       }
-      if (isSignup) await signUp(name, email, password);
+      if (isSignup) await signUp(name, email, password, referralCode ?? undefined);
       else await signIn(email, password);
       router.push("/dashboard");
     } catch (err) {
@@ -213,6 +226,16 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
               </button>
             ))}
           </div>
+
+          {isSignup && referralCode && (
+            <div className="flex items-center gap-2 px-3 py-2 mb-3 rounded-lg bg-green/12 border border-green/25 text-[11px] text-green">
+              <Gift className="w-3.5 h-3.5 shrink-0" />
+              <span>
+                Invited with code <span className="font-semibold tracking-wide">{referralCode}</span> — your
+                referrer earns a bonus when you activate a plan.
+              </span>
+            </div>
+          )}
 
           <p className="text-[12px] text-white/55 m-0 mb-4">
             {isSignup ? "Start with a simulated ₱10,000 demo balance." : "Sign in to your dashboard and vault."}

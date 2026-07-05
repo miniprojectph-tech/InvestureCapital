@@ -19,6 +19,7 @@ import {
 import { doc, onSnapshot } from "firebase/firestore";
 import { getFirebase } from "./firebase";
 import { ensureUserDoc } from "./userState";
+import { attachReferrer, ensureReferralCode } from "./referrals";
 
 type AuthUser = {
   uid: string;
@@ -34,7 +35,12 @@ type AuthContextValue = {
   /** True when no Firebase keys are configured — app runs in mock mode. */
   demoMode: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (name: string, email: string, password: string) => Promise<void>;
+  signUp: (
+    name: string,
+    email: string,
+    password: string,
+    referralCode?: string
+  ) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -122,7 +128,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signInWithEmailAndPassword(auth, email, password);
   }
 
-  async function signUp(name: string, email: string, password: string) {
+  async function signUp(
+    name: string,
+    email: string,
+    password: string,
+    referralCode?: string
+  ) {
     if (!auth) throw new Error("Firebase is not configured. Add your keys to .env.local.");
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     if (name) await updateProfile(cred.user, { displayName: name });
@@ -130,6 +141,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(authUser);
     if (db) {
       await ensureUserDoc(db, authUser.uid, authUser.name, authUser.email);
+      // Give the new account its own referral code, and attach the referrer
+      // (if they arrived via ?ref=CODE). Failures here must not block signup.
+      try {
+        await ensureReferralCode(db, authUser.uid);
+        if (referralCode) await attachReferrer(db, authUser.uid, referralCode);
+      } catch (err) {
+        console.error("referral setup on signup failed", err);
+      }
     }
   }
 

@@ -24,6 +24,9 @@ export const mockTickers: CoinTicker[] = [
   { symbol: "NEAR", price: 5.18, change24h: 1.66 },
 ];
 
+export type ReferralBonusType = "percentage" | "fixed";
+export type ReferralReleaseType = "instant" | "pending" | "afterClearing";
+
 export type Plan = {
   id: string;
   name: string;
@@ -32,6 +35,12 @@ export type Plan = {
   minInvestment: number;
   maxInvestment: number;
   featured?: boolean;
+  // One-level affiliate referral settings (per plan, admin-controlled).
+  referralEnabled?: boolean;
+  referralBonusType?: ReferralBonusType;
+  referralBonusValue?: number; // percent when type=percentage, ₱ when fixed
+  referralReleaseType?: ReferralReleaseType;
+  clearingPeriodDays?: number; // days held as "locked" when release=afterClearing
 };
 
 export const mockPlans: Plan[] = [

@@ -82,6 +82,11 @@ export default function AdminPlansPage() {
           maxInvestment: p.maxInvestment,
           featured: p.featured,
           active: p.active,
+          referralEnabled: p.referralEnabled ?? false,
+          referralBonusType: p.referralBonusType ?? "percentage",
+          referralBonusValue: p.referralBonusValue ?? 0,
+          referralReleaseType: p.referralReleaseType ?? "instant",
+          clearingPeriodDays: p.clearingPeriodDays ?? 0,
         });
       } else {
         const { _new, ...rest } = p;
@@ -174,6 +179,11 @@ export default function AdminPlansPage() {
                 maxInvestment: 10000,
                 featured: false,
                 active: true,
+                referralEnabled: false,
+                referralBonusType: "percentage",
+                referralBonusValue: 0,
+                referralReleaseType: "instant",
+                clearingPeriodDays: 0,
                 _new: true,
               })
             }
@@ -236,6 +246,17 @@ export default function AdminPlansPage() {
                 <RowSmall label="Min investment" value={formatPHP(p.minInvestment)} />
                 <RowSmall label="Max investment" value={formatPHP(p.maxInvestment)} />
                 <RowSmall label="Featured" value={p.featured ? "Yes" : "No"} />
+                <RowSmall
+                  label="Referral"
+                  value={
+                    p.referralEnabled
+                      ? p.referralBonusType === "fixed"
+                        ? `${formatPHP(p.referralBonusValue ?? 0)} fixed`
+                        : `${p.referralBonusValue ?? 0}%`
+                      : "Off"
+                  }
+                  valueColor={p.referralEnabled ? "text-green" : "text-text-subtle"}
+                />
                 <RowSmall
                   label="Status"
                   value={p.active ? "Active" : "Inactive"}
@@ -392,6 +413,98 @@ function PlanEditor({
             />
             <span className="text-[11px] text-text-muted">Active (visible to investors)</span>
           </label>
+
+          {/* ===== Referral bonus ===== */}
+          <div className="mt-1 pt-3 border-t border-border">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-medium text-text m-0">Referral bonus</p>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={local.referralEnabled ?? false}
+                  onChange={(e) => setLocal({ ...local, referralEnabled: e.target.checked })}
+                  className="accent-[#3DD598] w-3 h-3"
+                />
+                <span className="text-[11px] text-text-muted">Enabled</span>
+              </label>
+            </div>
+
+            {local.referralEnabled && (
+              <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField label="Bonus type">
+                    <select
+                      value={local.referralBonusType ?? "percentage"}
+                      onChange={(e) =>
+                        setLocal({
+                          ...local,
+                          referralBonusType: e.target.value as "percentage" | "fixed",
+                        })
+                      }
+                      className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] text-text outline-none focus:border-gold/40"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="fixed">Fixed (₱)</option>
+                    </select>
+                  </FormField>
+                  <FormField
+                    label={local.referralBonusType === "fixed" ? "Bonus amount (₱)" : "Bonus rate (%)"}
+                  >
+                    <input
+                      type="number"
+                      step={local.referralBonusType === "fixed" ? "1" : "0.1"}
+                      value={local.referralBonusValue ?? 0}
+                      onChange={(e) =>
+                        setLocal({ ...local, referralBonusValue: parseFloat(e.target.value) || 0 })
+                      }
+                      className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-gold/40"
+                      min={0}
+                    />
+                  </FormField>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField label="Release">
+                    <select
+                      value={local.referralReleaseType ?? "instant"}
+                      onChange={(e) =>
+                        setLocal({
+                          ...local,
+                          referralReleaseType: e.target.value as
+                            | "instant"
+                            | "pending"
+                            | "afterClearing",
+                        })
+                      }
+                      className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] text-text outline-none focus:border-gold/40"
+                    >
+                      <option value="instant">Instant (available)</option>
+                      <option value="pending">Pending approval</option>
+                      <option value="afterClearing">After clearing period</option>
+                    </select>
+                  </FormField>
+                  <FormField label="Clearing period (days)">
+                    <input
+                      type="number"
+                      value={local.clearingPeriodDays ?? 0}
+                      onChange={(e) =>
+                        setLocal({ ...local, clearingPeriodDays: parseInt(e.target.value) || 0 })
+                      }
+                      disabled={local.referralReleaseType !== "afterClearing"}
+                      className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-gold/40 disabled:opacity-40"
+                      min={0}
+                    />
+                  </FormField>
+                </div>
+                <p className="text-[10px] text-text-subtle m-0">
+                  {local.referralBonusType === "fixed"
+                    ? `Referrer earns a flat ${formatPHP(local.referralBonusValue ?? 0)} per activation.`
+                    : `Referrer earns ${local.referralBonusValue ?? 0}% of the activated amount (e.g. ${formatPHP(
+                        (10000 * (local.referralBonusValue ?? 0)) / 100
+                      )} on ₱10,000).`}
+                </p>
+              </div>
+            )}
+          </div>
 
           <div className="flex gap-2 mt-2">
             <button

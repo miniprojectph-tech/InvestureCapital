@@ -11,6 +11,10 @@ import { db } from "./init";
 // Game functions live in their own module.
 export { castLine, claimQuest, redeemReward, fishOfTheHour, weeklyReef } from "./game";
 
+// Referral system: claim processor + locked-bonus release helper.
+import { onReferralClaim, releaseLockedReferrals } from "./referrals";
+export { onReferralClaim };
+
 const DAY_MS = 86_400_000;
 
 type StoredActivePlan = {
@@ -211,6 +215,14 @@ async function runMaintenance(): Promise<{ usersScanned: number; usersUpdated: n
     loadPlanTemplates(),
     loadVaultDailyRate(),
   ]);
+
+  // Release any locked referral bonuses whose clearing period has elapsed.
+  try {
+    const released = await releaseLockedReferrals(now);
+    if (released > 0) logger.info(`released ${released} locked referral bonus(es)`);
+  } catch (err) {
+    logger.error("releaseLockedReferrals failed", err);
+  }
 
   const usersSnap = await db.collection("users").get();
   let usersUpdated = 0;

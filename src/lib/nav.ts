@@ -15,7 +15,8 @@ export type IconName =
   | "bot"
   | "play"
   | "gift"
-  | "fish";
+  | "fish"
+  | "share";
 
 export type NavItem = {
   label: string;
@@ -37,6 +38,7 @@ export const investorNav: NavGroup[] = [
       { label: "Wallet", href: "/wallet", icon: "wallet" },
       { label: "Vault", href: "/vault", icon: "lock" },
       { label: "AI Trading", href: "/ai-trading", icon: "bot" },
+      { label: "Referrals", href: "/referrals", icon: "share" },
       { label: "Activity", href: "/activity", icon: "activity" },
       { label: "Withdrawals", href: "/withdrawals", icon: "withdraw" },
       { label: "Transactions", href: "/transactions", icon: "receipt" },
@@ -66,6 +68,7 @@ export const adminNav: NavGroup[] = [
       { label: "Plans", href: "/admin/plans", icon: "coins" },
       { label: "Top-up requests", href: "/admin/topups", icon: "wallet" },
       { label: "Withdrawals", href: "/admin/withdrawals", icon: "withdraw" },
+      { label: "Referrals", href: "/admin/referrals", icon: "share" },
       { label: "Vault accounts", href: "/admin/vault", icon: "lock" },
     ],
   },

@@ -11,6 +11,7 @@ import {
   type Firestore,
   type Unsubscribe,
 } from "firebase/firestore";
+import { createReferralClaim, type ReferralPlanConfig } from "./referrals";
 
 export type StoredActivePlan = {
   id: string;
@@ -40,6 +41,25 @@ export type PayoutMethod = {
   updatedAt: number;
 };
 
+/** One-level affiliate referral wallet — buckets that a referrer's earnings
+ *  flow through. Only `available` can be moved to the main wallet. Pending &
+ *  locked are held until an admin approves / the clearing period passes. */
+export type ReferralWallet = {
+  available: number;
+  pending: number;
+  locked: number;
+  totalEarned: number;
+  totalWithdrawn: number;
+};
+
+export const EMPTY_REFERRAL_WALLET: ReferralWallet = {
+  available: 0,
+  pending: 0,
+  locked: 0,
+  totalEarned: 0,
+  totalWithdrawn: 0,
+};
+
 export type UserState = {
   profile: {
     name: string;
@@ -60,6 +80,13 @@ export type UserState = {
   payoutMethod?: PayoutMethod;
   /** Admin role — set manually in Firestore console. Defaults false on seed. */
   isAdmin?: boolean;
+  /** This user's unique affiliate code (also shared as ?ref=CODE). Backfilled
+   *  on first visit to /referrals for accounts created before the feature. */
+  referralCode?: string;
+  /** uid of the user who referred this account, captured once at signup. */
+  referredByUserId?: string;
+  /** Referrer earnings buckets. Defaults to zeros for older accounts. */
+  referralWallet?: ReferralWallet;
 };
 
 /** Kept for backwards compatibility; new sign-ups now start with zero balance. */
@@ -73,6 +100,7 @@ export function createStarterState(name: string, email: string): UserState {
     activePlans: [],
     completedPlans: [],
     isAdmin: false,
+    referralWallet: { ...EMPTY_REFERRAL_WALLET },
   };
 }
 
@@ -321,7 +349,8 @@ export async function activatePlanFor(
   planName: string,
   capital: number,
   planRate?: number,
-  planDuration?: number
+  planDuration?: number,
+  referral?: ReferralPlanConfig
 ): Promise<void> {
   const ref = doc(db, "users", uid);
   const snap = await getDoc(ref);
@@ -370,4 +399,25 @@ export async function activatePlanFor(
     amount: capital,
     amountKind: "out",
   });
+
+  // One-level referral: if this user was referred and the plan pays a referral
+  // bonus, file a claim. A Cloud Function (admin SDK) validates it and credits
+  // the referrer — the referred user can't write the referrer's doc directly.
+  if (cur.referredByUserId && referral?.referralEnabled) {
+    try {
+      await createReferralClaim(db, {
+        referrerUserId: cur.referredByUserId,
+        referredUserId: uid,
+        referredUserName: cur.profile?.name ?? "",
+        planId,
+        planName,
+        planActivationId: newPlan.id,
+        planAmount: capital,
+        config: referral,
+      });
+    } catch (err) {
+      // Never fail the activation because of a referral bookkeeping hiccup.
+      console.error("referral claim write failed", err);
+    }
+  }
 }

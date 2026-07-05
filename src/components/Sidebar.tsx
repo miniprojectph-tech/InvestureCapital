@@ -23,6 +23,7 @@ import {
   Gamepad2,
   Gift,
   Fish,
+  Share2,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -47,6 +48,7 @@ const iconMap: Record<IconName, LucideIcon> = {
   play: Gamepad2,
   gift: Gift,
   fish: Fish,
+  share: Share2,
 };
 
 type SidebarProps = {

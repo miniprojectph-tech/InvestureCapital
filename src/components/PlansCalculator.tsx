@@ -58,7 +58,14 @@ export function PlansCalculator() {
       plan.name,
       capitalAmount,
       plan.dailyRate,
-      plan.durationDays
+      plan.durationDays,
+      {
+        referralEnabled: plan.referralEnabled,
+        referralBonusType: plan.referralBonusType,
+        referralBonusValue: plan.referralBonusValue,
+        referralReleaseType: plan.referralReleaseType,
+        clearingPeriodDays: plan.clearingPeriodDays,
+      }
     );
   }
 
