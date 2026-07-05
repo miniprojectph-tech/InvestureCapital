@@ -193,55 +193,56 @@ export default function ActivityPage() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-3">
-        {grouped.length === 0 && (
-          <Card className="text-center py-10 text-text-subtle text-[13px]">
+      <Card className="p-0">
+        {grouped.length === 0 ? (
+          <div className="text-center py-10 text-text-subtle text-[13px]">
             No activity matches your filter.
-          </Card>
-        )}
-        {grouped.map(([day, events]) => (
-          <Card key={day}>
-            <p className="text-[10px] text-text-subtle uppercase tracking-wider m-0 mb-2">
-              {day}
-            </p>
-            <div>
-              {events.map((ev, i) => {
+          </div>
+        ) : (
+          grouped.map(([day, events]) => (
+            <div key={day}>
+              {/* Date separator row */}
+              <div className="px-4 py-1.5 bg-card-elev/50 border-y border-border first:border-t-0">
+                <span className="text-[10px] text-text-subtle uppercase tracking-wider">{day}</span>
+              </div>
+              {events.map((ev) => {
                 const meta = typeMeta[ev.type];
                 const Icon = meta.icon;
                 return (
                   <div
                     key={ev.id}
-                    className={cn(
-                      "flex items-center gap-3 py-2",
-                      i < events.length - 1 && "border-b border-border"
-                    )}
+                    className="flex items-center gap-2.5 px-4 py-2 border-b border-border/60 last:border-b-0 hover:bg-card-elev/40 transition"
                   >
                     <div
                       className={cn(
-                        "w-7 h-7 rounded-full flex items-center justify-center shrink-0",
+                        "w-6 h-6 rounded-md flex items-center justify-center shrink-0",
                         meta.bg
                       )}
                     >
-                      <Icon className={cn("w-3.5 h-3.5", meta.color)} strokeWidth={2.25} />
+                      <Icon className={cn("w-3 h-3", meta.color)} strokeWidth={2.25} />
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] m-0">{ev.title}</p>
-                      <p className="text-[10px] text-text-subtle mt-0.5 m-0">
-                        {ev.subtitle} · {timeOf(ev.at)}
-                      </p>
-                    </div>
-                    {ev.amount !== undefined && (
-                      <span className={cn("text-[12px] font-mono shrink-0", amountColor(ev))}>
-                        {amountStr(ev)}
-                      </span>
-                    )}
+                    <p className="flex-1 min-w-0 text-[12px] m-0 truncate">
+                      {ev.title}
+                      <span className="text-text-subtle"> · {ev.subtitle}</span>
+                    </p>
+                    <span className="text-[10px] text-text-subtle font-mono shrink-0 tabular-nums">
+                      {timeOf(ev.at)}
+                    </span>
+                    <span
+                      className={cn(
+                        "text-[12px] font-mono shrink-0 w-[92px] text-right tabular-nums",
+                        amountColor(ev)
+                      )}
+                    >
+                      {amountStr(ev)}
+                    </span>
                   </div>
                 );
               })}
             </div>
-          </Card>
-        ))}
-      </div>
+          ))
+        )}
+      </Card>
     </div>
   );
 }
