@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Spade, Plus, LogIn, Users, Coins, Lock, Loader2, Trophy } from "lucide-react";
+import { Spade, Plus, LogIn, Users, Coins, Lock, Loader2, Trophy, BarChart3, Gift } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { cn } from "@/lib/utils";
@@ -16,15 +17,20 @@ import {
   MIN_CHALLENGE,
   MAX_PLAYERS,
 } from "@/lib/tongits";
+import { useMyMatchHistory } from "@/lib/tongits-social";
 
 export default function TongitsDashboard() {
   const router = useRouter();
   const { demoMode } = useAuth();
   const { state } = useGameState();
   const { rooms, loading: roomsLoading } = useOpenRooms();
+  const { rows: history } = useMyMatchHistory(10);
 
   const points = state?.points ?? 0;
   const locked = state?.lockedPoints ?? 0;
+  const games = state?.tongitsGames ?? 0;
+  const wins = state?.tongitsWins ?? 0;
+  const winRate = games > 0 ? Math.round((wins / games) * 100) : 0;
 
   const [challenge, setChallenge] = useState(MIN_CHALLENGE);
   const [ante, setAnte] = useState(5);
@@ -80,11 +86,30 @@ export default function TongitsDashboard() {
         </div>
       )}
 
-      {/* Points */}
+      {/* Points + record */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
         <Stat icon={Coins} label="Game Points" value={points.toLocaleString()} tone="gold" />
         <Stat icon={Lock} label="Locked" value={locked.toLocaleString()} tone="vault" />
-        <Stat icon={Trophy} label="Rank" value={state?.rankingPoints ? `${state.rankingPoints} RP` : "—"} tone="green" />
+        <Stat icon={Trophy} label="Ranking pts" value={(state?.rankingPoints ?? 0).toLocaleString()} tone="green" />
+        <Stat icon={Spade} label="Games" value={games.toLocaleString()} tone="text" />
+        <Stat icon={Trophy} label="Wins" value={wins.toLocaleString()} tone="green" />
+        <Stat icon={BarChart3} label="Win rate" value={games > 0 ? `${winRate}%` : "—"} tone="text" />
+      </div>
+
+      {/* Quick links */}
+      <div className="grid grid-cols-2 gap-3 mb-3">
+        <Link
+          href="/tongits/leaderboard"
+          className="flex items-center gap-2 px-4 py-3 bg-card border border-border rounded-xl text-[12px] text-text hover:border-gold/40 transition"
+        >
+          <BarChart3 className="w-4 h-4 text-gold" /> Leaderboard
+        </Link>
+        <Link
+          href="/rewards"
+          className="flex items-center gap-2 px-4 py-3 bg-card border border-border rounded-xl text-[12px] text-text hover:border-gold/40 transition"
+        >
+          <Gift className="w-4 h-4 text-gold" /> Redeem rewards
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
@@ -199,6 +224,38 @@ export default function TongitsDashboard() {
           </div>
         )}
       </Card>
+
+      {/* Match history */}
+      {history.length > 0 && (
+        <Card className="mt-3">
+          <CardHeader title="Your recent matches" subtitle="Latest Tongits results" />
+          <div className="flex flex-col divide-y divide-border/60">
+            {history.map((h) => {
+              const won = h.pointsEarned > 0;
+              return (
+                <div key={h.id} className="flex items-center justify-between gap-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-[12px] m-0">
+                      {won ? (
+                        <span className="text-green">Won</span>
+                      ) : (
+                        <span className="text-text-muted">Lost</span>
+                      )}
+                      <span className="text-text-subtle"> · hand {h.finalHandValue} · +{h.rankingPointsEarned} RP</span>
+                    </p>
+                    <p className="text-[10px] text-text-subtle m-0">
+                      {new Date(h.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  <span className={cn("text-[12px] font-mono shrink-0", won ? "text-green" : "text-red")}>
+                    {won ? `+${h.pointsEarned.toLocaleString()}` : `−${h.pointsLost.toLocaleString()}`}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
@@ -212,9 +269,10 @@ function Stat({
   icon: typeof Coins;
   label: string;
   value: string;
-  tone: "gold" | "vault" | "green";
+  tone: "gold" | "vault" | "green" | "text";
 }) {
-  const color = tone === "gold" ? "text-gold" : tone === "vault" ? "text-vault" : "text-green";
+  const color =
+    tone === "gold" ? "text-gold" : tone === "vault" ? "text-vault" : tone === "green" ? "text-green" : "text-text";
   return (
     <Card>
       <div className="flex items-center gap-2 mb-1.5">

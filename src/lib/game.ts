@@ -148,6 +148,9 @@ export type GameState = {
   // Shared economy fields used by Community Tongits (Function-written).
   lockedPoints?: number; // points escrowed in an active/ready Tongits challenge
   rankingPoints?: number; // competitive ranking score (leaderboards)
+  tongitsGames?: number;
+  tongitsWins?: number;
+  tongitsLosses?: number;
 };
 export type CastResult = {
   fish: { id: string; name: string; rarity: string; image?: string };

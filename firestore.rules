@@ -178,6 +178,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // === Community Tongits: leaderboard (Functions write, public read) ===
+    match /tongits_leaderboard/{uid} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
     // === Community Tongits: match records (Functions write) ===
     match /game_matches/{matchId} {
       allow read: if isSignedIn();

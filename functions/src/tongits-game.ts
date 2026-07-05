@@ -53,7 +53,25 @@ const gsRef = (code: string) => db.doc(`game_rooms/${code}/game/state`);
 const handRef = (code: string, uid: string) => db.doc(`game_rooms/${code}/hands/${uid}`);
 const deckRef = (code: string) => db.doc(`game_rooms/${code}/secret/deck`);
 const userStateRef = (uid: string) => db.doc(`users/${uid}/game/state`);
+const lbRef = (uid: string) => db.doc(`tongits_leaderboard/${uid}`);
 const txnCol = () => db.collection("game_point_transactions");
+
+const HOUR_MS = 3_600_000;
+/** Manila (UTC+8) period keys for rolling leaderboards. */
+function periodKeys(ts: number): { day: string; week: string; month: string } {
+  const d = new Date(ts + 8 * HOUR_MS);
+  const day = d.toISOString().slice(0, 10); // YYYY-MM-DD
+  const month = d.toISOString().slice(0, 7); // YYYY-MM
+  // ISO week number.
+  const tmp = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = (tmp.getUTCDay() + 6) % 7;
+  tmp.setUTCDate(tmp.getUTCDate() - dayNum + 3);
+  const firstThu = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 4));
+  const week = `${tmp.getUTCFullYear()}-W${String(
+    1 + Math.round(((tmp.getTime() - firstThu.getTime()) / 86400000 - 3 + ((firstThu.getUTCDay() + 6) % 7)) / 7)
+  ).padStart(2, "0")}`;
+  return { day, week, month };
+}
 
 function requireUid(request: { auth?: { uid?: string } }): string {
   const uid = request.auth?.uid;
@@ -144,12 +162,16 @@ async function resolveAndSettle(
   }
   if (opts.forfeitUid) values[opts.forfeitUid] = 9999; // forfeiter counts as worst
 
-  // Read all three economy docs before writing.
+  // Read all economy + leaderboard docs before writing.
   const stateSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
+  const lbSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
   for (const s of seats) {
     const snap = await tx.get(userStateRef(s.uid));
     stateSnaps[s.uid] = (snap.exists ? snap.data() : {}) as FirebaseFirestore.DocumentData;
+    const lb = await tx.get(lbRef(s.uid));
+    lbSnaps[s.uid] = (lb.exists ? lb.data() : {}) as FirebaseFirestore.DocumentData;
   }
+  const keys = periodKeys(now);
 
   const jackpot = opts.jackpotPaid ? ctx.gs.jackpotPoints : 0;
 
@@ -216,6 +238,29 @@ async function resolveAndSettle(
         : `Lost ${C} in Tongits room ${code}`,
       createdAt: now,
     });
+
+    // Rolling leaderboard: reset a period bucket when its key rolls over.
+    const lb = lbSnaps[s.uid];
+    const roll = (key: string, storedKey: unknown, storedRP: unknown) =>
+      (storedKey === key ? ((storedRP as number) ?? 0) : 0) + rankingEarned;
+    tx.set(
+      lbRef(s.uid),
+      {
+        uid: s.uid,
+        name: s.name,
+        allTimeRP: ((lb.allTimeRP as number) ?? 0) + rankingEarned,
+        wins: ((lb.wins as number) ?? 0) + (isWinner ? 1 : 0),
+        games: ((lb.games as number) ?? 0) + 1,
+        dayKey: keys.day,
+        dayRP: roll(keys.day, lb.dayKey, lb.dayRP),
+        weekKey: keys.week,
+        weekRP: roll(keys.week, lb.weekKey, lb.weekRP),
+        monthKey: keys.month,
+        monthRP: roll(keys.month, lb.monthKey, lb.monthRP),
+        updatedAt: now,
+      },
+      { merge: true }
+    );
   });
 
   if (opts.jackpotPaid && jackpot > 0) {

@@ -90,6 +90,7 @@ export const adminNav: NavGroup[] = [
     label: "Games",
     items: [
       { label: "Game Settings", href: "/admin/games", icon: "fish" },
+      { label: "Tongits", href: "/admin/tongits", icon: "spade" },
       { label: "Rewards & redemptions", href: "/admin/rewards", icon: "gift" },
     ],
   },
