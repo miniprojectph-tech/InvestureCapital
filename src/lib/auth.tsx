@@ -12,6 +12,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
+  GoogleAuthProvider,
+  signInWithPopup,
   signOut as fbSignOut,
   updateProfile,
   type User,
@@ -41,6 +43,7 @@ type AuthContextValue = {
     password: string,
     referralCode?: string
   ) => Promise<void>;
+  signInWithGoogle: (referralCode?: string) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
 };
@@ -141,14 +144,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(authUser);
     if (db) {
       await ensureUserDoc(db, authUser.uid, authUser.name, authUser.email);
-      // Give the new account its own referral code, and attach the referrer
-      // (if they arrived via ?ref=CODE). Failures here must not block signup.
-      try {
-        await ensureReferralCode(db, authUser.uid);
-        if (referralCode) await attachReferrer(db, authUser.uid, referralCode);
-      } catch (err) {
-        console.error("referral setup on signup failed", err);
-      }
+      await setupReferralOnJoin(authUser.uid, referralCode);
+    }
+  }
+
+  /** Give a new/returning account its referral code and attach a referrer if
+   *  they arrived via ?ref=CODE. Idempotent and best-effort — never blocks auth. */
+  async function setupReferralOnJoin(uid: string, referralCode?: string) {
+    if (!db) return;
+    try {
+      await ensureReferralCode(db, uid);
+      if (referralCode) await attachReferrer(db, uid, referralCode);
+    } catch (err) {
+      console.error("referral setup on join failed", err);
+    }
+  }
+
+  async function signInWithGoogle(referralCode?: string) {
+    if (!auth) throw new Error("Firebase is not configured. Add your keys to .env.local.");
+    const provider = new GoogleAuthProvider();
+    const cred = await signInWithPopup(auth, provider);
+    const authUser = toAuthUser(cred.user);
+    setUser(authUser);
+    if (db) {
+      await ensureUserDoc(db, authUser.uid, authUser.name, authUser.email);
+      // attachReferrer only sets referredByUserId when it's still empty, so
+      // running this on every Google sign-in is safe for returning users.
+      await setupReferralOnJoin(authUser.uid, referralCode);
     }
   }
 
@@ -163,7 +185,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, demoMode, signIn, signUp, resetPassword, signOut }}>
+    <AuthContext.Provider
+      value={{ user, loading, demoMode, signIn, signUp, signInWithGoogle, resetPassword, signOut }}
+    >
       {children}
     </AuthContext.Provider>
   );

@@ -22,7 +22,7 @@ type Mode = "signin" | "signup";
 
 export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
   const router = useRouter();
-  const { signIn, signUp, resetPassword, demoMode } = useAuth();
+  const { signIn, signUp, signInWithGoogle, resetPassword, demoMode } = useAuth();
   const [mode, setMode] = useState<Mode>(defaultMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -33,6 +33,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
 
@@ -54,6 +55,33 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
     setMode(next);
     setError(null);
     setNotice(null);
+  }
+
+  async function onGoogle() {
+    setError(null);
+    setNotice(null);
+    setGoogleBusy(true);
+    try {
+      if (demoMode) {
+        router.push("/dashboard");
+        return;
+      }
+      await signInWithGoogle(referralCode ?? undefined);
+      router.push("/dashboard");
+    } catch (err) {
+      const code =
+        typeof err === "object" && err !== null && "code" in err
+          ? String((err as { code: unknown }).code)
+          : "";
+      // User dismissed the popup — not an error worth showing.
+      if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+        return;
+      }
+      const msg = err instanceof Error ? err.message : "Google sign-in failed";
+      setError(msg.replace("Firebase: ", "").replace(/\(auth\/[^)]+\)\.?$/, "").trim());
+    } finally {
+      setGoogleBusy(false);
+    }
   }
 
   async function onForgotPassword() {
@@ -241,6 +269,26 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
             {isSignup ? "Start with a simulated ₱10,000 demo balance." : "Sign in to your dashboard and vault."}
           </p>
 
+          <button
+            type="button"
+            onClick={onGoogle}
+            disabled={googleBusy || busy}
+            className="w-full py-2.5 mb-3 rounded-xl bg-white text-[#1f2328] text-[13px] font-medium flex items-center justify-center gap-2.5 hover:bg-white/90 transition disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {googleBusy ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <GoogleIcon className="w-4 h-4" />
+            )}
+            {isSignup ? "Sign up with Google" : "Continue with Google"}
+          </button>
+
+          <div className="flex items-center gap-3 mb-3">
+            <span className="h-px flex-1 bg-white/10" />
+            <span className="text-[10px] text-white/35 uppercase tracking-wider">or use email</span>
+            <span className="h-px flex-1 bg-white/10" />
+          </div>
+
           <form onSubmit={onSubmit} className="flex flex-col gap-3">
             {isSignup && (
               <Field label="Full name" icon={UserIcon}>
@@ -359,6 +407,29 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
         </div>
       </main>
     </div>
+  );
+}
+
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 48 48" aria-hidden xmlns="http://www.w3.org/2000/svg">
+      <path
+        fill="#EA4335"
+        d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"
+      />
+      <path
+        fill="#4285F4"
+        d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"
+      />
+      <path
+        fill="#34A853"
+        d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"
+      />
+    </svg>
   );
 }
 
