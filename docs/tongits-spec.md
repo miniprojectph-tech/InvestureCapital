@@ -76,11 +76,38 @@ Precise enough to implement deterministically. Items marked ⚙️ are house cho
     the first move, the game must resolve; a disconnect becomes a forfeit → remaining
     players resolve by lowest hand. ⚙️ *(forfeit specifics = Phase 2 detail.)*
 
+### Running jackpot ("bote")  — INCLUDED
+18. Each game, every player contributes an **ante `A`** (⚙️ default **5 points**) to a
+    **room-level jackpot**, on top of the per-game stake `C`. The jackpot **accumulates
+    across games** in the room.
+19. The jackpot pays out **only on a true Tongits** (#9). Lowest-hand/draw wins do NOT
+    claim it — it carries over and keeps growing. ⚙️ *(open: also pay on Secret Tongits, or
+    Secret Tongits = jackpot ×multiplier?)*
+20. On a Tongits win: winner takes the accumulated jackpot **on top of** the normal `3×C`
+    stake; jackpot resets to 0.
+21. **Two-player resolution (unclaimed jackpot):** if the room drops to 2 players with an
+    unclaimed jackpot, the two remaining players choose:
+    - **Split** the jackpot equally and close the room — **both must confirm**; or
+    - **Keep the room open** with the empty seat and invite a 3rd; jackpot persists and play
+      resumes when a 3rd joins.
+    - No agreement → **hold** (room stays open, waiting).
+22. **Abandonment refund:** if the room is fully abandoned with an unclaimed jackpot, each
+    player is refunded the antes they personally contributed (contributions are logged as
+    transactions, so refunds are exact).
+
+### Turn timer  — INCLUDED
+23. Each turn has a countdown (⚙️ default **25s**), enforced **server-side** (client display
+    is cosmetic; backend is authority).
+24. On timeout: server **auto-draws from stock + auto-discards** to keep play moving.
+25. **2 consecutive timeouts** = disconnect/forfeit → the game resolves immediately (remaining
+    players compare hands; forfeiter is a loser and their stake goes to the pot). Covers rage-quits.
+
 ### Open ⚙️ items awaiting sign-off
 - Ace low-only vs. Ace high/low for runs.
 - Call tie-break (caller-wins-ties vs. burned).
-- Secret Tongits bonus: yes/no.
-- Exact forfeit/disconnect resolution (Phase 2).
+- Secret Tongits bonus: yes/no (and its jackpot interaction).
+- Jackpot ante size `A` (default 5) and per-move timer length (default 25s).
+- Exact forfeit/disconnect resolution details (Phase 2).
 
 ---
 
@@ -91,10 +118,11 @@ Everything around the game, fully testable, unblocked by the ruleset.
 
 **Firestore (mutated via Cloud Functions only; clients read-only)**
 - `game_rooms/{code}` — doc id = unique room code (retry-on-collision). Fields:
-  `creatorUserId, challengePoints, maxPlayers:3, status (open|confirming|ready|cancelled|in_game|completed), chatEnabled, players{} (uid→{name, avatar, seat, isReady, agreedToChallenge, joinedAt}), createdAt, updatedAt, startedAt, completedAt`.
+  `creatorUserId, challengePoints, jackpotAnte, jackpotPoints (running, persists across games), maxPlayers:3, status (open|confirming|ready|cancelled|in_game|completed), chatEnabled, players{} (uid→{name, avatar, seat, isReady, agreedToChallenge, joinedAt, jackpotContributed}), gamesPlayed, createdAt, updatedAt, startedAt, completedAt`.
 - `game_rooms/{code}/chat/{id}` — `uid, name, message, createdAt`.
 - `game_chat_reports/{id}` — reporter, roomCode, messageId, reason, createdAt.
-- `game_point_transactions/{id}` — audit (`challenge_points_locked|returned|won|lost`, …).
+- `game_point_transactions/{id}` — audit (`challenge_points_locked|returned|won|lost`,
+  `jackpot_ante|jackpot_won|jackpot_split|jackpot_refunded`, …).
 - Wallet: reuse `users/{uid}/game/state`, add `lockedPoints` (and later `rankingPoints`).
 
 **Cloud Functions**
