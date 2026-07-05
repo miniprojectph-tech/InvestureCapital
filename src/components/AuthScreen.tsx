@@ -29,7 +29,6 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
-  const [agree, setAgree] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -109,10 +108,6 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    if (isSignup && !agree) {
-      setError("Please agree to the terms to continue.");
-      return;
-    }
     setError(null);
     setNotice(null);
     setBusy(true);
@@ -265,9 +260,11 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
             </div>
           )}
 
-          <p className="text-[12px] text-white/55 m-0 mb-4">
-            {isSignup ? "Start with a simulated ₱10,000 demo balance." : "Sign in to your dashboard and vault."}
-          </p>
+          {!isSignup && (
+            <p className="text-[12px] text-white/55 m-0 mb-4">
+              Sign in to your dashboard and vault.
+            </p>
+          )}
 
           <button
             type="button"
@@ -346,19 +343,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
               </button>
             </Field>
 
-            {isSignup ? (
-              <label className="flex items-start gap-2 mt-0.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={agree}
-                  onChange={(e) => setAgree(e.target.checked)}
-                  className="accent-[#3DD598] w-3 h-3 mt-0.5"
-                />
-                <span className="text-[11px] text-white/55 leading-relaxed">
-                  I understand this is a demo — all balances are simulated, no real money.
-                </span>
-              </label>
-            ) : (
+            {!isSignup && (
               <label className="flex items-center gap-2 mt-0.5 cursor-pointer">
                 <input
                   type="checkbox"
@@ -400,10 +385,6 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
               )}
             </button>
           </form>
-
-          <p className="text-[10px] text-white/35 text-center mt-4 m-0 leading-relaxed">
-            Simulated platform — all balances and trading data are for illustration. No real money involved.
-          </p>
         </div>
       </main>
     </div>
