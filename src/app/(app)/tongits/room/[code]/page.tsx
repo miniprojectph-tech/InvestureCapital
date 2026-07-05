@@ -12,6 +12,8 @@ import {
   Coins,
   Sparkles,
   ShieldCheck,
+  Play,
+  Trophy,
   X,
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
@@ -33,6 +35,8 @@ import {
   MAX_PLAYERS,
   type TongitsRoom,
 } from "@/lib/tongits";
+import { startGame, playAgain, splitJackpot, cardLabel, isRedSuit } from "@/lib/tongits-game";
+import { TongitsTable } from "@/components/TongitsTable";
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -147,6 +151,21 @@ export default function TongitsRoomPage() {
   const seats = seatedPlayers(room);
   const isCreator = user?.uid === room.creatorUserId;
 
+  // Live game.
+  if (room.status === "in_game") {
+    return (
+      <div>
+        <TopHeader title={`Room ${room.roomCode}`} subtitle="Community Tongits · live game" />
+        <TongitsTable code={code} room={room} />
+      </div>
+    );
+  }
+
+  // Post-game result.
+  if (room.status === "post_game" && room.lastResult) {
+    return <ResultScreen code={code} room={room} onError={setError} />;
+  }
+
   return (
     <div>
       <TopHeader title={`Room ${room.roomCode}`} subtitle="Community Tongits · waiting room" />
@@ -206,6 +225,34 @@ export default function TongitsRoomPage() {
       </Card>
 
       <StartStatus room={room} />
+
+      {room.status === "ready" && (
+        <button
+          onClick={() => run("start", () => startGame(code))}
+          disabled={busy === "start"}
+          className="w-full mb-3 py-3 bg-green text-white rounded-xl text-[14px] font-semibold flex items-center justify-center gap-2 hover:brightness-110 transition disabled:opacity-60"
+        >
+          {busy === "start" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+          Start game
+        </button>
+      )}
+
+      {(room.jackpotPoints ?? 0) > 0 && seats.length < MAX_PLAYERS && (
+        <div className="mb-3 px-4 py-3 bg-vault/5 border border-border-vault rounded-xl flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2 text-[12px] text-vault-muted">
+            <Sparkles className="w-4 h-4 text-vault" />
+            An unclaimed <span className="font-mono text-vault">{room.jackpotPoints}</span> jackpot is waiting.
+            Invite a 3rd player, or split it (both must agree).
+          </div>
+          <button
+            onClick={() => run("split", () => splitJackpot(code))}
+            disabled={busy === "split"}
+            className="px-3 py-1.5 bg-vault text-vault-dark rounded-lg text-[11px] font-medium disabled:opacity-60"
+          >
+            {room.splitConsent?.[user?.uid ?? ""] ? "Waiting for the other player…" : "Split jackpot & close"}
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
         {/* Seats + actions */}
@@ -282,6 +329,127 @@ export default function TongitsRoomPage() {
 
         {/* Chat */}
         <ChatPanel room={room} />
+      </div>
+    </div>
+  );
+}
+
+const RESULT_LABEL: Record<string, string> = {
+  tongits_win: "Tongits!",
+  draw_win: "Draw — stock ran out",
+  lowest_points_win: "Lowest hand wins",
+  player_disconnected: "Won by forfeit",
+};
+
+function MiniChip({ card }: { card: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center justify-center w-6 h-8 rounded bg-white border border-neutral-300 font-mono text-[10px] font-semibold",
+        isRedSuit(card) ? "text-red-600" : "text-neutral-900"
+      )}
+    >
+      {cardLabel(card)}
+    </span>
+  );
+}
+
+function ResultScreen({
+  code,
+  room,
+  onError,
+}: {
+  code: string;
+  room: TongitsRoom;
+  onError: (s: string | null) => void;
+}) {
+  const router = useRouter();
+  const { user } = useAuth();
+  const [busy, setBusy] = useState<string | null>(null);
+  const r = room.lastResult!;
+  const C = room.challengePoints;
+  const seats = seatedPlayers(room);
+
+  async function run(key: string, fn: () => Promise<unknown>, after?: () => void) {
+    onError(null);
+    setBusy(key);
+    try {
+      await fn();
+      after?.();
+    } catch (e) {
+      onError(e instanceof Error ? e.message.replace(/^.*\/ /, "") : "Something went wrong");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div>
+      <TopHeader title="Match result" subtitle={`Room ${room.roomCode}`} />
+
+      <Card className="text-center mb-3">
+        <div className="w-14 h-14 rounded-full bg-gold/15 flex items-center justify-center mx-auto mb-3">
+          <Trophy className="w-7 h-7 text-gold" />
+        </div>
+        <p className="text-[16px] font-medium m-0">{r.winnerName} wins</p>
+        <p className="text-[12px] text-text-muted mt-1 m-0">{RESULT_LABEL[r.resultType] ?? r.resultType}</p>
+        {r.jackpotWon > 0 && (
+          <p className="text-[12px] text-vault mt-1 m-0 inline-flex items-center gap-1 justify-center">
+            <Sparkles className="w-3.5 h-3.5" /> +{r.jackpotWon} jackpot claimed
+          </p>
+        )}
+      </Card>
+
+      <Card className="mb-3">
+        <p className="text-[10px] text-text-subtle uppercase tracking-wider m-0 mb-2">Breakdown</p>
+        <div className="flex flex-col gap-2">
+          {seats
+            .slice()
+            .sort((a, b) => (r.values[a.uid] ?? 0) - (r.values[b.uid] ?? 0))
+            .map((s) => {
+              const isWinner = s.uid === r.winnerUserId;
+              const net = isWinner ? C * seats.length + r.jackpotWon : 0;
+              return (
+                <div key={s.uid} className="flex items-center justify-between gap-3 py-1.5 border-b border-border/60 last:border-b-0">
+                  <div className="min-w-0">
+                    <p className="text-[12px] m-0 truncate">
+                      {s.name}
+                      {isWinner && <span className="text-gold"> · winner</span>}
+                    </p>
+                    <div className="flex gap-1 mt-1 flex-wrap">
+                      {(r.melds[s.uid] ?? []).flat().map((c) => (
+                        <MiniChip key={c} card={c} />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-[11px] text-text-muted m-0">hand {r.values[s.uid] ?? 0}</p>
+                    <p className={cn("text-[12px] font-mono m-0", isWinner ? "text-green" : "text-red")}>
+                      {isWinner ? `+${net}` : `−${C}`}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+        </div>
+      </Card>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => run("again", () => playAgain(code))}
+          disabled={busy === "again"}
+          className="flex-1 py-2.5 bg-gold text-gold-dark rounded-lg text-[13px] font-medium inline-flex items-center justify-center gap-2 hover:brightness-110 transition disabled:opacity-60"
+        >
+          {busy === "again" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+          Play again
+        </button>
+        <button
+          onClick={() => run("leave", () => leaveRoom(code), () => router.push("/tongits"))}
+          disabled={busy === "leave"}
+          className="flex-1 py-2.5 bg-card-elev border border-border-strong rounded-lg text-[13px] text-text-muted hover:text-text transition disabled:opacity-60"
+        >
+          Back to lobby
+        </button>
       </div>
     </div>
   );

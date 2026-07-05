@@ -26,6 +26,20 @@ export {
   cancelTongitsRoom,
 } from "./tongits";
 
+// Community Tongits (Phase 2): the game engine callables.
+export {
+  startTongitsGame,
+  tongitsDraw,
+  tongitsTakeDiscard,
+  tongitsMeld,
+  tongitsSapaw,
+  tongitsDiscard,
+  tongitsCall,
+  enforceTongitsTimeout,
+  tongitsPlayAgain,
+  splitTongitsJackpot,
+} from "./tongits-game";
+
 const DAY_MS = 86_400_000;
 
 type StoredActivePlan = {

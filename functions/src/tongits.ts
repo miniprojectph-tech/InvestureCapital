@@ -135,33 +135,59 @@ async function finalizeRoom(tx: Transaction, room: Room, now: number): Promise<v
   tx.update(roomRef(room.roomCode), { players: room.players, status, updatedAt: now });
 }
 
-/** Return locked stakes to every player who has any, and cancel the room. */
+/**
+ * Cancel a room, returning both any locked stakes (if the room was 'ready') and
+ * each player's unclaimed jackpot contributions (the running pot from prior games).
+ */
 async function refundAndCancel(tx: Transaction, room: Room, now: number): Promise<void> {
   const players = Object.values(room.players);
-  const locked = room.status === "ready"; // stakes are only locked once ready
-  if (locked) {
+  // Stakes are locked from 'ready' through the live game, until settled.
+  const returnStakes = room.status === "ready" || room.status === "in_game";
+  const hasJackpot = (room.jackpotPoints ?? 0) > 0;
+
+  if (returnStakes || hasJackpot) {
     const snaps = await Promise.all(players.map((p) => tx.get(stateRef(p.uid))));
     snaps.forEach((s, i) => {
       const p = players[i];
       const points = (s.data()?.points as number) ?? 0;
       const lp = (s.data()?.lockedPoints as number) ?? 0;
-      const refund = Math.min(lp, room.challengePoints);
+      const stakeRefund = returnStakes ? Math.min(lp, room.challengePoints) : 0;
+      const anteRefund = p.jackpotContributed ?? 0;
+      const refund = stakeRefund + anteRefund;
+      if (refund <= 0 && stakeRefund <= 0) return;
       tx.set(
         stateRef(p.uid),
-        { points: points + refund, lockedPoints: Math.max(0, lp - refund) },
+        { points: points + refund, lockedPoints: Math.max(0, lp - stakeRefund) },
         { merge: true }
       );
-      writeTxn(tx, {
-        userId: p.uid,
-        type: "challenge_points_returned",
-        amount: refund,
-        roomCode: room.roomCode,
-        description: `Returned ${refund} — Tongits room ${room.roomCode} cancelled`,
-        now,
-      });
+      if (stakeRefund > 0) {
+        writeTxn(tx, {
+          userId: p.uid,
+          type: "challenge_points_returned",
+          amount: stakeRefund,
+          roomCode: room.roomCode,
+          description: `Returned ${stakeRefund} stake — Tongits room ${room.roomCode} cancelled`,
+          now,
+        });
+      }
+      if (anteRefund > 0) {
+        writeTxn(tx, {
+          userId: p.uid,
+          type: "jackpot_refunded",
+          amount: anteRefund,
+          roomCode: room.roomCode,
+          description: `Refunded ${anteRefund} jackpot ante — Tongits room ${room.roomCode} cancelled`,
+          now,
+        });
+      }
     });
   }
-  tx.update(roomRef(room.roomCode), { status: "cancelled", updatedAt: now, completedAt: now });
+  tx.update(roomRef(room.roomCode), {
+    status: "cancelled",
+    jackpotPoints: 0,
+    updatedAt: now,
+    completedAt: now,
+  });
 }
 
 // ===== callables =====
@@ -301,6 +327,9 @@ export const leaveTongitsRoom = onCall(async (request) => {
     const room = snap.data() as Room;
     if (!room.players[uid]) return { ok: true };
     if (room.status === "cancelled" || room.status === "completed") return { ok: true };
+    if (room.status === "in_game") {
+      throw new HttpsError("failed-precondition", "You can't leave during a live game — play your turn or let the timer run.");
+    }
 
     // A locked (ready) room can't proceed once someone leaves pre-game → cancel + refund all.
     if (room.status === "ready") {

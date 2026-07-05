@@ -127,6 +127,25 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin();
 
+      // Public game state — room members read; Functions write.
+      match /game/{doc} {
+        allow read: if isSignedIn()
+          && (isAdmin()
+              || get(/databases/$(database)/documents/game_rooms/$(code)).data.players[request.auth.uid] != null);
+        allow write: if isAdmin();
+      }
+
+      // Private hands — only the owning player can read their own cards.
+      match /hands/{playerId} {
+        allow read: if isSignedIn() && (request.auth.uid == playerId || isAdmin());
+        allow write: if isAdmin();
+      }
+
+      // Hidden deck/stock — never client-readable (Functions/admin only).
+      match /secret/{doc} {
+        allow read, write: if isAdmin();
+      }
+
       // Chat: only players listed in the room may post/read; messages are
       // author-stamped and length-limited. Reads limited to room members.
       match /chat/{msgId} {
@@ -154,6 +173,17 @@ service cloud.firestore {
 
     // === Community Tongits: point transaction ledger (Functions write) ===
     match /game_point_transactions/{txnId} {
+      allow read: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // === Community Tongits: match records (Functions write) ===
+    match /game_matches/{matchId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+    match /game_match_results/{resultId} {
       allow read: if isSignedIn()
         && (resource.data.userId == request.auth.uid || isAdmin());
       allow write: if isAdmin();

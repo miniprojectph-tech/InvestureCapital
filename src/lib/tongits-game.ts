@@ -1,0 +1,115 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { getFirebase } from "./firebase";
+
+export type Card = string; // "<rank><suit>", e.g. "AS", "TD"
+
+export type GameSeat = { uid: string; seat: number; name: string };
+
+export type TongitsGameState = {
+  status: "in_game" | "ended";
+  round: number;
+  turnSeat: number;
+  turnUid: string;
+  phase: "draw" | "discard";
+  stockCount: number;
+  discard: Card[];
+  melds: Record<string, Card[][]>;
+  handCounts: Record<string, number>;
+  hasExposed: Record<string, boolean>;
+  seats: GameSeat[];
+  turnDeadline: number;
+  consecutiveTimeouts: Record<string, number>;
+  jackpotPoints: number;
+  startedAt: number;
+  lastAction?: string;
+};
+
+export type TongitsResult = {
+  matchId: string;
+  resultType: "tongits_win" | "draw_win" | "lowest_points_win" | "player_disconnected";
+  winnerUserId: string;
+  winnerName: string;
+  jackpotWon: number;
+  values: Record<string, number>;
+  melds: Record<string, Card[][]>;
+  completedAt: number;
+};
+
+// ===== card helpers =====
+const SUIT_SYMBOL: Record<string, string> = { S: "♠", H: "♥", D: "♦", C: "♣" };
+export const isRedSuit = (c: Card) => c[1] === "H" || c[1] === "D";
+export function cardLabel(c: Card): string {
+  return `${c[0] === "T" ? "10" : c[0]}${SUIT_SYMBOL[c[1]] ?? ""}`;
+}
+export function cardScore(c: Card): number {
+  const r = c[0];
+  if (r === "A") return 1;
+  if (r === "T" || r === "J" || r === "Q" || r === "K") return 10;
+  return Number(r);
+}
+
+// ===== callables =====
+async function call<T>(name: string, data: Record<string, unknown>): Promise<T> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Not connected");
+  const fn = httpsCallable<Record<string, unknown>, T>(functions, name);
+  return (await fn(data)).data;
+}
+
+export const startGame = (code: string) => call<{ ok: boolean }>("startTongitsGame", { code });
+export const draw = (code: string) => call<{ ok: boolean; ended?: boolean }>("tongitsDraw", { code });
+export const takeDiscard = (code: string, meldCards: Card[]) =>
+  call<{ ok: boolean; ended?: boolean }>("tongitsTakeDiscard", { code, meldCards });
+export const meld = (code: string, cards: Card[]) =>
+  call<{ ok: boolean; ended?: boolean }>("tongitsMeld", { code, cards });
+export const sapawCard = (code: string, targetUid: string, meldIndex: number, card: Card) =>
+  call<{ ok: boolean; ended?: boolean }>("tongitsSapaw", { code, targetUid, meldIndex, card });
+export const discard = (code: string, card: Card) =>
+  call<{ ok: boolean; ended?: boolean }>("tongitsDiscard", { code, card });
+export const callTongits = (code: string) => call<{ ok: boolean; ended?: boolean }>("tongitsCall", { code });
+export const enforceTimeout = (code: string) =>
+  call<{ ok: boolean; ended?: boolean; skipped?: boolean }>("enforceTongitsTimeout", { code });
+export const playAgain = (code: string) => call<{ ok: boolean }>("tongitsPlayAgain", { code });
+export const splitJackpot = (code: string) =>
+  call<{ ok: boolean; waiting?: boolean; split?: boolean }>("splitTongitsJackpot", { code });
+
+// ===== hooks =====
+export function useGameState(code: string | null) {
+  const [gs, setGs] = useState<TongitsGameState | null>(null);
+  useEffect(() => {
+    if (!code) {
+      setGs(null);
+      return;
+    }
+    const { db } = getFirebase();
+    if (!db) return;
+    return onSnapshot(
+      doc(db, "game_rooms", code, "game", "state"),
+      (snap) => setGs(snap.exists() ? (snap.data() as TongitsGameState) : null),
+      () => setGs(null)
+    );
+  }, [code]);
+  return gs;
+}
+
+export function useMyHand(code: string | null, uid: string | null) {
+  const [cards, setCards] = useState<Card[]>([]);
+  useEffect(() => {
+    if (!code || !uid) {
+      setCards([]);
+      return;
+    }
+    const { db } = getFirebase();
+    if (!db) return;
+    return onSnapshot(
+      doc(db, "game_rooms", code, "hands", uid),
+      (snap) => setCards(snap.exists() ? ((snap.data() as { cards: Card[] }).cards ?? []) : []),
+      () => setCards([])
+    );
+  }, [code, uid]);
+  return cards;
+}

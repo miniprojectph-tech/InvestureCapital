@@ -15,9 +15,17 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
+import type { TongitsResult } from "./tongits-game";
 
 // ===== Types (mirror functions/src/tongits.ts) =====
-export type TongitsStatus = "open" | "full" | "ready" | "cancelled" | "in_game" | "completed";
+export type TongitsStatus =
+  | "open"
+  | "full"
+  | "ready"
+  | "cancelled"
+  | "in_game"
+  | "post_game"
+  | "completed";
 
 export type TongitsPlayer = {
   uid: string;
@@ -44,6 +52,8 @@ export type TongitsRoom = {
   updatedAt: number;
   startedAt?: number;
   completedAt?: number;
+  lastResult?: TongitsResult | null;
+  splitConsent?: Record<string, boolean>;
 };
 
 export type TongitsChat = {
