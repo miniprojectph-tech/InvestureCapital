@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Menu, TrendingUp } from "lucide-react";
 import { CryptoTicker } from "./CryptoTicker";
 import { Sidebar } from "./Sidebar";
@@ -14,6 +15,24 @@ type AppShellProps = {
 
 export function AppShell({ nav, badge, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const pathname = usePathname();
+
+  // Tongits runs full-screen with its own chrome (see TongitsShell) — no app
+  // sidebar/ticker. Auth still applies (AuthGate wraps this in the layout).
+  if (pathname.startsWith("/tongits")) {
+    return (
+      <div
+        className="min-h-[100dvh]"
+        style={{
+          backgroundColor: "#0a1740",
+          backgroundImage:
+            "radial-gradient(100% 55% at 50% 0%, rgba(63,111,214,0.30), transparent 60%), linear-gradient(180deg, #0b1a44 0%, #071230 100%)",
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-2 sm:p-3 bg-canvas">

@@ -32,6 +32,26 @@ export type TongitsLeaderRow = {
   monthRP?: number;
 };
 
+// ===== rank tiers (derived from ranking points) =====
+const TIERS = [
+  { name: "Rookie", min: 0 },
+  { name: "Bronze", min: 50 },
+  { name: "Silver", min: 150 },
+  { name: "Gold", min: 400 },
+  { name: "Platinum", min: 1000 },
+  { name: "Master", min: 2000 },
+  { name: "Grand Master", min: 5000 },
+];
+
+export function rankTier(rp: number): { name: string; progress: number; nextAt: number | null } {
+  let idx = 0;
+  for (let i = 0; i < TIERS.length; i++) if (rp >= TIERS[i].min) idx = i;
+  const cur = TIERS[idx];
+  const next = TIERS[idx + 1] ?? null;
+  const progress = next ? Math.min(1, (rp - cur.min) / (next.min - cur.min)) : 1;
+  return { name: cur.name, progress, nextAt: next?.min ?? null };
+}
+
 const HOUR_MS = 3_600_000;
 /** Manila (UTC+8) period keys — must match functions/src/tongits-game.ts. */
 export function currentPeriodKeys(ts = Date.now()): { day: string; week: string; month: string } {

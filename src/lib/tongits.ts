@@ -43,6 +43,7 @@ export type TongitsRoom = {
   challengePoints: number;
   jackpotAnte: number;
   jackpotPoints: number;
+  isPrivate?: boolean;
   maxPlayers: number;
   status: TongitsStatus;
   chatEnabled: boolean;
@@ -80,8 +81,8 @@ async function call<T>(name: string, data: Record<string, unknown>): Promise<T> 
   return res.data;
 }
 
-export const createRoom = (challengePoints: number, jackpotAnte?: number) =>
-  call<{ code: string }>("createTongitsRoom", { challengePoints, jackpotAnte });
+export const createRoom = (challengePoints: number, jackpotAnte?: number, isPrivate?: boolean) =>
+  call<{ code: string }>("createTongitsRoom", { challengePoints, jackpotAnte, isPrivate });
 export const joinRoom = (code: string) => call<{ code: string }>("joinTongitsRoom", { code });
 export const setReady = (code: string, ready: boolean) =>
   call<{ ok: boolean }>("setTongitsReady", { code, ready });
@@ -139,7 +140,7 @@ export function useOpenRooms() {
     const unsub = onSnapshot(
       q,
       (snap) => {
-        const rows = snap.docs.map((d) => d.data() as TongitsRoom);
+        const rows = snap.docs.map((d) => d.data() as TongitsRoom).filter((r) => !r.isPrivate);
         rows.sort((a, b) => b.createdAt - a.createdAt);
         setRooms(rows);
         setLoading(false);

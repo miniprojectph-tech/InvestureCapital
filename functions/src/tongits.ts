@@ -30,6 +30,7 @@ type Room = {
   challengePoints: number;
   jackpotAnte: number;
   jackpotPoints: number;
+  isPrivate?: boolean;
   maxPlayers: number;
   status: RoomStatus;
   chatEnabled: boolean;
@@ -194,9 +195,10 @@ async function refundAndCancel(tx: Transaction, room: Room, now: number): Promis
 
 export const createTongitsRoom = onCall(async (request) => {
   const uid = requireUid(request);
-  const data = (request.data ?? {}) as { challengePoints?: number; jackpotAnte?: number };
+  const data = (request.data ?? {}) as { challengePoints?: number; jackpotAnte?: number; isPrivate?: boolean };
   const challengePoints = Math.floor(Number(data.challengePoints));
   const jackpotAnte = data.jackpotAnte == null ? DEFAULT_ANTE : Math.max(0, Math.floor(Number(data.jackpotAnte)));
+  const isPrivate = data.isPrivate === true;
   if (!Number.isFinite(challengePoints) || challengePoints < MIN_CHALLENGE) {
     throw new HttpsError("invalid-argument", `Challenge must be at least ${MIN_CHALLENGE} points.`);
   }
@@ -219,6 +221,7 @@ export const createTongitsRoom = onCall(async (request) => {
       challengePoints,
       jackpotAnte,
       jackpotPoints: 0,
+      isPrivate,
       maxPlayers: MAX_PLAYERS,
       status: "open",
       chatEnabled: true,
