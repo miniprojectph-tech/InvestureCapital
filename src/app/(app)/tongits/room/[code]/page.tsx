@@ -35,8 +35,10 @@ import {
   MAX_PLAYERS,
   type TongitsRoom,
 } from "@/lib/tongits";
-import { startGame, playAgain, splitJackpot, cardLabel, isRedSuit } from "@/lib/tongits-game";
+import { startGame, playAgain, splitJackpot } from "@/lib/tongits-game";
 import { TongitsTable } from "@/components/TongitsTable";
+import { PlayingCard } from "@/components/PlayingCard";
+import { AssetImage, TONGITS_ART } from "@/components/AssetImage";
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -341,19 +343,6 @@ const RESULT_LABEL: Record<string, string> = {
   player_disconnected: "Won by forfeit",
 };
 
-function MiniChip({ card }: { card: string }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center w-6 h-8 rounded bg-white border border-neutral-300 font-mono text-[10px] font-semibold",
-        isRedSuit(card) ? "text-red-600" : "text-neutral-900"
-      )}
-    >
-      {cardLabel(card)}
-    </span>
-  );
-}
-
 function ResultScreen({
   code,
   room,
@@ -388,9 +377,16 @@ function ResultScreen({
       <TopHeader title="Match result" subtitle={`Room ${room.roomCode}`} />
 
       <Card className="text-center mb-3">
-        <div className="w-14 h-14 rounded-full bg-gold/15 flex items-center justify-center mx-auto mb-3">
-          <Trophy className="w-7 h-7 text-gold" />
-        </div>
+        <AssetImage
+          src={r.resultType === "tongits_win" ? TONGITS_ART.winBanner : null}
+          alt="Tongits!"
+          className="max-h-36 mx-auto mb-3 object-contain"
+          fallback={
+            <div className="w-14 h-14 rounded-full bg-gold/15 flex items-center justify-center mx-auto mb-3">
+              <Trophy className="w-7 h-7 text-gold" />
+            </div>
+          }
+        />
         <p className="text-[16px] font-medium m-0">{r.winnerName} wins</p>
         <p className="text-[12px] text-text-muted mt-1 m-0">{RESULT_LABEL[r.resultType] ?? r.resultType}</p>
         {r.jackpotWon > 0 && (
@@ -418,7 +414,7 @@ function ResultScreen({
                     </p>
                     <div className="flex gap-1 mt-1 flex-wrap">
                       {(r.melds[s.uid] ?? []).flat().map((c) => (
-                        <MiniChip key={c} card={c} />
+                        <PlayingCard key={c} card={c} size="sm" />
                       ))}
                     </div>
                   </div>

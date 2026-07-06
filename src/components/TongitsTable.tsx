@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Layers, Clock, Sparkles, Loader2 } from "lucide-react";
+import { Layers, Clock, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import {
@@ -14,39 +14,15 @@ import {
   discard,
   callTongits,
   enforceTimeout,
-  cardLabel,
-  isRedSuit,
   type Card as TCard,
 } from "@/lib/tongits-game";
 import type { TongitsRoom as Room } from "@/lib/tongits";
+import { PlayingCard } from "./PlayingCard";
+import { AssetImage, TONGITS_ART } from "./AssetImage";
 
-function CardChip({
-  card,
-  selected,
-  onClick,
-  small,
-}: {
-  card: TCard;
-  selected?: boolean;
-  onClick?: () => void;
-  small?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={!onClick}
-      className={cn(
-        "rounded-md border font-mono font-semibold flex items-center justify-center shrink-0 transition select-none",
-        small ? "w-7 h-9 text-[11px]" : "w-9 h-12 text-[13px]",
-        "bg-white",
-        isRedSuit(card) ? "text-red-600" : "text-neutral-900",
-        selected ? "border-gold ring-2 ring-gold -translate-y-1" : "border-neutral-300",
-        onClick && "hover:-translate-y-0.5 cursor-pointer"
-      )}
-    >
-      {cardLabel(card)}
-    </button>
-  );
+function initials(name: string) {
+  const p = name.trim().split(/\s+/).filter(Boolean);
+  return (p.length === 1 ? p[0].slice(0, 2) : (p[0]?.[0] ?? "") + (p[1]?.[0] ?? "")).toUpperCase() || "?";
 }
 
 function MeldRow({
@@ -58,21 +34,22 @@ function MeldRow({
   clickable?: boolean;
   onPick?: (meldIndex: number) => void;
 }) {
-  if (!melds || melds.length === 0) return <span className="text-[10px] text-text-subtle">no melds</span>;
+  if (!melds || melds.length === 0)
+    return <span className="text-[10px] text-white/30">no melds yet</span>;
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-1.5">
       {melds.map((m, i) => (
         <button
           key={i}
           onClick={() => clickable && onPick?.(i)}
           disabled={!clickable}
           className={cn(
-            "flex gap-0.5 p-1 rounded-md border",
-            clickable ? "border-gold/50 hover:bg-gold/10 cursor-pointer" : "border-border"
+            "flex gap-0.5 p-1 rounded-md transition",
+            clickable ? "bg-[#3DD598]/15 ring-1 ring-[#3DD598]/60 hover:bg-[#3DD598]/25 cursor-pointer" : ""
           )}
         >
           {m.map((c) => (
-            <CardChip key={c} card={c} small />
+            <PlayingCard key={c} card={c} size="sm" />
           ))}
         </button>
       ))}
@@ -80,7 +57,61 @@ function MeldRow({
   );
 }
 
-export function TongitsTable({ code, room }: { code: string; room: Room }) {
+function Seat({
+  name,
+  count,
+  active,
+  melds,
+  sapawMode,
+  onSapaw,
+}: {
+  name: string;
+  count: number;
+  active: boolean;
+  melds: TCard[][];
+  sapawMode: boolean;
+  onSapaw: (mi: number) => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl p-3 border transition backdrop-blur-sm",
+        active ? "border-[#3DD598] bg-[#3DD598]/10" : "border-white/10 bg-black/20"
+      )}
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <div className="relative w-9 h-9 shrink-0">
+          <div
+            className={cn(
+              "w-9 h-9 rounded-full flex items-center justify-center text-[12px] font-semibold",
+              active ? "bg-[#3DD598]/25 text-[#3DD598]" : "bg-white/10 text-white/70"
+            )}
+          >
+            {initials(name)}
+          </div>
+          <AssetImage
+            src={active ? TONGITS_ART.seatFrameActive : TONGITS_ART.seatFrame}
+            alt=""
+            className="absolute -inset-1 w-11 h-11 pointer-events-none"
+          />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[12px] font-medium text-white truncate m-0">{name}</p>
+          <p className="text-[10px] text-white/40 m-0">{count} cards</p>
+        </div>
+        {/* fan of face-down cards */}
+        <div className="flex -space-x-4 shrink-0">
+          {Array.from({ length: Math.min(count, 5) }, (_, i) => (
+            <PlayingCard key={i} size="sm" faceDown />
+          ))}
+        </div>
+      </div>
+      <MeldRow melds={melds} clickable={sapawMode} onPick={onSapaw} />
+    </div>
+  );
+}
+
+export function TongitsTable({ code }: { code: string; room: Room }) {
   const { user } = useAuth();
   const gs = useGameState(code);
   const myHand = useMyHand(code, user?.uid ?? null);
@@ -90,7 +121,6 @@ export function TongitsTable({ code, room }: { code: string; room: Room }) {
   const [tick, setTick] = useState(Date.now());
   const enforcedFor = useRef(0);
 
-  // 1s clock for the turn timer + timeout enforcement.
   useEffect(() => {
     const t = setInterval(() => setTick(Date.now()), 1000);
     return () => clearInterval(t);
@@ -104,7 +134,6 @@ export function TongitsTable({ code, room }: { code: string; room: Room }) {
     }
   }, [tick, gs, code]);
 
-  // Drop selections that are no longer in hand (e.g. after a move lands).
   useEffect(() => {
     setSelected((sel) => sel.filter((c) => myHand.includes(c)));
   }, [myHand]);
@@ -127,7 +156,6 @@ export function TongitsTable({ code, room }: { code: string; room: Room }) {
   function toggle(card: TCard) {
     setSelected((sel) => (sel.includes(card) ? sel.filter((c) => c !== card) : [...sel, card]));
   }
-
   async function act(key: string, fn: () => Promise<unknown>) {
     setError(null);
     setBusy(key);
@@ -140,7 +168,6 @@ export function TongitsTable({ code, room }: { code: string; room: Room }) {
       setBusy(null);
     }
   }
-
   async function onSapaw(targetUid: string, meldIndex: number) {
     if (selected.length !== 1) return;
     await act("sapaw", () => sapawCard(code, targetUid, meldIndex, selected[0]));
@@ -155,88 +182,112 @@ export function TongitsTable({ code, room }: { code: string; room: Room }) {
         <div className="px-3 py-2 bg-red/10 border border-red/30 rounded-lg text-[11px] text-red">{error}</div>
       )}
 
-      {/* Opponents */}
-      <div className="grid grid-cols-2 gap-3">
-        {others.map((o) => (
-          <div
-            key={o.uid}
-            className={cn(
-              "rounded-xl border p-3",
-              gs.turnUid === o.uid ? "border-gold bg-gold/5" : "border-border bg-card"
-            )}
-          >
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[12px] font-medium truncate">{o.name}</span>
-              <span className="text-[10px] text-text-subtle font-mono">{gs.handCounts[o.uid] ?? 0} cards</span>
-            </div>
-            <MeldRow melds={gs.melds[o.uid] ?? []} clickable={sapawMode} onPick={(mi) => onSapaw(o.uid, mi)} />
-          </div>
-        ))}
-      </div>
-
-      {/* Center: stock / discard / jackpot / timer */}
-      <div className="rounded-xl border border-border bg-card p-3 flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-9 h-12 rounded-md bg-vault/20 border border-vault/40 flex items-center justify-center">
-              <Layers className="w-4 h-4 text-vault" />
-            </div>
-            <span className="text-[9px] text-text-subtle">stock {gs.stockCount}</span>
-          </div>
-          <div className="flex flex-col items-center gap-1">
-            {discardTop ? (
-              <CardChip card={discardTop} />
-            ) : (
-              <div className="w-9 h-12 rounded-md border border-dashed border-border" />
-            )}
-            <span className="text-[9px] text-text-subtle">discard</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          {gs.jackpotPoints > 0 && (
-            <div className="flex items-center gap-1.5 text-vault">
-              <Sparkles className="w-4 h-4" />
-              <span className="text-[13px] font-mono font-medium">{gs.jackpotPoints}</span>
-              <span className="text-[9px] text-text-subtle">jackpot</span>
-            </div>
-          )}
-          <div className={cn("flex items-center gap-1.5", secondsLeft <= 5 ? "text-red" : "text-text-muted")}>
-            <Clock className="w-4 h-4" />
-            <span className="text-[15px] font-mono font-medium tabular-nums">{secondsLeft}s</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Turn banner */}
+      {/* Felt table */}
       <div
-        className={cn(
-          "px-3 py-2 rounded-lg text-[12px] text-center",
-          isMyTurn ? "bg-green/15 text-green font-medium" : "bg-card-elev text-text-muted"
-        )}
+        className="rounded-2xl p-3 sm:p-4 relative overflow-hidden flex flex-col gap-3"
+        style={{
+          backgroundColor: "#0a1c17",
+          backgroundImage: `radial-gradient(130% 100% at 50% -10%, rgba(61,213,152,0.12), transparent 55%), url(${TONGITS_ART.tableBg})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+          boxShadow: "inset 0 0 90px rgba(0,0,0,0.65)",
+          border: "1px solid rgba(61,213,152,0.16)",
+        }}
       >
-        {isMyTurn
-          ? gs.phase === "draw"
-            ? "Your turn — draw from the stock, or take the discard to meld."
-            : "Your turn — meld, sapaw, call, or discard to end."
-          : `Waiting for ${gs.seats.find((s) => s.uid === gs.turnUid)?.name ?? "player"}…`}
-      </div>
+        {/* Opponents */}
+        <div className="grid grid-cols-2 gap-3">
+          {others.map((o) => (
+            <Seat
+              key={o.uid}
+              name={o.name}
+              count={gs.handCounts[o.uid] ?? 0}
+              active={gs.turnUid === o.uid}
+              melds={gs.melds[o.uid] ?? []}
+              sapawMode={sapawMode}
+              onSapaw={(mi) => onSapaw(o.uid, mi)}
+            />
+          ))}
+        </div>
 
-      {/* My melds */}
-      <div className="rounded-xl border border-border bg-card p-3">
-        <p className="text-[10px] text-text-subtle uppercase tracking-wider m-0 mb-2">Your melds</p>
-        <MeldRow melds={gs.melds[uid] ?? []} clickable={sapawMode} onPick={(mi) => onSapaw(uid, mi)} />
+        {/* Center: stock / discard / jackpot / timer */}
+        <div className="flex items-center justify-between gap-3 py-2">
+          <div className="flex items-end gap-4">
+            <div className="flex flex-col items-center gap-1">
+              <div className="relative">
+                <PlayingCard size="lg" faceDown />
+                <span className="absolute -bottom-1 -right-1 bg-black/70 text-white text-[9px] font-mono rounded px-1">
+                  {gs.stockCount}
+                </span>
+              </div>
+              <span className="text-[9px] text-white/40 flex items-center gap-1">
+                <Layers className="w-2.5 h-2.5" /> stock
+              </span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              {discardTop ? (
+                <PlayingCard card={discardTop} size="lg" />
+              ) : (
+                <div className="w-[58px] h-[81px] rounded-[13px] border border-dashed border-white/20" />
+              )}
+              <span className="text-[9px] text-white/40">discard</span>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-end gap-2">
+            {gs.jackpotPoints > 0 && (
+              <div className="flex items-center gap-1.5">
+                <AssetImage
+                  src={TONGITS_ART.jackpot}
+                  alt=""
+                  className="w-5 h-5"
+                  fallback={<span className="text-[#A78BFA]">✦</span>}
+                />
+                <span className="text-[14px] font-mono font-semibold text-[#A78BFA]">{gs.jackpotPoints}</span>
+                <span className="text-[9px] text-white/40">jackpot</span>
+              </div>
+            )}
+            <div
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-full",
+                secondsLeft <= 5 ? "bg-red/20 text-red" : "bg-black/30 text-white/70"
+              )}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span className="text-[14px] font-mono font-semibold tabular-nums">{secondsLeft}s</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Turn banner */}
+        <div
+          className={cn(
+            "px-3 py-2 rounded-lg text-[12px] text-center",
+            isMyTurn ? "bg-[#3DD598]/20 text-[#3DD598] font-medium" : "bg-black/25 text-white/50"
+          )}
+        >
+          {isMyTurn
+            ? gs.phase === "draw"
+              ? "Your turn — draw from the stock, or take the discard to meld."
+              : "Your turn — meld, sapaw, call, or discard to end."
+            : `Waiting for ${gs.seats.find((s) => s.uid === gs.turnUid)?.name ?? "player"}…`}
+        </div>
+
+        {/* My melds */}
+        <div className="rounded-xl bg-black/20 border border-white/10 p-3">
+          <p className="text-[10px] text-white/40 uppercase tracking-wider m-0 mb-2">Your melds</p>
+          <MeldRow melds={gs.melds[uid] ?? []} clickable={sapawMode} onPick={(mi) => onSapaw(uid, mi)} />
+        </div>
       </div>
 
       {/* My hand */}
       <div className="rounded-xl border border-border bg-card p-3">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-[10px] text-text-subtle uppercase tracking-wider m-0">
-            Your hand · {myHand.length} {sapawMode ? "· tap a meld to sapaw" : ""}
-          </p>
-        </div>
+        <p className="text-[10px] text-text-subtle uppercase tracking-wider m-0 mb-2">
+          Your hand · {myHand.length}
+          {sapawMode ? " · tap an exposed meld to sapaw" : ""}
+        </p>
         <div className="flex flex-wrap gap-1.5">
           {myHand.map((c) => (
-            <CardChip key={c} card={c} selected={selected.includes(c)} onClick={() => toggle(c)} />
+            <PlayingCard key={c} card={c} selected={selected.includes(c)} onClick={() => toggle(c)} />
           ))}
         </div>
       </div>

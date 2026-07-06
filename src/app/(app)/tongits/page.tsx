@@ -18,6 +18,7 @@ import {
   MAX_PLAYERS,
 } from "@/lib/tongits";
 import { useMyMatchHistory } from "@/lib/tongits-social";
+import { AssetImage, TONGITS_ART } from "@/components/AssetImage";
 
 export default function TongitsDashboard() {
   const router = useRouter();
@@ -79,6 +80,34 @@ export default function TongitsDashboard() {
         title="Community Tongits"
         subtitle="Play with friends · challenge with Game Points · climb the leaderboard"
       />
+
+      {/* Hero band — lights up with lobby-bg.webp + logo.png when present */}
+      <div
+        className="relative rounded-2xl overflow-hidden mb-3 border border-[#3DD598]/15"
+        style={{
+          backgroundColor: "#0a1c17",
+          backgroundImage: `linear-gradient(90deg, rgba(6,10,20,0.92), rgba(10,28,23,0.35)), radial-gradient(90% 140% at 100% 0%, rgba(61,213,152,0.14), transparent 60%), url(${TONGITS_ART.lobbyBg})`,
+          backgroundSize: "cover",
+          backgroundPosition: "center",
+        }}
+      >
+        <div className="px-5 py-6">
+          <AssetImage
+            src={TONGITS_ART.logo}
+            alt="Tongits"
+            className="h-12 object-contain"
+            fallback={
+              <div className="flex items-center gap-2.5">
+                <Spade className="w-7 h-7 text-gold" />
+                <span className="text-[24px] font-medium text-white" style={{ fontFamily: "var(--font-display)" }}>
+                  Tongits
+                </span>
+              </div>
+            }
+          />
+          <p className="text-[11px] text-white/60 mt-2 m-0">Deal · meld · sapaw · call. Winner takes the pot.</p>
+        </div>
+      </div>
 
       {error && (
         <div className="mb-3 px-3 py-2 bg-red/10 border border-red/30 rounded-lg text-[11px] text-red">
