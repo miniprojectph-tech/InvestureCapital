@@ -6,7 +6,7 @@ import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useGameState } from "@/lib/game";
 import { useOpenRooms, createRoom, joinRoom, seatedPlayers, MIN_CHALLENGE } from "@/lib/tongits";
-import { useTongitsLeaderboard, rowPoints } from "@/lib/tongits-social";
+import { useTongitsLeaderboard, rowPoints, rankTier } from "@/lib/tongits-social";
 import { TONGITS_ART } from "./AssetImage";
 
 /**
@@ -29,7 +29,9 @@ const C = {
   rankingPoints: { l: 79.5, t: 4.5, w: 7, h: 5 },
   rewards: { l: 87.5, t: 1.5, w: 5.5, h: 12.5 },
   menu: { l: 93.5, t: 1.5, w: 5.5, h: 13 },
-  playerName: { l: 10.5, t: 2.5, w: 13, h: 4 },
+  playerName: { l: 9, t: 2.5, w: 16, h: 3.5 },
+  playerTier: { l: 9, t: 6, w: 16, h: 3 },
+  levelValue: { l: 19.5, t: 9.5, w: 7, h: 3 },
   // create room
   chalMinus: { l: 6, t: 24.5, w: 3.6, h: 5.5 },
   chalValue: { l: 9.8, t: 24.5, w: 9, h: 5.5 },
@@ -90,13 +92,14 @@ function Zone({
 
 export function TongitsImageLobby() {
   const router = useRouter();
-  const { demoMode } = useAuth();
+  const { user, demoMode } = useAuth();
   const { state } = useGameState();
   const { rooms } = useOpenRooms();
   const board = useTongitsLeaderboard("week", 4);
 
   const points = state?.points ?? 0;
   const rp = state?.rankingPoints ?? 0;
+  const tier = rankTier(rp);
   const [challenge, setChallenge] = useState(MIN_CHALLENGE);
   const [ante, setAnte] = useState(5);
   const [isPrivate, setIsPrivate] = useState(false);
@@ -161,8 +164,24 @@ export function TongitsImageLobby() {
         )}
 
         {/* ---- top bar ---- */}
-        <Zone box={C.playerName}>
-          <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.2cqw" }}>{state ? "" : ""}</span>
+        <Zone box={C.playerName} className="justify-start">
+          <span
+            className="truncate"
+            style={{ color: "#fff", fontWeight: 700, fontSize: "1.35cqw", textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}
+          >
+            {user?.name ?? "Player"}
+          </span>
+        </Zone>
+        <Zone box={C.playerTier} className="justify-start">
+          <span style={{ color: gold, fontWeight: 600, fontSize: "1cqw", textShadow: "0 1px 2px rgba(0,0,0,0.6)" }}>
+            {tier.name}
+          </span>
+        </Zone>
+        <Zone box={C.levelValue}>
+          <span style={{ color: "#fff", fontSize: "0.95cqw", fontFamily: "monospace" }}>
+            {rp}
+            {tier.nextAt != null ? ` / ${tier.nextAt}` : ""}
+          </span>
         </Zone>
         <Zone box={C.gamePoints}>
           <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.5cqw", fontFamily: "monospace" }}>
