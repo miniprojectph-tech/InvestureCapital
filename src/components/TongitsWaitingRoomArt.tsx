@@ -38,12 +38,12 @@ const C = {
 const OCC = {
   W: 27,
   H: 15.7,
-  ringcx: 0.151,
-  ringcy: 0.49,
-  name: { l: 0.31, t: 0.17, w: 0.39, h: 0.3 },
-  coin: { l: 0.44, t: 0.6, w: 0.26, h: 0.22 },
-  ready: { l: 0.726, t: 0.187, w: 0.25, h: 0.3 },
-  agreed: { l: 0.726, t: 0.57, w: 0.25, h: 0.3 },
+  ringcx: 0.203,
+  ringcy: 0.48,
+  name: { l: 0.43, t: 0.12, w: 0.26, h: 0.3 },
+  coin: { l: 0.45, t: 0.56, w: 0.24, h: 0.26 },
+  ready: { l: 0.717, t: 0.185, w: 0.256, h: 0.29 },
+  agreed: { l: 0.717, t: 0.568, w: 0.256, h: 0.26 },
 };
 const EMP = { W: 22.5, H: 16.35, ringcx: 0.193, ringcy: 0.5, copy: { l: 0.47, t: 0.67, w: 0.43, h: 0.19 } };
 const ANCHORS = [
