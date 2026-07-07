@@ -41,8 +41,9 @@ const OCC = {
   H: 13.3,
   ringcx: 0.203,
   ringcy: 0.498,
-  name: { l: 0.43, t: 0.12, w: 0.26, h: 0.3 },
-  coin: { l: 0.45, t: 0.56, w: 0.24, h: 0.26 },
+  // name field aligns with READY row; coin field aligns with AGREED row.
+  name: { l: 0.42, t: 0.19, w: 0.29, h: 0.30 },
+  coin: { l: 0.47, t: 0.59, w: 0.22, h: 0.27 },
   ready: { l: 0.719, t: 0.191, w: 0.259, h: 0.301 },
   agreed: { l: 0.719, t: 0.59, w: 0.259, h: 0.273 },
 };
