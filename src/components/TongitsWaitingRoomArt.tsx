@@ -35,17 +35,18 @@ const C = {
 
 // Placed seat components (sizes preserve each PNG's aspect). Anchors are the
 // ring-center position on the canvas; left/top are derived so the ring lands there.
+// Sizes preserve each PNG's aspect; widths chosen so both rings render the same size.
 const OCC = {
-  W: 27,
-  H: 15.7,
+  W: 23.6,
+  H: 13.3,
   ringcx: 0.203,
-  ringcy: 0.48,
+  ringcy: 0.498,
   name: { l: 0.43, t: 0.12, w: 0.26, h: 0.3 },
   coin: { l: 0.45, t: 0.56, w: 0.24, h: 0.26 },
-  ready: { l: 0.717, t: 0.185, w: 0.256, h: 0.29 },
-  agreed: { l: 0.717, t: 0.568, w: 0.256, h: 0.26 },
+  ready: { l: 0.719, t: 0.191, w: 0.259, h: 0.301 },
+  agreed: { l: 0.719, t: 0.59, w: 0.259, h: 0.273 },
 };
-const EMP = { W: 22.5, H: 16.35, ringcx: 0.193, ringcy: 0.5, copy: { l: 0.47, t: 0.67, w: 0.43, h: 0.19 } };
+const EMP = { W: 22.5, H: 14.75, ringcx: 0.21, ringcy: 0.5, copy: { l: 0.47, t: 0.68, w: 0.43, h: 0.19 } };
 const ANCHORS = [
   { x: 11.5, y: 28 },
   { x: 50, y: 28 },
