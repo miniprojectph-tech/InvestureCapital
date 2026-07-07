@@ -18,43 +18,38 @@ import { TONGITS_ART } from "./AssetImage";
 
 type Box = { l: number; t: number; w: number; h: number };
 
-// Measured against the 1672×941 waiting-room art.
+// Base overlays (against the plain Waiting Area base).
 const C = {
   back: { l: 1.2, t: 3, w: 5, h: 7.6 },
-  roomCode: { l: 13.5, t: 6.5, w: 16, h: 4 },
-  challenge: { l: 35, t: 6.5, w: 8, h: 4 },
-  ante: { l: 50.5, t: 6.5, w: 8, h: 4 },
-  copyTop: { l: 61.9, t: 4.3, w: 10.8, h: 6.4 },
-  leave: { l: 73.9, t: 4.3, w: 13.8, h: 6.4 },
+  roomCode: { l: 13.5, t: 5.8, w: 16, h: 4.5 },
+  challenge: { l: 35, t: 5.8, w: 8, h: 4.5 },
+  ante: { l: 50.5, t: 5.8, w: 8, h: 4.5 },
+  copyTop: { l: 61.9, t: 3.5, w: 10.8, h: 6.6 },
+  leave: { l: 73.9, t: 3.5, w: 13.8, h: 6.6 },
   readyBtn: { l: 16.7, t: 80.2, w: 19.4, h: 9.2 },
   agreeBtn: { l: 38.3, t: 80.2, w: 26.9, h: 9.2 },
-  copyCenter: { l: 37.7, t: 68, w: 13.8, h: 5.5 },
   chatMsgs: { l: 76.3, t: 22.8, w: 21.5, h: 53 },
   chatInput: { l: 76.3, t: 77.4, w: 16.4, h: 5.7 },
   chatSend: { l: 93.8, t: 77.2, w: 4.2, h: 6.2 },
 };
 
-// Per-seat overlay regions (art positions 0=top-left, 1=top-right, 2=center).
-const SEATS: { avatar: Box; name: Box; coin: Box; ready?: Box; agreed?: Box }[] = [
-  {
-    avatar: { l: 8, t: 21.8, w: 6.9, h: 12.2 },
-    name: { l: 17.6, t: 24.2, w: 8, h: 3 },
-    coin: { l: 19.1, t: 29.5, w: 7.8, h: 2.9 },
-    ready: { l: 27.8, t: 22.8, w: 6, h: 4.8 },
-    agreed: { l: 27.2, t: 28.7, w: 6.9, h: 4.8 },
-  },
-  {
-    avatar: { l: 46.4, t: 21.8, w: 7.2, h: 12.2 },
-    name: { l: 56.5, t: 24.2, w: 8, h: 3 },
-    coin: { l: 58, t: 29.5, w: 7.5, h: 2.9 },
-    ready: { l: 66.4, t: 22.8, w: 6.3, h: 4.8 },
-    agreed: { l: 66.1, t: 28.7, w: 7.2, h: 4.8 },
-  },
-  {
-    avatar: { l: 23.6, t: 55.8, w: 9.9, h: 17.5 },
-    name: { l: 20, t: 74, w: 17, h: 3 },
-    coin: { l: 20, t: 77, w: 17, h: 2.5 },
-  },
+// Placed seat components (sizes preserve each PNG's aspect). Anchors are the
+// ring-center position on the canvas; left/top are derived so the ring lands there.
+const OCC = {
+  W: 27,
+  H: 15.7,
+  ringcx: 0.151,
+  ringcy: 0.49,
+  name: { l: 0.31, t: 0.17, w: 0.39, h: 0.3 },
+  coin: { l: 0.44, t: 0.6, w: 0.26, h: 0.22 },
+  ready: { l: 0.726, t: 0.187, w: 0.25, h: 0.3 },
+  agreed: { l: 0.726, t: 0.57, w: 0.25, h: 0.3 },
+};
+const EMP = { W: 22.5, H: 16.5, ringcx: 0.198, ringcy: 0.5, copy: { l: 0.47, t: 0.66, w: 0.43, h: 0.2 } };
+const ANCHORS = [
+  { x: 11.5, y: 28 },
+  { x: 50, y: 28 },
+  { x: 24, y: 60 },
 ];
 
 function initials(name: string) {
@@ -66,14 +61,12 @@ function Zone({
   box,
   children,
   onClick,
-  className,
   style,
   title,
 }: {
   box: Box;
   children?: React.ReactNode;
   onClick?: () => void;
-  className?: string;
   style?: React.CSSProperties;
   title?: string;
 }) {
@@ -81,7 +74,6 @@ function Zone({
     <div
       title={title}
       onClick={onClick}
-      className={className}
       style={{
         position: "absolute",
         left: `${box.l}%`,
@@ -107,7 +99,6 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
-  const [copied, setCopied] = useState(false);
   const lastSent = useRef(0);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -132,10 +123,7 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
     }
   }
   function copyCode() {
-    navigator.clipboard.writeText(room.roomCode).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
+    navigator.clipboard.writeText(room.roomCode).catch(() => {});
   }
   async function send() {
     const { db } = getFirebase();
@@ -165,12 +153,84 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
 
         {error && (
           <div
-            className="absolute left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-white text-center z-20"
+            className="absolute left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-lg text-white text-center z-30"
             style={{ top: "13%", background: "rgba(200,40,40,0.9)", fontSize: "1.1cqw" }}
           >
             {error}
           </div>
         )}
+
+        {/* seats */}
+        {ANCHORS.map((a, i) => {
+          const p = bySeat(i);
+          if (p) {
+            const left = a.x - OCC.ringcx * OCC.W;
+            const top = a.y - OCC.ringcy * OCC.H;
+            const abs = (f: { l: number; t: number; w: number; h: number }): Box => ({
+              l: left + f.l * OCC.W,
+              t: top + f.t * OCC.H,
+              w: f.w * OCC.W,
+              h: f.h * OCC.H,
+            });
+            return (
+              <div key={i}>
+                <img
+                  src={TONGITS_ART.seatOccupied}
+                  alt=""
+                  style={{ position: "absolute", left: `${left}%`, top: `${top}%`, width: `${OCC.W}%`, height: `${OCC.H}%` }}
+                />
+                {/* avatar in the ring */}
+                <Zone box={{ l: left, t: top, w: OCC.ringcx * 2 * OCC.W, h: OCC.H }}>
+                  <div
+                    style={{
+                      height: "62%",
+                      aspectRatio: "1",
+                      borderRadius: "50%",
+                      background: "#0a1730",
+                      color: gold,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontWeight: 800,
+                      fontSize: "1.7cqw",
+                    }}
+                  >
+                    {initials(p.name)}
+                  </div>
+                </Zone>
+                <Zone box={abs(OCC.name)}>
+                  <span className="truncate" style={{ color: "#fff", fontWeight: 700, fontSize: "1.3cqw", maxWidth: "100%" }}>
+                    {p.name}
+                  </span>
+                </Zone>
+                <Zone box={abs(OCC.coin)} style={{ justifyContent: "flex-start" }}>
+                  <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.15cqw", fontFamily: "monospace", paddingLeft: "0.5cqw" }}>
+                    {room.challengePoints}
+                  </span>
+                </Zone>
+                {!p.isReady && <Zone box={abs(OCC.ready)} style={{ background: "rgba(8,14,28,0.72)", borderRadius: "0.8cqw" }} />}
+                {!p.agreedToChallenge && <Zone box={abs(OCC.agreed)} style={{ background: "rgba(8,14,28,0.72)", borderRadius: "0.8cqw" }} />}
+              </div>
+            );
+          }
+          // empty seat → waiting-for-player component + COPY CODE
+          const left = a.x - EMP.ringcx * EMP.W;
+          const top = a.y - EMP.ringcy * EMP.H;
+          return (
+            <div key={i}>
+              <img
+                src={TONGITS_ART.seatEmpty}
+                alt=""
+                style={{ position: "absolute", left: `${left}%`, top: `${top}%`, width: `${EMP.W}%`, height: `${EMP.H}%` }}
+              />
+              <Zone
+                box={{ l: left + EMP.copy.l * EMP.W, t: top + EMP.copy.t * EMP.H, w: EMP.copy.w * EMP.W, h: EMP.copy.h * EMP.H }}
+                onClick={copyCode}
+                title="Copy code"
+              />
+            </div>
+          );
+        })}
 
         {/* top bar */}
         <Zone box={C.back} onClick={() => run("leave", () => leaveRoom(code), () => router.push("/tongits"))} title="Leave" />
@@ -185,70 +245,14 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
         <Zone box={C.ante}>
           <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.4cqw", fontFamily: "monospace" }}>{room.jackpotAnte}</span>
         </Zone>
-        <Zone box={C.copyTop} onClick={copyCode} title={copied ? "Copied!" : "Copy code"} />
+        <Zone box={C.copyTop} onClick={copyCode} title="Copy code" />
         <Zone box={C.leave} onClick={() => run("leave", () => leaveRoom(code), () => router.push("/tongits"))} title="Leave room" />
 
-        {/* seats */}
-        {SEATS.map((s, i) => {
-          const p = bySeat(i);
-          return (
-            <div key={i}>
-              {p ? (
-                <>
-                  <Zone box={s.avatar}>
-                    <div
-                      style={{
-                        width: "80%",
-                        aspectRatio: "1",
-                        borderRadius: "50%",
-                        background: "#0d1a3d",
-                        color: gold,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontWeight: 700,
-                        fontSize: "1.8cqw",
-                      }}
-                    >
-                      {initials(p.name)}
-                    </div>
-                  </Zone>
-                  <Zone box={s.name}>
-                    <span
-                      className="truncate"
-                      style={{
-                        color: "#fff",
-                        fontWeight: 700,
-                        fontSize: "1.2cqw",
-                        background: "rgba(4,12,32,0.72)",
-                        padding: "0 0.6cqw",
-                        borderRadius: "0.4cqw",
-                        maxWidth: "100%",
-                      }}
-                    >
-                      {p.name}
-                    </span>
-                  </Zone>
-                  <Zone box={s.coin}>
-                    <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{room.challengePoints}</span>
-                  </Zone>
-                  {/* dim the painted READY / AGREED badge when not yet done */}
-                  {s.ready && !p.isReady && <Zone box={s.ready} style={{ background: "rgba(12,20,38,0.72)", borderRadius: "0.6cqw" }} />}
-                  {s.agreed && !p.agreedToChallenge && <Zone box={s.agreed} style={{ background: "rgba(12,20,38,0.72)", borderRadius: "0.6cqw" }} />}
-                </>
-              ) : i === 2 ? (
-                // empty center seat → wire the painted COPY CODE button
-                <Zone box={C.copyCenter} onClick={copyCode} title="Copy code" />
-              ) : null}
-            </div>
-          );
-        })}
-
-        {/* bottom actions (or START when everyone's locked in) */}
+        {/* bottom actions / start */}
         {ready ? (
           <Zone box={{ l: 16.7, t: 80.2, w: 48.5, h: 9.2 }} onClick={() => run("start", () => startGame(code))} title="Start game">
             <div
-              className="w-[92%] h-[80%] rounded-2xl flex items-center justify-center gap-2"
+              className="w-[92%] h-[80%] rounded-2xl flex items-center justify-center"
               style={{ background: "linear-gradient(180deg,#34d07a,#1f9e5a)", boxShadow: "0 6px 20px rgba(52,208,122,0.5)" }}
             >
               {busy === "start" ? (

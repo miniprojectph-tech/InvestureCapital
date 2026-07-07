@@ -28,7 +28,9 @@ export function AssetImage({
 /** Central registry of Tongits art slots (drop files into /public/tongits/). */
 export const TONGITS_ART = {
   lobbyFull: "/tongits/lobby-full.png", // full baked lobby art (interactive overlay)
-  waitingRoom: "/tongits/waiting-room.png", // baked waiting-room art (interactive overlay)
+  waitingRoom: "/tongits/waiting-room.png", // plain waiting-room base (seats added via components)
+  seatOccupied: "/tongits/seat-occupied.png", // per-seat frame for a seated player
+  seatEmpty: "/tongits/seat-empty.png", // per-seat "waiting for player" frame
   tableBg: "/tongits/table-bg.webp",
   cardBack: "/tongits/card-back.webp",
   logo: "/tongits/logo.png",
