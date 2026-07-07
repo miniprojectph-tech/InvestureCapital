@@ -45,7 +45,7 @@ const OCC = {
   ready: { l: 0.726, t: 0.187, w: 0.25, h: 0.3 },
   agreed: { l: 0.726, t: 0.57, w: 0.25, h: 0.3 },
 };
-const EMP = { W: 22.5, H: 16.5, ringcx: 0.198, ringcy: 0.5, copy: { l: 0.47, t: 0.66, w: 0.43, h: 0.2 } };
+const EMP = { W: 22.5, H: 16.35, ringcx: 0.193, ringcy: 0.5, copy: { l: 0.47, t: 0.67, w: 0.43, h: 0.19 } };
 const ANCHORS = [
   { x: 11.5, y: 28 },
   { x: 50, y: 28 },
