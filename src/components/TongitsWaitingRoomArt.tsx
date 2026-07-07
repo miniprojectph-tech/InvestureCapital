@@ -14,7 +14,7 @@ import {
   type TongitsRoom,
 } from "@/lib/tongits";
 import { startGame } from "@/lib/tongits-game";
-import { TONGITS_ART } from "./AssetImage";
+import { useTongitsAssets } from "@/lib/tongitsAssets";
 
 type Box = { l: number; t: number; w: number; h: number };
 
@@ -96,6 +96,7 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
   const router = useRouter();
   const { user } = useAuth();
   const messages = useRoomChat(code);
+  const assets = useTongitsAssets();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState("");
@@ -149,7 +150,7 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
         className="relative"
         style={{ width: "min(100vw, calc(100dvh * 1672 / 941))", aspectRatio: "1672 / 941", containerType: "inline-size" }}
       >
-        <img src={TONGITS_ART.waitingRoom} alt="Tongits waiting room" className="absolute inset-0 w-full h-full object-contain" />
+        <img src={assets.waitingRoom} alt="Tongits waiting room" className="absolute inset-0 w-full h-full object-contain" />
 
         {error && (
           <div
@@ -175,7 +176,7 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
             return (
               <div key={i}>
                 <img
-                  src={TONGITS_ART.seatOccupied}
+                  src={assets.seatOccupied}
                   alt=""
                   style={{ position: "absolute", left: `${left}%`, top: `${top}%`, width: `${OCC.W}%`, height: `${OCC.H}%` }}
                 />
@@ -219,7 +220,7 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
           return (
             <div key={i}>
               <img
-                src={TONGITS_ART.seatEmpty}
+                src={assets.seatEmpty}
                 alt=""
                 style={{ position: "absolute", left: `${left}%`, top: `${top}%`, width: `${EMP.W}%`, height: `${EMP.H}%` }}
               />

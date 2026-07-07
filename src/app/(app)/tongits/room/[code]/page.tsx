@@ -37,6 +37,7 @@ import {
 } from "@/lib/tongits";
 import { startGame, playAgain, splitJackpot } from "@/lib/tongits-game";
 import { useImageAvailable, useIsWide } from "@/lib/tongits-social";
+import { useTongitsAssets } from "@/lib/tongitsAssets";
 import { TongitsTable } from "@/components/TongitsTable";
 import { TongitsWaitingRoomArt } from "@/components/TongitsWaitingRoomArt";
 import { PlayingCard } from "@/components/PlayingCard";
@@ -56,7 +57,8 @@ export default function TongitsRoomPage() {
   const { user } = useAuth();
   const { room, loading } = useRoom(code);
   const messages = useRoomChat(code);
-  const hasWaitingArt = useImageAvailable(TONGITS_ART.waitingRoom);
+  const assets = useTongitsAssets();
+  const hasWaitingArt = useImageAvailable(assets.waitingRoom);
   const wide = useIsWide();
 
   const [busy, setBusy] = useState<string | null>(null);

@@ -11,10 +11,11 @@ import { useOpenRooms, createRoom, joinRoom, seatedPlayers, MIN_CHALLENGE, MAX_P
 import { useTongitsLeaderboard, rowPoints, useImageAvailable, useIsWide } from "@/lib/tongits-social";
 import { TongitsShell, ArcadePanel, T } from "@/components/TongitsShell";
 import { TongitsImageLobby } from "@/components/TongitsImageLobby";
-import { TONGITS_ART } from "@/components/AssetImage";
+import { useTongitsAssets } from "@/lib/tongitsAssets";
 
 export default function TongitsLobbyPage() {
-  const hasArt = useImageAvailable(TONGITS_ART.lobbyFull);
+  const assets = useTongitsAssets();
+  const hasArt = useImageAvailable(assets.lobbyFull);
   const wide = useIsWide();
   // Use the painted lobby art on wide screens once the file is present; otherwise
   // fall back to the responsive CSS arcade lobby (also the mobile experience).

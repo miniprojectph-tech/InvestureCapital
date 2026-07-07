@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { useGameState } from "@/lib/game";
 import { useOpenRooms, createRoom, joinRoom, seatedPlayers, MIN_CHALLENGE } from "@/lib/tongits";
 import { useTongitsLeaderboard, rowPoints, rankTier } from "@/lib/tongits-social";
-import { TONGITS_ART } from "./AssetImage";
+import { useTongitsAssets } from "@/lib/tongitsAssets";
 
 /**
  * Interactive overlay for the fully-painted lobby art (public/tongits/lobby-full.webp).
@@ -97,6 +97,7 @@ export function TongitsImageLobby() {
   const { state } = useGameState();
   const { rooms } = useOpenRooms();
   const board = useTongitsLeaderboard("week", 4);
+  const assets = useTongitsAssets();
 
   const points = state?.points ?? 0;
   const rp = state?.rankingPoints ?? 0;
@@ -153,7 +154,7 @@ export function TongitsImageLobby() {
         }}
       >
         {/* Baked art */}
-        <img src={TONGITS_ART.lobbyFull} alt="Tongits lobby" className="absolute inset-0 w-full h-full object-contain" />
+        <img src={assets.lobbyFull} alt="Tongits lobby" className="absolute inset-0 w-full h-full object-contain" />
 
         {error && (
           <div

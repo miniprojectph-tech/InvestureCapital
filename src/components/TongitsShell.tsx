@@ -7,7 +7,8 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useGameState } from "@/lib/game";
 import { rankTier } from "@/lib/tongits-social";
-import { AssetImage, TONGITS_ART } from "./AssetImage";
+import { AssetImage } from "./AssetImage";
+import { useTongitsAssets } from "@/lib/tongitsAssets";
 
 // Blue/gold arcade palette (Tongits runs as its own themed world).
 export const T = {
@@ -79,6 +80,7 @@ export function TongitsShell({
   const pathname = usePathname();
   const { user } = useAuth();
   const { state } = useGameState();
+  const assets = useTongitsAssets();
   const points = state?.points ?? 0;
   const rp = state?.rankingPoints ?? 0;
   const tier = rankTier(rp);
@@ -88,7 +90,7 @@ export function TongitsShell({
       className="relative min-h-[100dvh] text-white"
       style={{
         backgroundColor: "#0a1740",
-        backgroundImage: `radial-gradient(100% 55% at 50% 0%, rgba(63,111,214,0.35), transparent 60%), linear-gradient(180deg, #0b1a44 0%, #071230 100%), url(${TONGITS_ART.lobbyBg})`,
+        backgroundImage: `radial-gradient(100% 55% at 50% 0%, rgba(63,111,214,0.35), transparent 60%), linear-gradient(180deg, #0b1a44 0%, #071230 100%), url(${assets.lobbyBg})`,
         backgroundSize: "cover",
         backgroundPosition: "center top",
       }}
@@ -120,7 +122,7 @@ export function TongitsShell({
         {/* Logo */}
         <div className="flex-1 flex justify-center">
           <AssetImage
-            src={TONGITS_ART.logo}
+            src={assets.logo}
             alt="Community Tongits"
             className="h-12 sm:h-16 object-contain drop-shadow-lg"
             fallback={
