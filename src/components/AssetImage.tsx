@@ -27,7 +27,7 @@ export function AssetImage({
 
 /** Central registry of Tongits art slots (drop files into /public/tongits/). */
 export const TONGITS_ART = {
-  lobbyFull: "/tongits/lobby-full.webp", // full baked lobby art (interactive overlay)
+  lobbyFull: "/tongits/lobby-full.png", // full baked lobby art (interactive overlay)
   tableBg: "/tongits/table-bg.webp",
   cardBack: "/tongits/card-back.webp",
   logo: "/tongits/logo.png",

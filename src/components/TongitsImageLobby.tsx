@@ -19,40 +19,41 @@ import { TONGITS_ART } from "./AssetImage";
 // left / top / width / height, all in % of the canvas.
 type Box = { l: number; t: number; w: number; h: number };
 
-const CARD_LEFTS = [25.5, 37, 48.3, 59.7, 71, 82.4];
-const CARD_W = 10.6;
-const LB_ROWS_Y = [66.5, 71, 75.5, 80];
+// Measured against the 1672×941 art.
+const CARD_LEFTS = [25.8, 38, 50.1, 62.3, 74.5, 86.6];
+const CARD_W = 10.5;
+const LB_ROWS_Y = [71.4, 75.2, 79.2, 83.1]; // row centers
 
 const C = {
   // top bar
-  gamePoints: { l: 62.5, t: 4.5, w: 9.5, h: 5 },
-  rankingPoints: { l: 79.5, t: 4.5, w: 7, h: 5 },
-  rewards: { l: 87.5, t: 1.5, w: 5.5, h: 12.5 },
-  menu: { l: 93.5, t: 1.5, w: 5.5, h: 13 },
-  playerName: { l: 9, t: 2.5, w: 16, h: 3.5 },
-  playerTier: { l: 9, t: 6, w: 16, h: 3 },
-  levelValue: { l: 19.5, t: 9.5, w: 7, h: 3 },
+  gamePoints: { l: 65.5, t: 5.2, w: 6.5, h: 3.4 },
+  rankingPoints: { l: 78.5, t: 5.2, w: 6.5, h: 3.4 },
+  rewards: { l: 87.6, t: 2.7, w: 4.8, h: 8 },
+  menu: { l: 94, t: 2.3, w: 4.8, h: 8.5 },
+  playerName: { l: 9.3, t: 3, w: 11.4, h: 2.9 },
+  playerTier: { l: 9.3, t: 5.8, w: 11.4, h: 2 },
+  levelValue: { l: 20, t: 7.8, w: 5, h: 2.2 },
   // create room
-  chalMinus: { l: 6, t: 24.5, w: 3.6, h: 5.5 },
-  chalValue: { l: 9.8, t: 24.5, w: 9, h: 5.5 },
-  chalPlus: { l: 19, t: 24.5, w: 3.6, h: 5.5 },
-  anteMinus: { l: 6, t: 34, w: 3.6, h: 5.5 },
-  anteValue: { l: 9.8, t: 34, w: 9, h: 5.5 },
-  antePlus: { l: 19, t: 34, w: 3.6, h: 5.5 },
-  publicBtn: { l: 6.3, t: 42.5, w: 9.8, h: 5.5 },
-  privateBtn: { l: 16.8, t: 42.5, w: 9.8, h: 5.5 },
-  createBtn: { l: 6.3, t: 50, w: 20.5, h: 6.8 },
+  chalMinus: { l: 5.8, t: 24.5, w: 3.4, h: 6 },
+  chalValue: { l: 9, t: 24.5, w: 10, h: 6 },
+  chalPlus: { l: 19.1, t: 24.5, w: 3.4, h: 6 },
+  anteMinus: { l: 5.8, t: 33.5, w: 3.4, h: 6 },
+  anteValue: { l: 9, t: 33.5, w: 10, h: 6 },
+  antePlus: { l: 19.1, t: 33.5, w: 3.4, h: 6 },
+  publicBtn: { l: 6.2, t: 42.7, w: 6.9, h: 4.4 },
+  privateBtn: { l: 13.9, t: 42.7, w: 7.8, h: 4.4 },
+  createBtn: { l: 6.2, t: 49.3, w: 15.5, h: 5.7 },
   // join by code
-  joinInput: { l: 6.3, t: 67.5, w: 18.5, h: 5.5 },
-  joinBtn: { l: 6.3, t: 77.5, w: 20.5, h: 7 },
+  joinInput: { l: 5.4, t: 70.7, w: 14.4, h: 5 },
+  joinBtn: { l: 5.4, t: 78.4, w: 16.7, h: 5.8 },
   // leaderboard
-  viewAll: { l: 54, t: 64.5, w: 5.5, h: 4.5 },
+  viewAll: { l: 54.3, t: 65, w: 5.4, h: 3.2 },
   // bottom nav
-  navLobby: { l: 4.5, t: 89, w: 16.5, h: 11 },
-  navLeaderboard: { l: 24, t: 89, w: 15, h: 11 },
-  navHistory: { l: 41, t: 89, w: 16, h: 11 },
-  navHowTo: { l: 59, t: 89, w: 14, h: 11 },
-  navPlay: { l: 76.5, t: 87.5, w: 23, h: 12.5 },
+  navLobby: { l: 6.3, t: 90.5, w: 13, h: 9 },
+  navLeaderboard: { l: 21.5, t: 90.9, w: 12, h: 8.5 },
+  navHistory: { l: 36.8, t: 90.9, w: 11.5, h: 8.5 },
+  navHowTo: { l: 51.1, t: 90.9, w: 13.5, h: 8.5 },
+  navPlay: { l: 76.9, t: 90.3, w: 22, h: 9.5 },
 };
 
 function Zone({
@@ -146,8 +147,8 @@ export function TongitsImageLobby() {
       <div
         className="relative"
         style={{
-          width: "min(100vw, calc(100dvh * 1674 / 947))",
-          aspectRatio: "1674 / 947",
+          width: "min(100vw, calc(100dvh * 1672 / 941))",
+          aspectRatio: "1672 / 941",
           containerType: "inline-size",
         }}
       >
@@ -250,18 +251,22 @@ export function TongitsImageLobby() {
           const count = seatedPlayers(r).length;
           return (
             <div key={r.roomCode}>
-              <Zone box={{ l: cl, t: 34.2, w: CARD_W, h: 4 }}>
-                <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.4cqw", fontFamily: "monospace", letterSpacing: "0.1em" }}>
+              <Zone box={{ l: cl, t: 36, w: CARD_W, h: 3.6 }}>
+                <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.3cqw", fontFamily: "monospace", letterSpacing: "0.08em" }}>
                   {r.roomCode}
                 </span>
               </Zone>
-              <Zone box={{ l: cl + CARD_W * 0.35, t: 45, w: CARD_W * 0.6, h: 3.5 }}>
-                <span style={{ color: "#fff", fontSize: "1.1cqw", fontFamily: "monospace" }}>{r.challengePoints}</span>
+              {/* coin row 1 = challenge, coin row 2 = ante, people row = players */}
+              <Zone box={{ l: cl + CARD_W * 0.4, t: 45, w: CARD_W * 0.55, h: 3 }}>
+                <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.challengePoints}</span>
               </Zone>
-              <Zone box={{ l: cl + CARD_W * 0.35, t: 52.8, w: CARD_W * 0.6, h: 3.5 }}>
-                <span style={{ color: "#fff", fontSize: "1.1cqw", fontFamily: "monospace" }}>{count}/3</span>
+              <Zone box={{ l: cl + CARD_W * 0.4, t: 48.8, w: CARD_W * 0.55, h: 3 }}>
+                <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.jackpotAnte}</span>
               </Zone>
-              <Zone box={{ l: cl + 0.6, t: 56.2, w: CARD_W - 1.2, h: 5 }} onClick={() => onJoin(r.roomCode)} title={`Join ${r.roomCode}`}>
+              <Zone box={{ l: cl + CARD_W * 0.4, t: 52.6, w: CARD_W * 0.55, h: 3 }}>
+                <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{count}/3</span>
+              </Zone>
+              <Zone box={{ l: cl + 1.8, t: 56.3, w: CARD_W - 3.6, h: 4.5 }} onClick={() => onJoin(r.roomCode)} title={`Join ${r.roomCode}`}>
                 {busy === `join-${r.roomCode}` && <Loader2 className="animate-spin text-white" style={{ width: "1.6cqw", height: "1.6cqw" }} />}
               </Zone>
             </div>
@@ -272,13 +277,13 @@ export function TongitsImageLobby() {
         <Zone box={C.viewAll} onClick={() => router.push("/tongits/leaderboard")} title="View all" />
         {board.rows.slice(0, 4).map((row, i) => (
           <div key={row.uid}>
-            <Zone box={{ l: 37, t: LB_ROWS_Y[i] - 1.5, w: 12, h: 3.5 }} className="justify-start">
-              <span style={{ color: "#fff", fontSize: "1.1cqw" }} className="truncate">
+            <Zone box={{ l: 34.4, t: LB_ROWS_Y[i] - 1.6, w: 8.4, h: 3.2 }} className="justify-start">
+              <span style={{ color: "#fff", fontSize: "1.05cqw" }} className="truncate">
                 {row.name}
               </span>
             </Zone>
-            <Zone box={{ l: 50, t: LB_ROWS_Y[i] - 1.5, w: 6, h: 3.5 }}>
-              <span style={{ color: gold, fontSize: "1.1cqw", fontFamily: "monospace" }}>{rowPoints(row, "week")}</span>
+            <Zone box={{ l: 53.5, t: LB_ROWS_Y[i] - 1.6, w: 4.5, h: 3.2 }}>
+              <span style={{ color: gold, fontSize: "1.05cqw", fontFamily: "monospace" }}>{rowPoints(row, "week")}</span>
             </Zone>
           </div>
         ))}
