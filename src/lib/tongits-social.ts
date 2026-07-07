@@ -32,6 +32,35 @@ export type TongitsLeaderRow = {
   monthRP?: number;
 };
 
+// ===== UI helpers (shared by the image-overlay screens) =====
+/** True once the given image URL loads (null while checking). */
+export function useImageAvailable(src: string) {
+  const [ok, setOk] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    const img = new Image();
+    img.onload = () => live && setOk(true);
+    img.onerror = () => live && setOk(false);
+    img.src = src;
+    return () => {
+      live = false;
+    };
+  }, [src]);
+  return ok;
+}
+
+/** True when the viewport is at least `min` px wide (painted art is desktop-only). */
+export function useIsWide(min = 900) {
+  const [wide, setWide] = useState(true);
+  useEffect(() => {
+    const check = () => setWide(window.innerWidth >= min);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, [min]);
+  return wide;
+}
+
 // ===== rank tiers (derived from ranking points) =====
 const TIERS = [
   { name: "Rookie", min: 0 },

@@ -8,37 +8,10 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useGameState } from "@/lib/game";
 import { useOpenRooms, createRoom, joinRoom, seatedPlayers, MIN_CHALLENGE, MAX_PLAYERS } from "@/lib/tongits";
-import { useTongitsLeaderboard, rowPoints } from "@/lib/tongits-social";
+import { useTongitsLeaderboard, rowPoints, useImageAvailable, useIsWide } from "@/lib/tongits-social";
 import { TongitsShell, ArcadePanel, T } from "@/components/TongitsShell";
 import { TongitsImageLobby } from "@/components/TongitsImageLobby";
 import { TONGITS_ART } from "@/components/AssetImage";
-
-/** True once the given image URL loads successfully (null = still checking). */
-function useImageAvailable(src: string) {
-  const [ok, setOk] = useState<boolean | null>(null);
-  useEffect(() => {
-    let live = true;
-    const img = new Image();
-    img.onload = () => live && setOk(true);
-    img.onerror = () => live && setOk(false);
-    img.src = src;
-    return () => {
-      live = false;
-    };
-  }, [src]);
-  return ok;
-}
-
-function useIsWide(min = 900) {
-  const [wide, setWide] = useState(true);
-  useEffect(() => {
-    const check = () => setWide(window.innerWidth >= min);
-    check();
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, [min]);
-  return wide;
-}
 
 export default function TongitsLobbyPage() {
   const hasArt = useImageAvailable(TONGITS_ART.lobbyFull);

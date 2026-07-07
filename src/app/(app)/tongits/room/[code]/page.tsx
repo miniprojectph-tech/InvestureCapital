@@ -36,7 +36,9 @@ import {
   type TongitsRoom,
 } from "@/lib/tongits";
 import { startGame, playAgain, splitJackpot } from "@/lib/tongits-game";
+import { useImageAvailable, useIsWide } from "@/lib/tongits-social";
 import { TongitsTable } from "@/components/TongitsTable";
+import { TongitsWaitingRoomArt } from "@/components/TongitsWaitingRoomArt";
 import { PlayingCard } from "@/components/PlayingCard";
 import { AssetImage, TONGITS_ART } from "@/components/AssetImage";
 
@@ -54,6 +56,8 @@ export default function TongitsRoomPage() {
   const { user } = useAuth();
   const { room, loading } = useRoom(code);
   const messages = useRoomChat(code);
+  const hasWaitingArt = useImageAvailable(TONGITS_ART.waitingRoom);
+  const wide = useIsWide();
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -152,6 +156,12 @@ export default function TongitsRoomPage() {
 
   const seats = seatedPlayers(room);
   const isCreator = user?.uid === room.creatorUserId;
+
+  // Painted waiting-room art (desktop) once the file is present.
+  const waiting = room.status === "open" || room.status === "full" || room.status === "ready";
+  if (waiting && hasWaitingArt && wide) {
+    return <TongitsWaitingRoomArt code={code} room={room} />;
+  }
 
   // Live game.
   if (room.status === "in_game") {
