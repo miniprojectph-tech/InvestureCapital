@@ -39,15 +39,14 @@ const C = {
 const OCC = {
   W: 23.6,
   H: 13.3,
-  ringcx: 0.203,
+  ringcx: 0.154,
   ringcy: 0.498,
-  // name field aligns with READY row; coin field aligns with AGREED row.
-  name: { l: 0.42, t: 0.19, w: 0.29, h: 0.30 },
-  coin: { l: 0.47, t: 0.59, w: 0.22, h: 0.27 },
-  ready: { l: 0.719, t: 0.191, w: 0.259, h: 0.301 },
-  agreed: { l: 0.719, t: 0.59, w: 0.259, h: 0.273 },
+  name: { l: 0.35, t: 0.19, w: 0.34, h: 0.30 },
+  coin: { l: 0.44, t: 0.59, w: 0.28, h: 0.27 },
+  ready: { l: 0.723, t: 0.191, w: 0.255, h: 0.301 },
+  agreed: { l: 0.723, t: 0.59, w: 0.255, h: 0.273 },
 };
-const EMP = { W: 22.5, H: 14.75, ringcx: 0.21, ringcy: 0.5, copy: { l: 0.47, t: 0.68, w: 0.43, h: 0.19 } };
+const EMP = { W: 22.5, H: 14.75, ringcx: 0.25, ringcy: 0.50, copy: { l: 0.47, t: 0.68, w: 0.43, h: 0.19 } };
 const ANCHORS = [
   { x: 11.5, y: 28 },
   { x: 50, y: 28 },
