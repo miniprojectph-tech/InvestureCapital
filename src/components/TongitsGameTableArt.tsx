@@ -24,38 +24,44 @@ type Box = { l: number; t: number; w: number; h: number };
 
 // Slot coordinates on the 1672x941 blank table base.
 // Iterate these against the painted base if any drift shows up.
+// Coordinates snapped to the placeholder-free base (public/tongits/table.png).
+// Percent values measured with scripts/measure-table.cjs on the 1672x941 asset.
 const S = {
-  pot: { l: 40, t: 4.5, w: 22, h: 5.5 } as Box,
+  pot: { l: 42, t: 9, w: 16, h: 6 } as Box,
   // Streak trophies flank the POT: filled with the streak-leader's initials when winStreak >= 1/2.
-  trophy1: { l: 25.2, t: 2, w: 7.5, h: 12 } as Box,
-  trophy2: { l: 67.3, t: 2, w: 7.5, h: 12 } as Box,
+  trophy1: { l: 20.5, t: 6.5, w: 9, h: 13 } as Box,
+  trophy2: { l: 70.5, t: 6.5, w: 9, h: 13 } as Box,
 
-  opp1Avatar: { l: 7, t: 9, w: 8.5, h: 15 } as Box,
-  opp1Name: { l: 16, t: 15, w: 14, h: 5 } as Box,
-  opp1Cards: { l: 16, t: 19, w: 14, h: 3.5 } as Box,
-  opp1MeldA: { l: 6, t: 22, w: 26, h: 11 } as Box,
-  opp1MeldB: { l: 6, t: 34, w: 26, h: 11 } as Box,
+  // Opponent 1 (top-left) — avatar circle at (10.9%,15.6%). Name/cards float on bare felt.
+  opp1Avatar: { l: 6, t: 9, w: 9, h: 13.5 } as Box,
+  opp1Name: { l: 16, t: 11, w: 15, h: 4 } as Box,
+  opp1Cards: { l: 16, t: 15, w: 15, h: 3.5 } as Box,
+  // Meld rows float on bare felt (no placeholder rectangle to anchor against).
+  opp1MeldA: { l: 6, t: 22, w: 27, h: 10 } as Box,
+  opp1MeldB: { l: 6, t: 33, w: 27, h: 10 } as Box,
 
-  opp2Avatar: { l: 84.5, t: 9, w: 8.5, h: 15 } as Box,
-  opp2Name: { l: 70, t: 15, w: 14, h: 5 } as Box,
-  opp2Cards: { l: 70, t: 19, w: 14, h: 3.5 } as Box,
-  opp2MeldA: { l: 68, t: 22, w: 26, h: 11 } as Box,
-  opp2MeldB: { l: 68, t: 34, w: 26, h: 11 } as Box,
+  opp2Avatar: { l: 85, t: 9, w: 9, h: 13.5 } as Box,
+  opp2Name: { l: 69, t: 11, w: 15, h: 4 } as Box,
+  opp2Cards: { l: 69, t: 15, w: 15, h: 3.5 } as Box,
+  opp2MeldA: { l: 67, t: 22, w: 27, h: 10 } as Box,
+  opp2MeldB: { l: 67, t: 33, w: 27, h: 10 } as Box,
 
-  stock: { l: 40, t: 18, w: 9, h: 22 } as Box,
-  discard: { l: 51, t: 18, w: 9, h: 22 } as Box,
-  turnBadge: { l: 61, t: 27, w: 10, h: 6 } as Box,
-  jackpot: { l: 82, t: 34, w: 12, h: 6 } as Box,
-  timer: { l: 82, t: 41, w: 12, h: 5 } as Box,
+  // Stock/discard tiles centered mid-height (measured ~(45%,29%) / (55%,29%)).
+  stock: { l: 40, t: 20, w: 9, h: 20 } as Box,
+  discard: { l: 51, t: 20, w: 9, h: 20 } as Box,
+  turnBadge: { l: 62, t: 27, w: 10, h: 6 } as Box,
+  timer: { l: 82, t: 42, w: 12, h: 5 } as Box,
 
-  yourMelds: { l: 24, t: 45, w: 52, h: 12 } as Box,
+  // Your melds float above the button strip.
+  yourMelds: { l: 20, t: 45, w: 60, h: 8 } as Box,
 
-  // Strip container: only l/t/w are fixed; height derives from aspectRatio matching the PNG.
-  buttonsStrip: { l: 25, t: 52, w: 50 },
+  // Button strip: width tuned so pills sit between melds row and hand row.
+  buttonsStrip: { l: 29, t: 51, w: 42 },
 
-  youAvatar: { l: 7, t: 69, w: 8.5, h: 15 } as Box,
-  youName: { l: 16, t: 75, w: 14, h: 4 } as Box,
-  yourHand: { l: 16, t: 68, w: 78, h: 28 } as Box,
+  // Bottom-left avatar (You) — measured center (9.2%,76.5%). Hand extends to the right.
+  youAvatar: { l: 4, t: 72, w: 8, h: 13 } as Box,
+  youName: { l: 13, t: 71, w: 15, h: 4 } as Box,
+  yourHand: { l: 14, t: 68, w: 78, h: 28 } as Box,
 
   autoSort: { l: 93, t: 46, w: 6, h: 8 } as Box,
   sort: { l: 93, t: 57, w: 6, h: 8 } as Box,
