@@ -40,6 +40,7 @@ import { useImageAvailable, useIsWide } from "@/lib/tongits-social";
 import { useTongitsAssets } from "@/lib/tongitsAssets";
 import { TongitsTable } from "@/components/TongitsTable";
 import { TongitsWaitingRoomArt } from "@/components/TongitsWaitingRoomArt";
+import { TongitsGameTableArt } from "@/components/TongitsGameTableArt";
 import { PlayingCard } from "@/components/PlayingCard";
 import { AssetImage, TONGITS_ART } from "@/components/AssetImage";
 
@@ -59,6 +60,7 @@ export default function TongitsRoomPage() {
   const messages = useRoomChat(code);
   const assets = useTongitsAssets();
   const hasWaitingArt = useImageAvailable(assets.waitingRoom);
+  const hasTableArt = useImageAvailable(assets.table);
   const wide = useIsWide();
 
   const [busy, setBusy] = useState<string | null>(null);
@@ -167,6 +169,9 @@ export default function TongitsRoomPage() {
 
   // Live game.
   if (room.status === "in_game") {
+    if (hasTableArt && wide) {
+      return <TongitsGameTableArt code={code} room={room} />;
+    }
     return (
       <div>
         <TopHeader title={`Room ${room.roomCode}`} subtitle="Community Tongits · live game" />

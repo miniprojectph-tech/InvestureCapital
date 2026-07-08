@@ -12,7 +12,10 @@ export type TongitsAssetKey =
   | "seatOccupied"
   | "seatEmpty"
   | "logo"
-  | "lobbyBg";
+  | "lobbyBg"
+  | "table"
+  | "actionButtons4"
+  | "actionButtons5";
 
 export const TONGITS_ASSET_SLOTS: {
   key: TongitsAssetKey;
@@ -26,6 +29,9 @@ export const TONGITS_ASSET_SLOTS: {
   { key: "seatEmpty", label: "Seat — waiting", def: "/tongits/seat-empty.png", hint: "transparent PNG (ring + WAITING FOR PLAYER)" },
   { key: "logo", label: "Logo", def: "/tongits/logo.png", hint: "transparent PNG wordmark" },
   { key: "lobbyBg", label: "Lobby background", def: "/tongits/lobby-bg.webp", hint: "wide background behind the lobby" },
+  { key: "table", label: "In-game table — base", def: "/tongits/table.png", hint: "16:9 blank playing table (slots visible, no cards)" },
+  { key: "actionButtons4", label: "Action buttons — 4-pill", def: "/tongits/action-buttons-4.png", hint: "transparent PNG: Drop/Fight/UnGroup/Dump (no Sapaw)" },
+  { key: "actionButtons5", label: "Action buttons — 5-pill", def: "/tongits/action-buttons-5.png", hint: "transparent PNG: Drop/Fight/UnGroup/Dump/Sapaw" },
 ];
 
 export type TongitsAssets = Record<TongitsAssetKey, string>;
