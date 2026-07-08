@@ -47,8 +47,8 @@ const S = {
 
   yourMelds: { l: 24, t: 45, w: 52, h: 12 } as Box,
 
-  buttons4: { l: 20, t: 59.5, w: 60, h: 10 } as Box,
-  buttons5: { l: 14, t: 59.5, w: 72, h: 10 } as Box,
+  // Strip container: only l/t/w are fixed; height derives from aspectRatio matching the PNG.
+  buttonsStrip: { l: 25, t: 52, w: 50 },
 
   youAvatar: { l: 7, t: 69, w: 8.5, h: 15 } as Box,
   youName: { l: 16, t: 75, w: 14, h: 4 } as Box,
@@ -61,21 +61,29 @@ const S = {
 };
 
 // Pill hit-boxes as fractions of the buttons-strip PNG (2048x682).
-const PILL4 = [
-  { l: 0.06, w: 0.22 },
-  { l: 0.30, w: 0.22 },
-  { l: 0.54, w: 0.22 },
-  { l: 0.78, w: 0.22 },
-];
-const PILL5 = [
-  { l: 0.03, w: 0.18 },
-  { l: 0.22, w: 0.18 },
-  { l: 0.42, w: 0.18 },
-  { l: 0.61, w: 0.18 },
-  { l: 0.80, w: 0.18 },
-];
-const PILL_T = 0.20;
-const PILL_H = 0.60;
+// Values pixel-measured from the actual asset (opaque-column detection).
+const PILL4 = {
+  t: 0.346,
+  h: 0.287,
+  pills: [
+    { l: 0.037, w: 0.229 },
+    { l: 0.279, w: 0.224 },
+    { l: 0.513, w: 0.222 },
+    { l: 0.748, w: 0.218 },
+  ],
+};
+const PILL5 = {
+  t: 0.371,
+  h: 0.233,
+  pills: [
+    { l: 0.015, w: 0.190 },
+    { l: 0.219, w: 0.187 },
+    { l: 0.421, w: 0.187 },
+    { l: 0.620, w: 0.178 },
+    { l: 0.808, w: 0.173 },
+  ],
+};
+const STRIP_ASPECT = 2048 / 682;
 
 function initials(name: string) {
   const p = name.trim().split(/\s+/).filter(Boolean);
@@ -350,8 +358,7 @@ export function TongitsGameTableArt({ code }: { code: string; room: Room }) {
 
   // pill order in both strips: DROP, FIGHT, UNGROUP, DUMP, [SAPAW]
   const strip = anySapawPossible ? assets.actionButtons5 : assets.actionButtons4;
-  const stripBox = anySapawPossible ? S.buttons5 : S.buttons4;
-  const pills = anySapawPossible ? PILL5 : PILL4;
+  const stripCfg = anySapawPossible ? PILL5 : PILL4;
   const pillActions = [
     { label: "DROP", enabled: canDrop, busyKey: "drop", onClick: () => act("drop", () => meld(code, selected)) },
     { label: "FIGHT", enabled: canFight, busyKey: "fight", onClick: () => act("fight", () => callTongits(code)) },
@@ -581,18 +588,18 @@ export function TongitsGameTableArt({ code }: { code: string; room: Room }) {
           />
         </Zone>
 
-        {/* action button strip */}
+        {/* action button strip — container aspect matches the PNG so pill hitboxes align */}
         <div
           style={{
             position: "absolute",
-            left: `${stripBox.l}%`,
-            top: `${stripBox.t}%`,
-            width: `${stripBox.w}%`,
-            height: `${stripBox.h}%`,
+            left: `${S.buttonsStrip.l}%`,
+            top: `${S.buttonsStrip.t}%`,
+            width: `${S.buttonsStrip.w}%`,
+            aspectRatio: `${STRIP_ASPECT}`,
           }}
         >
-          <img src={strip} alt="" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-          {pills.map((p, i) => {
+          <img src={strip} alt="" style={{ width: "100%", height: "100%", display: "block" }} />
+          {stripCfg.pills.map((p, i) => {
             const a = pillActions[i];
             const isBusy = busy === a.busyKey;
             return (
@@ -603,9 +610,9 @@ export function TongitsGameTableArt({ code }: { code: string; room: Room }) {
                 style={{
                   position: "absolute",
                   left: `${p.l * 100}%`,
-                  top: `${PILL_T * 100}%`,
+                  top: `${stripCfg.t * 100}%`,
                   width: `${p.w * 100}%`,
-                  height: `${PILL_H * 100}%`,
+                  height: `${stripCfg.h * 100}%`,
                   background: "transparent",
                   border: "none",
                   cursor: a.enabled ? "pointer" : "not-allowed",
