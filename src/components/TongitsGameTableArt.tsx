@@ -52,7 +52,7 @@ const S = {
 
   youAvatar: { l: 7, t: 69, w: 8.5, h: 15 } as Box,
   youName: { l: 16, t: 75, w: 14, h: 4 } as Box,
-  yourHand: { l: 18, t: 73, w: 76, h: 22 } as Box,
+  yourHand: { l: 16, t: 68, w: 78, h: 28 } as Box,
 
   autoSort: { l: 93, t: 46, w: 6, h: 8 } as Box,
   sort: { l: 93, t: 57, w: 6, h: 8 } as Box,
@@ -265,14 +265,18 @@ function SmallCard({ card, faceDown }: { card?: TCard; faceDown?: boolean }) {
   );
 }
 
+const SUIT_GLYPH: Record<string, string> = { S: "♠", H: "♥", D: "♦", C: "♣" };
+const RANK_LABEL: Record<string, string> = { A: "A", T: "10", J: "J", Q: "Q", K: "K" };
+const rankChar = (c: TCard) => RANK_LABEL[c[0]] ?? c[0];
+
 function BigCard({ card, faceDown, selected, onClick }: { card?: TCard; faceDown?: boolean; selected?: boolean; onClick?: () => void }) {
   if (faceDown) {
     return (
       <div
         style={{
-          width: "4cqw",
-          height: "5.6cqw",
-          borderRadius: "0.6cqw",
+          width: "5.6cqw",
+          height: "7.8cqw",
+          borderRadius: "0.7cqw",
           background: "linear-gradient(135deg,#1c3568,#0e1e42)",
           border: "0.2cqw solid rgba(245,198,107,0.7)",
           boxShadow: "0 0.3cqw 0.6cqw rgba(0,0,0,0.4)",
@@ -282,30 +286,75 @@ function BigCard({ card, faceDown, selected, onClick }: { card?: TCard; faceDown
   }
   if (!card) return null;
   const red = isRedSuit(card);
+  const color = red ? "#d1341c" : "#101423";
+  const isFace = card[0] === "J" || card[0] === "Q" || card[0] === "K";
   return (
     <button
       onClick={onClick}
       style={{
-        width: "4cqw",
-        height: "5.6cqw",
-        borderRadius: "0.6cqw",
+        position: "relative",
+        width: "5.6cqw",
+        height: "7.8cqw",
+        borderRadius: "0.7cqw",
         background: "#fff",
-        color: red ? "#d33" : "#111",
+        color,
         border: selected ? "0.25cqw solid #F5C66B" : "0.1cqw solid #d9d9d9",
-        transform: selected ? "translateY(-1.2cqw)" : "none",
-        boxShadow: selected ? "0 0.5cqw 1cqw rgba(245,198,107,0.5)" : "0 0.3cqw 0.6cqw rgba(0,0,0,0.35)",
+        transform: selected ? "translateY(-1.4cqw)" : "none",
+        boxShadow: selected ? "0 0.5cqw 1cqw rgba(245,198,107,0.55)" : "0 0.3cqw 0.55cqw rgba(0,0,0,0.32)",
         transition: "transform 120ms ease, box-shadow 120ms ease",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontWeight: 800,
-        fontSize: "1.7cqw",
-        fontFamily: "system-ui",
         cursor: onClick ? "pointer" : "default",
         padding: 0,
+        overflow: "hidden",
+        fontFamily: "system-ui",
       }}
     >
-      {cardLabel(card)}
+      {/* top-left corner: rank over suit */}
+      <div
+        style={{
+          position: "absolute",
+          left: "0.35cqw",
+          top: "0.25cqw",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          lineHeight: 1,
+        }}
+      >
+        <span style={{ fontWeight: 900, fontSize: "1.7cqw" }}>{rankChar(card)}</span>
+        <span style={{ fontWeight: 900, fontSize: "1.5cqw", marginTop: "0.1cqw" }}>{SUIT_GLYPH[card[1]]}</span>
+      </div>
+      {/* center glyph (face cards get letter; number cards get big pip) */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontWeight: 900,
+          fontSize: isFace ? "3.4cqw" : "3.2cqw",
+          opacity: 0.92,
+          letterSpacing: isFace ? "0.02em" : 0,
+        }}
+      >
+        {isFace ? card[0] : SUIT_GLYPH[card[1]]}
+      </div>
+      {/* bottom-right corner: mirrored */}
+      <div
+        style={{
+          position: "absolute",
+          right: "0.35cqw",
+          bottom: "0.25cqw",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          lineHeight: 1,
+          transform: "rotate(180deg)",
+        }}
+      >
+        <span style={{ fontWeight: 900, fontSize: "1.7cqw" }}>{rankChar(card)}</span>
+        <span style={{ fontWeight: 900, fontSize: "1.5cqw", marginTop: "0.1cqw" }}>{SUIT_GLYPH[card[1]]}</span>
+      </div>
     </button>
   );
 }
@@ -726,7 +775,7 @@ export function TongitsGameTableArt({ code }: { code: string; room: Room }) {
           <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.15cqw" }}>{me?.name ?? "You"}</span>
         </Zone>
 
-        {/* your hand — auto-grouped clusters, overlapping cards within each cluster */}
+        {/* your hand — auto-grouped meld clusters, each sitting on a tray */}
         <div
           style={{
             position: "absolute",
@@ -737,25 +786,72 @@ export function TongitsGameTableArt({ code }: { code: string; room: Room }) {
             display: "flex",
             alignItems: "flex-end",
             justifyContent: "center",
-            gap: "1.2cqw",
-            padding: "0.5cqw",
+            gap: "1.5cqw",
+            padding: "0.4cqw",
           }}
         >
-          {groupHand(myHand).map((group, gi) => (
-            <div
-              key={`${gi}-${group.join(",")}`}
-              style={{ display: "flex", alignItems: "flex-end" }}
-            >
-              {group.map((c, ci) => (
+          {groupHand(myHand).map((group, gi) => {
+            const isMeld = isValidMeld(group);
+            const isActive = group.some((c) => selected.includes(c));
+            return (
+              <div
+                key={`${gi}-${group.join(",")}`}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
+              >
+                {/* cluster tray */}
                 <div
-                  key={c}
-                  style={{ marginLeft: ci === 0 ? 0 : "-1.8cqw", zIndex: ci }}
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-end",
+                    padding: "0.55cqw 0.7cqw 0.4cqw",
+                    borderRadius: "0.9cqw",
+                    background: isActive
+                      ? "linear-gradient(180deg,#c9e5ff,#9ecdf5)"
+                      : "linear-gradient(180deg,#f6f1e4,#e6dcc4)",
+                    boxShadow: "0 0.35cqw 0.7cqw rgba(0,0,0,0.35), inset 0 0.1cqw 0 rgba(255,255,255,0.7)",
+                    border: isActive ? "0.15cqw solid #3aa0ff" : "0.1cqw solid rgba(0,0,0,0.15)",
+                  }}
                 >
-                  <BigCard card={c} selected={selected.includes(c)} onClick={() => toggle(c)} />
+                  {group.map((c, ci) => (
+                    <div key={c} style={{ marginLeft: ci === 0 ? 0 : "-2.9cqw", zIndex: ci }}>
+                      <BigCard card={c} selected={selected.includes(c)} onClick={() => toggle(c)} />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ))}
+                {/* green shelf for complete valid melds */}
+                {isMeld && (
+                  <div
+                    style={{
+                      marginTop: "-0.15cqw",
+                      width: "88%",
+                      height: "0.7cqw",
+                      borderRadius: "0 0 0.6cqw 0.6cqw",
+                      background: "linear-gradient(180deg,#4bd47a,#2ea655)",
+                      boxShadow: "0 0.25cqw 0.4cqw rgba(0,0,0,0.35)",
+                    }}
+                  />
+                )}
+                {/* selected ribbon */}
+                {isActive && (
+                  <div
+                    style={{
+                      marginTop: isMeld ? "0.15cqw" : "0.25cqw",
+                      padding: "0.15cqw 0.7cqw",
+                      borderRadius: "0.3cqw",
+                      background: "#F5C66B",
+                      color: "#141c2f",
+                      fontWeight: 800,
+                      fontSize: "0.85cqw",
+                      letterSpacing: "0.06em",
+                      boxShadow: "0 0.15cqw 0.3cqw rgba(0,0,0,0.35)",
+                    }}
+                  >
+                    SELECTED
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
