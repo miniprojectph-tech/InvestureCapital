@@ -149,7 +149,7 @@ async function resolveAndSettle(
   ctx: Ctx,
   resultType: ResultType,
   winnerUid: string,
-  opts: { jackpotPaid: boolean; secret: boolean; forfeitUid?: string }
+  opts: { secret: boolean; forfeitUid?: string }
 ) {
   const now = Date.now();
   const seats = ctx.gs.seats;
@@ -173,7 +173,14 @@ async function resolveAndSettle(
   }
   const keys = periodKeys(now);
 
-  const jackpot = opts.jackpotPaid ? ctx.gs.jackpotPoints : 0;
+  // Streak-based jackpot: same winner two hands in a row claims the pot.
+  const prevWinnerUid = (ctx.room.lastWinnerUid as string | null | undefined) ?? null;
+  const prevStreak = (ctx.room.winStreak as number | undefined) ?? 0;
+  const newStreak = prevWinnerUid === winnerUid ? prevStreak + 1 : 1;
+  const payoutJackpot = newStreak >= 2;
+  const nextWinStreak = payoutJackpot ? 0 : newStreak;
+  const nextLastWinnerUid = payoutJackpot ? null : winnerUid;
+  const jackpot = payoutJackpot ? ctx.gs.jackpotPoints : 0;
 
   // Match + per-player result records.
   const matchRef = db.collection("game_matches").doc();
@@ -263,7 +270,7 @@ async function resolveAndSettle(
     );
   });
 
-  if (opts.jackpotPaid && jackpot > 0) {
+  if (payoutJackpot && jackpot > 0) {
     tx.set(txnCol().doc(), {
       userId: winnerUid,
       type: "jackpot_won",
@@ -275,7 +282,7 @@ async function resolveAndSettle(
     });
   }
 
-  // Post-game room state: keep jackpot unless it was paid; reset ready/agreed.
+  // Post-game room state: keep jackpot unless streak paid out; reset ready/agreed.
   const players = { ...(ctx.room.players as Record<string, Record<string, unknown>>) };
   for (const uid of Object.keys(players)) {
     players[uid] = { ...players[uid], isReady: false, agreedToChallenge: false };
@@ -284,7 +291,9 @@ async function resolveAndSettle(
   tx.update(roomRef(code), {
     players,
     status: "post_game",
-    jackpotPoints: opts.jackpotPaid ? 0 : ctx.gs.jackpotPoints,
+    jackpotPoints: payoutJackpot ? 0 : ctx.gs.jackpotPoints,
+    lastWinnerUid: nextLastWinnerUid,
+    winStreak: nextWinStreak,
     gamesPlayed: ((ctx.room.gamesPlayed as number) ?? 0) + 1,
     updatedAt: now,
     lastResult: {
@@ -310,7 +319,7 @@ async function resolveAndSettle(
 async function checkTongits(tx: Transaction, code: string, ctx: Ctx, uid: string): Promise<boolean> {
   if (ctx.hands[uid].length > 0) return false;
   const secret = !ctx.gs.turnStartExposed; // won without a pre-existing exposed meld
-  await resolveAndSettle(tx, code, ctx, "tongits_win", uid, { jackpotPaid: true, secret });
+  await resolveAndSettle(tx, code, ctx, "tongits_win", uid, { secret });
   return true;
 }
 
@@ -415,7 +424,7 @@ export const tongitsDraw = onCall(async (request) => {
       // Stock exhausted → showdown, lowest hand wins (draw).
       const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
       const winner = resolveShowdown(entries);
-      await resolveAndSettle(tx, code, ctx, "draw_win", winner, { jackpotPaid: false, secret: false });
+      await resolveAndSettle(tx, code, ctx, "draw_win", winner, { secret: false });
       return { ok: true, ended: true };
     }
     const card = ctx.deck.shift() as Card;
@@ -526,7 +535,7 @@ export const tongitsCall = onCall(async (request) => {
     }
     const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
     const winner = resolveShowdown(entries, uid); // caller wins ties
-    await resolveAndSettle(tx, code, ctx, "lowest_points_win", winner, { jackpotPaid: false, secret: false });
+    await resolveAndSettle(tx, code, ctx, "lowest_points_win", winner, { secret: false });
     return { ok: true, ended: true };
   });
 });
@@ -552,7 +561,6 @@ export const enforceTongitsTimeout = onCall(async (request) => {
       const entries = others.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
       const winner = resolveShowdown(entries);
       await resolveAndSettle(tx, code, ctx, "player_disconnected", winner, {
-        jackpotPaid: false,
         secret: false,
         forfeitUid: cur,
       });
@@ -564,7 +572,7 @@ export const enforceTongitsTimeout = onCall(async (request) => {
       if (ctx.deck.length === 0) {
         const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
         const winner = resolveShowdown(entries);
-        await resolveAndSettle(tx, code, ctx, "draw_win", winner, { jackpotPaid: false, secret: false });
+        await resolveAndSettle(tx, code, ctx, "draw_win", winner, { secret: false });
         return { ok: true, ended: true };
       }
       ctx.hands[cur].push(ctx.deck.shift() as Card);
@@ -575,7 +583,7 @@ export const enforceTongitsTimeout = onCall(async (request) => {
     if (ctx.hands[cur].length === 0) {
       // Auto-play emptied the hand — count it as a Tongits for that player.
       const secret = !ctx.gs.turnStartExposed;
-      await resolveAndSettle(tx, code, ctx, "tongits_win", cur, { jackpotPaid: true, secret });
+      await resolveAndSettle(tx, code, ctx, "tongits_win", cur, { secret });
       return { ok: true, ended: true };
     }
     advanceTurn(ctx, now);

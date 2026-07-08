@@ -30,6 +30,9 @@ type Room = {
   challengePoints: number;
   jackpotAnte: number;
   jackpotPoints: number;
+  // Streak-based jackpot: 2 consecutive wins by the same player claims the pot.
+  lastWinnerUid: string | null;
+  winStreak: number;
   isPrivate?: boolean;
   maxPlayers: number;
   status: RoomStatus;
@@ -221,6 +224,8 @@ export const createTongitsRoom = onCall(async (request) => {
       challengePoints,
       jackpotAnte,
       jackpotPoints: 0,
+      lastWinnerUid: null,
+      winStreak: 0,
       isPrivate,
       maxPlayers: MAX_PLAYERS,
       status: "open",

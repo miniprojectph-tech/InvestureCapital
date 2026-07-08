@@ -43,6 +43,9 @@ export type TongitsRoom = {
   challengePoints: number;
   jackpotAnte: number;
   jackpotPoints: number;
+  // Streak-based jackpot: 2 consecutive wins by the same player claim the pot.
+  lastWinnerUid?: string | null;
+  winStreak?: number;
   isPrivate?: boolean;
   maxPlayers: number;
   status: TongitsStatus;

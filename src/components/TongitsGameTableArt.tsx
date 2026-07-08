@@ -26,6 +26,9 @@ type Box = { l: number; t: number; w: number; h: number };
 // Iterate these against the painted base if any drift shows up.
 const S = {
   pot: { l: 40, t: 4.5, w: 22, h: 5.5 } as Box,
+  // Streak trophies flank the POT: filled with the streak-leader's initials when winStreak >= 1/2.
+  trophy1: { l: 25.2, t: 2, w: 7.5, h: 12 } as Box,
+  trophy2: { l: 67.3, t: 2, w: 7.5, h: 12 } as Box,
 
   opp1Avatar: { l: 7, t: 9, w: 8.5, h: 15 } as Box,
   opp1Name: { l: 16, t: 15, w: 14, h: 5 } as Box,
@@ -389,11 +392,20 @@ function MeldRow({ melds, onPick }: { melds: TCard[][]; onPick?: (i: number) => 
 }
 
 // ---- main ----
-export function TongitsGameTableArt({ code }: { code: string; room: Room }) {
+export function TongitsGameTableArt({ code, room }: { code: string; room: Room }) {
   const { user } = useAuth();
   const gs = useGameState(code);
   const myHand = useMyHand(code, user?.uid ?? null);
   const assets = useTongitsAssets();
+
+  // Streak-leader lookup for the trophy slots.
+  const winStreak = room.winStreak ?? 0;
+  const lastWinnerUid = room.lastWinnerUid ?? null;
+  const streakLeaderName =
+    (lastWinnerUid &&
+      (gs?.seats.find((s) => s.uid === lastWinnerUid)?.name ??
+        room.players?.[lastWinnerUid]?.name)) ||
+    "";
 
   const [selected, setSelected] = useState<TCard[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
@@ -514,6 +526,35 @@ export function TongitsGameTableArt({ code }: { code: string; room: Room }) {
             {gs.jackpotPoints.toLocaleString()}
           </span>
         </Zone>
+
+        {/* Streak trophies — filled with the streak-leader's initials as they stack. */}
+        {[
+          { box: S.trophy1, filled: winStreak >= 1 },
+          { box: S.trophy2, filled: winStreak >= 2 },
+        ].map((slot, i) => (
+          <Zone key={i} box={slot.box}>
+            <div
+              style={{
+                height: "88%",
+                aspectRatio: "1",
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 900,
+                fontSize: "1.8cqw",
+                fontFamily: "system-ui",
+                color: slot.filled ? "#141c2f" : "transparent",
+                background: slot.filled ? "linear-gradient(180deg,#F5C66B,#c99534)" : "transparent",
+                boxShadow: slot.filled ? "0 0 1.4cqw rgba(245,198,107,0.75)" : "none",
+                border: slot.filled ? "0.15cqw solid #7a5216" : "none",
+                transition: "background 220ms ease, box-shadow 220ms ease",
+              }}
+            >
+              {slot.filled && streakLeaderName ? initials(streakLeaderName) : ""}
+            </div>
+          </Zone>
+        ))}
 
         {/* opponent 1 (left) */}
         {opp1 && (
