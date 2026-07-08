@@ -36,7 +36,7 @@ import {
   type TongitsRoom,
 } from "@/lib/tongits";
 import { startGame, playAgain, splitJackpot } from "@/lib/tongits-game";
-import { useImageAvailable, useIsWide } from "@/lib/tongits-social";
+import { useImageAvailable, useIsWide, useIsPortraitMobile } from "@/lib/tongits-social";
 import { useTongitsAssets } from "@/lib/tongitsAssets";
 import { TongitsTable } from "@/components/TongitsTable";
 import { TongitsWaitingRoomArt } from "@/components/TongitsWaitingRoomArt";
@@ -51,6 +51,38 @@ function initials(name: string) {
   return (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
+/** Full-screen prompt asking phones held vertically to rotate to landscape. */
+function RotateDevicePrompt() {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#0a1730] text-white p-8">
+      <div className="max-w-[280px] text-center flex flex-col items-center gap-5">
+        <div className="relative w-24 h-24 flex items-center justify-center">
+          <div
+            className="w-16 h-24 rounded-lg border-[3px] border-gold"
+            style={{
+              animation: "rotateHint 2.4s ease-in-out infinite",
+              transformOrigin: "center",
+            }}
+          />
+          <style>{`
+            @keyframes rotateHint {
+              0%, 20% { transform: rotate(0deg); }
+              50%, 80% { transform: rotate(-90deg); }
+              100% { transform: rotate(0deg); }
+            }
+          `}</style>
+        </div>
+        <div>
+          <p className="font-bold text-[18px] mb-2 text-gold">Rotate your device</p>
+          <p className="text-[13px] text-white/70 leading-relaxed">
+            Tongits plays best in landscape. Turn your phone sideways to see the full table.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TongitsRoomPage() {
   const params = useParams<{ code: string }>();
   const code = params.code;
@@ -62,6 +94,7 @@ export default function TongitsRoomPage() {
   const hasWaitingArt = useImageAvailable(assets.waitingRoom);
   const hasTableArt = useImageAvailable(assets.table);
   const wide = useIsWide();
+  const portraitMobile = useIsPortraitMobile();
 
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -169,6 +202,7 @@ export default function TongitsRoomPage() {
 
   // Live game.
   if (room.status === "in_game") {
+    if (portraitMobile) return <RotateDevicePrompt />;
     if (hasTableArt && wide) {
       return <TongitsGameTableArt code={code} room={room} />;
     }

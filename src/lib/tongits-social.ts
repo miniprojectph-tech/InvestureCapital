@@ -61,6 +61,23 @@ export function useIsWide(min = 900) {
   return wide;
 }
 
+/** True when the viewport is in portrait orientation AND narrow (i.e. a phone held vertically). */
+export function useIsPortraitMobile() {
+  const [portrait, setPortrait] = useState(false);
+  useEffect(() => {
+    const check = () =>
+      setPortrait(window.innerHeight > window.innerWidth && window.innerWidth < 900);
+    check();
+    window.addEventListener("resize", check);
+    window.addEventListener("orientationchange", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      window.removeEventListener("orientationchange", check);
+    };
+  }, []);
+  return portrait;
+}
+
 // ===== rank tiers (derived from ranking points) =====
 const TIERS = [
   { name: "Rookie", min: 0 },

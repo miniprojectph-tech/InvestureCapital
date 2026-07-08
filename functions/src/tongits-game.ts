@@ -414,7 +414,7 @@ export const startTongitsGame = onCall(async (request) => {
   });
 });
 
-export const tongitsDraw = onCall(async (request) => {
+export const tongitsDraw = onCall({ minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   return db.runTransaction(async (tx) => {
@@ -436,7 +436,7 @@ export const tongitsDraw = onCall(async (request) => {
   });
 });
 
-export const tongitsTakeDiscard = onCall(async (request) => {
+export const tongitsTakeDiscard = onCall({ minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const meldCards = ((request.data as { meldCards?: Card[] })?.meldCards ?? []).map(String);
@@ -464,7 +464,7 @@ export const tongitsTakeDiscard = onCall(async (request) => {
   });
 });
 
-export const tongitsMeld = onCall(async (request) => {
+export const tongitsMeld = onCall({ minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const cards = ((request.data as { cards?: Card[] })?.cards ?? []).map(String);
@@ -482,7 +482,7 @@ export const tongitsMeld = onCall(async (request) => {
   });
 });
 
-export const tongitsSapaw = onCall(async (request) => {
+export const tongitsSapaw = onCall({ minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const data = (request.data ?? {}) as { targetUid?: string; meldIndex?: number; card?: string };
@@ -505,7 +505,7 @@ export const tongitsSapaw = onCall(async (request) => {
   });
 });
 
-export const tongitsDiscard = onCall(async (request) => {
+export const tongitsDiscard = onCall({ minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const card = String((request.data as { card?: string })?.card ?? "");
@@ -524,7 +524,7 @@ export const tongitsDiscard = onCall(async (request) => {
   });
 });
 
-export const tongitsCall = onCall(async (request) => {
+export const tongitsCall = onCall({ minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   return db.runTransaction(async (tx) => {

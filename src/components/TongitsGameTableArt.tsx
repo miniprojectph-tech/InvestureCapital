@@ -95,6 +95,114 @@ function initials(name: string) {
   return (p.length === 1 ? p[0].slice(0, 2) : (p[0]?.[0] ?? "") + (p[1]?.[0] ?? "")).toUpperCase() || "?";
 }
 
+// Engine turn budget — mirror of functions/src/tongits-game.ts TURN_MS.
+const TURN_MS = 25_000;
+
+/** Loading screen shown while the base + button-strip PNGs stream in. */
+function TableLoadingScreen() {
+  return (
+    <div className="min-h-[100dvh] w-full flex items-center justify-center bg-[#0a1730] overflow-hidden">
+      <style>{`
+        @keyframes tongitsSpin { to { transform: rotate(360deg); } }
+        @keyframes tongitsPulse { 0%,100% { opacity: 0.85; } 50% { opacity: 1; } }
+      `}</style>
+      <div className="flex flex-col items-center gap-6">
+        <div style={{ position: "relative", width: "84px", height: "84px" }}>
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: "50%",
+              border: "6px solid rgba(245,198,107,0.15)",
+              boxSizing: "border-box",
+            }}
+          />
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              borderRadius: "50%",
+              border: "6px solid transparent",
+              borderTopColor: "#F5C66B",
+              borderRightColor: "#F5C66B",
+              animation: "tongitsSpin 1.1s cubic-bezier(0.7,0.2,0.3,1) infinite",
+              boxSizing: "border-box",
+            }}
+          />
+        </div>
+        <div style={{ animation: "tongitsPulse 1.6s ease-in-out infinite" }}>
+          <div style={{ color: "#F5C66B", fontWeight: 800, fontSize: "16px", letterSpacing: "0.08em", textAlign: "center" }}>
+            DEALING THE TABLE
+          </div>
+          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "12px", marginTop: "4px", textAlign: "center" }}>
+            Loading assets…
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** SVG ring that counts down as the active player's clock runs out. Overlays the avatar circle. */
+function TimerRing({ secondsLeft }: { secondsLeft: number }) {
+  const fraction = Math.max(0, Math.min(1, (secondsLeft * 1000) / TURN_MS));
+  const urgent = secondsLeft <= 5;
+  const r = 46;
+  const c = 2 * Math.PI * r;
+  const color = urgent ? "#ef4444" : "#4bd47a";
+  return (
+    <>
+      <svg
+        viewBox="0 0 100 100"
+        style={{
+          position: "absolute",
+          inset: "-14%",
+          width: "128%",
+          height: "128%",
+          pointerEvents: "none",
+          overflow: "visible",
+        }}
+      >
+        <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(0,0,0,0.28)" strokeWidth="6" />
+        <circle
+          cx="50"
+          cy="50"
+          r={r}
+          fill="none"
+          stroke={color}
+          strokeWidth="6"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - fraction)}
+          strokeLinecap="round"
+          transform="rotate(-90 50 50)"
+          style={{ transition: "stroke-dashoffset 400ms linear, stroke 200ms ease" }}
+        />
+      </svg>
+      <div
+        style={{
+          position: "absolute",
+          bottom: "-30%",
+          left: "50%",
+          transform: "translateX(-50%)",
+          background: urgent ? "linear-gradient(180deg,#ef4444,#a32020)" : "linear-gradient(180deg,#4bd47a,#2ea655)",
+          color: "#fff",
+          fontFamily: "monospace",
+          fontSize: "0.9cqw",
+          fontWeight: 800,
+          padding: "0.15cqw 0.6cqw",
+          borderRadius: "0.8cqw",
+          boxShadow: "0 0.15cqw 0.35cqw rgba(0,0,0,0.4)",
+          minWidth: "2.6cqw",
+          textAlign: "center",
+          pointerEvents: "none",
+        }}
+      >
+        {secondsLeft}s
+      </div>
+    </>
+  );
+}
+
 // ---- meld helpers (mirror engine rules; Ace low-only, same-suit runs, sets) ----
 const RANK_ORDER = "A23456789TJQK";
 const SUIT_ORDER = "SHDC";
@@ -397,12 +505,35 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(Date.now());
+  const [assetsReady, setAssetsReady] = useState(false);
   const enforcedFor = useRef(0);
 
   useEffect(() => {
     const t = setInterval(() => setTick(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Preload the critical PNGs so the bare skeleton never flashes before the paint lands.
+  useEffect(() => {
+    const urls = [assets.table, assets.actionButtons4, assets.actionButtons5];
+    let cancelled = false;
+    Promise.all(
+      urls.map(
+        (url) =>
+          new Promise<void>((resolve) => {
+            const img = new window.Image();
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+            img.src = url;
+          })
+      )
+    ).then(() => {
+      if (!cancelled) setAssetsReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [assets.table, assets.actionButtons4, assets.actionButtons5]);
 
   useEffect(() => {
     if (!gs || gs.status !== "in_game") return;
@@ -416,12 +547,8 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
     setSelected((sel) => sel.filter((c) => myHand.includes(c)));
   }, [myHand]);
 
-  if (!gs) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 className="w-6 h-6 text-white/60 animate-spin" />
-      </div>
-    );
+  if (!gs || !assetsReady) {
+    return <TableLoadingScreen />;
   }
 
   const uid = user?.uid ?? "";
@@ -470,14 +597,19 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
     await act("sapaw", () => sapawCard(code, targetUid, meldIndex, selected[0]));
   }
 
-  // pill order in both strips: DROP, FIGHT, UNGROUP, DUMP, [SAPAW]
+  // Pill row swaps its 4th button based on phase:
+  //   - draw phase: DROP, FIGHT, UNGROUP, DRAW
+  //   - discard phase: DROP, FIGHT, UNGROUP, DUMP [, SAPAW]
+  const inDrawPhase = isMyTurn && gs.phase === "draw";
   const strip = anySapawPossible ? assets.actionButtons5 : assets.actionButtons4;
   const stripCfg = anySapawPossible ? PILL5 : PILL4;
   const pillActions = [
     { label: "DROP", enabled: canDrop, busyKey: "drop", onClick: () => act("drop", () => meld(code, selected)) },
     { label: "FIGHT", enabled: canFight, busyKey: "fight", onClick: () => act("fight", () => callTongits(code)) },
     { label: "UNGROUP", enabled: canUngroup, busyKey: "ungroup", onClick: () => setSelected([]) },
-    { label: "DUMP", enabled: canDump, busyKey: "dump", onClick: () => act("dump", () => discard(code, selected[0])) },
+    inDrawPhase
+      ? { label: "DRAW", enabled: canDraw, busyKey: "draw", onClick: () => act("draw", () => draw(code)) }
+      : { label: "DUMP", enabled: canDump, busyKey: "dump", onClick: () => act("dump", () => discard(code, selected[0])) },
   ];
   if (anySapawPossible) {
     pillActions.push({
@@ -546,6 +678,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
         {opp1 && (
           <>
             <Zone box={S.opp1Avatar}>
+              {gs.turnUid === opp1.uid && <TimerRing secondsLeft={secondsLeft} />}
               <div
                 style={{
                   width: "100%",
@@ -558,7 +691,6 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
                   fontWeight: 900,
                   fontSize: "2cqw",
                   fontFamily: "system-ui",
-                  boxShadow: gs.turnUid === opp1.uid ? "0 0 1.4cqw #F5C66B" : "none",
                 }}
               >
                 {initials(opp1.name)}
@@ -593,6 +725,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
         {opp2 && (
           <>
             <Zone box={S.opp2Avatar}>
+              {gs.turnUid === opp2.uid && <TimerRing secondsLeft={secondsLeft} />}
               <div
                 style={{
                   width: "100%",
@@ -605,7 +738,6 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
                   fontWeight: 900,
                   fontSize: "2cqw",
                   fontFamily: "system-ui",
-                  boxShadow: gs.turnUid === opp2.uid ? "0 0 1.4cqw #F5C66B" : "none",
                 }}
               >
                 {initials(opp2.name)}
@@ -708,22 +840,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
           </Zone>
         )}
 
-        {/* Timer */}
-        <Zone box={S.timer}>
-          <div
-            style={{
-              padding: "0.3cqw 0.8cqw",
-              borderRadius: "0.6cqw",
-              background: secondsLeft <= 5 ? "rgba(220,60,60,0.35)" : "rgba(0,0,0,0.5)",
-              color: secondsLeft <= 5 ? "#ffb0b0" : "#fff",
-              fontWeight: 700,
-              fontFamily: "monospace",
-              fontSize: "1.2cqw",
-            }}
-          >
-            {secondsLeft}s
-          </div>
-        </Zone>
+        {/* Timer moved onto the active avatar (see TimerRing above). Corner badge retired. */}
 
         {/* your melds */}
         <Zone box={S.yourMelds}>
@@ -782,6 +899,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
 
         {/* YOU */}
         <Zone box={S.youAvatar}>
+          {isMyTurn && <TimerRing secondsLeft={secondsLeft} />}
           <div
             style={{
               width: "100%",
@@ -794,7 +912,6 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
               fontWeight: 900,
               fontSize: "2cqw",
               fontFamily: "system-ui",
-              boxShadow: isMyTurn ? "0 0 1.4cqw #F5C66B" : "none",
             }}
           >
             {initials(me?.name ?? "You")}
