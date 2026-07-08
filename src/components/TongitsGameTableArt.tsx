@@ -27,39 +27,35 @@ type Box = { l: number; t: number; w: number; h: number };
 // Coordinates snapped to the placeholder-free base (public/tongits/table.png).
 // Percent values measured with scripts/measure-table.cjs on the 1672x941 asset.
 const S = {
-  pot: { l: 42, t: 9, w: 16, h: 6 } as Box,
-  // Streak trophies flank the POT: filled with the streak-leader's initials when winStreak >= 1/2.
+  // POT number sits in the dark inner of the pot bar (measured y=6-11%).
+  pot: { l: 42, t: 6, w: 16, h: 6 } as Box,
   trophy1: { l: 20.5, t: 6.5, w: 9, h: 13 } as Box,
   trophy2: { l: 70.5, t: 6.5, w: 9, h: 13 } as Box,
 
-  // Opponent 1 (top-left) — avatar circle at (10.9%,15.6%). Name/cards float on bare felt.
-  opp1Avatar: { l: 6, t: 9, w: 9, h: 13.5 } as Box,
-  opp1Name: { l: 16, t: 11, w: 15, h: 4 } as Box,
-  opp1Cards: { l: 16, t: 15, w: 15, h: 3.5 } as Box,
-  // Meld rows float on bare felt (no placeholder rectangle to anchor against).
+  // Avatar Zones snapped to the painted white circles (measured 92x88 px on the 1672x941 base).
+  opp1Avatar: { l: 8.13, t: 11.05, w: 5.5, h: 9.35 } as Box,
+  opp1Name: { l: 15, t: 11, w: 15, h: 4 } as Box,
+  opp1Cards: { l: 15, t: 15, w: 15, h: 3.5 } as Box,
   opp1MeldA: { l: 6, t: 22, w: 27, h: 10 } as Box,
   opp1MeldB: { l: 6, t: 33, w: 27, h: 10 } as Box,
 
-  opp2Avatar: { l: 85, t: 9, w: 9, h: 13.5 } as Box,
+  opp2Avatar: { l: 85.89, t: 11.05, w: 5.5, h: 9.14 } as Box,
   opp2Name: { l: 69, t: 11, w: 15, h: 4 } as Box,
   opp2Cards: { l: 69, t: 15, w: 15, h: 3.5 } as Box,
   opp2MeldA: { l: 67, t: 22, w: 27, h: 10 } as Box,
   opp2MeldB: { l: 67, t: 33, w: 27, h: 10 } as Box,
 
-  // Stock/discard tiles centered mid-height (measured ~(45%,29%) / (55%,29%)).
-  stock: { l: 40, t: 20, w: 9, h: 20 } as Box,
-  discard: { l: 51, t: 20, w: 9, h: 20 } as Box,
+  // Stock/discard boxes on the base: outline y=20-37%, x centers ~44%/55%.
+  stock: { l: 40.5, t: 19, w: 6, h: 18 } as Box,
+  discard: { l: 51.5, t: 19, w: 6, h: 18 } as Box,
   turnBadge: { l: 62, t: 27, w: 10, h: 6 } as Box,
   timer: { l: 82, t: 42, w: 12, h: 5 } as Box,
 
-  // Your melds float above the button strip.
   yourMelds: { l: 20, t: 45, w: 60, h: 8 } as Box,
-
-  // Button strip: width tuned so pills sit between melds row and hand row.
   buttonsStrip: { l: 29, t: 51, w: 42 },
 
-  // Bottom-left avatar (You) — measured center (9.2%,76.5%). Hand extends to the right.
-  youAvatar: { l: 4, t: 72, w: 8, h: 13 } as Box,
+  // Bottom-left avatar (You) — painted white circle at (6.46%,71.84%).
+  youAvatar: { l: 6.46, t: 71.84, w: 5.5, h: 9.35 } as Box,
   youName: { l: 13, t: 71, w: 15, h: 4 } as Box,
   yourHand: { l: 14, t: 68, w: 78, h: 28 } as Box,
 
@@ -552,17 +548,17 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
             <Zone box={S.opp1Avatar}>
               <div
                 style={{
-                  height: "78%",
-                  aspectRatio: "1",
+                  width: "100%",
+                  height: "100%",
                   borderRadius: "50%",
-                  background: gs.turnUid === opp1.uid ? "#0a1730" : "#0a1730cc",
-                  color: "#F5C66B",
+                  color: "#141c2f",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontWeight: 800,
-                  fontSize: "1.9cqw",
-                  boxShadow: gs.turnUid === opp1.uid ? "0 0 2cqw #F5C66B" : "none",
+                  fontWeight: 900,
+                  fontSize: "2cqw",
+                  fontFamily: "system-ui",
+                  boxShadow: gs.turnUid === opp1.uid ? "0 0 1.4cqw #F5C66B" : "none",
                 }}
               >
                 {initials(opp1.name)}
@@ -599,17 +595,17 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
             <Zone box={S.opp2Avatar}>
               <div
                 style={{
-                  height: "78%",
-                  aspectRatio: "1",
+                  width: "100%",
+                  height: "100%",
                   borderRadius: "50%",
-                  background: gs.turnUid === opp2.uid ? "#0a1730" : "#0a1730cc",
-                  color: "#F5C66B",
+                  color: "#141c2f",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontWeight: 800,
-                  fontSize: "1.9cqw",
-                  boxShadow: gs.turnUid === opp2.uid ? "0 0 2cqw #F5C66B" : "none",
+                  fontWeight: 900,
+                  fontSize: "2cqw",
+                  fontFamily: "system-ui",
+                  boxShadow: gs.turnUid === opp2.uid ? "0 0 1.4cqw #F5C66B" : "none",
                 }}
               >
                 {initials(opp2.name)}
@@ -640,14 +636,14 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
           </>
         )}
 
-        {/* STOCK (draw) */}
+        {/* STOCK (draw) — card scaled to fill the tall placeholder box */}
         <Zone
           box={S.stock}
           onClick={canDraw ? () => act("draw", () => draw(code)) : undefined}
           disabled={!canDraw}
           title="Draw from stock"
         >
-          <div style={{ position: "relative" }}>
+          <div style={{ position: "relative", transform: "scale(1.5)", transformOrigin: "center" }}>
             <BigCard faceDown />
             <span
               style={{
@@ -657,7 +653,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
                 background: "rgba(0,0,0,0.75)",
                 color: "#fff",
                 fontFamily: "monospace",
-                fontSize: "0.9cqw",
+                fontSize: "0.6cqw",
                 padding: "0.1cqw 0.4cqw",
                 borderRadius: "0.3cqw",
               }}
@@ -667,25 +663,27 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
           </div>
         </Zone>
 
-        {/* DISCARD (pick) */}
+        {/* DISCARD (pick) — card scaled to match stock */}
         <Zone
           box={S.discard}
           onClick={canPick ? () => act("pick", () => takeDiscard(code, [...selected, discardTop])) : undefined}
           disabled={!canPick && !discardTop}
           title="Pick the discard"
         >
-          {discardTop ? (
-            <BigCard card={discardTop} />
-          ) : (
-            <div
-              style={{
-                width: "4cqw",
-                height: "5.6cqw",
-                borderRadius: "0.6cqw",
-                border: "0.15cqw dashed rgba(255,255,255,0.25)",
-              }}
-            />
-          )}
+          <div style={{ transform: "scale(1.5)", transformOrigin: "center" }}>
+            {discardTop ? (
+              <BigCard card={discardTop} />
+            ) : (
+              <div
+                style={{
+                  width: "5.6cqw",
+                  height: "7.8cqw",
+                  borderRadius: "0.7cqw",
+                  border: "0.15cqw dashed rgba(255,255,255,0.25)",
+                }}
+              />
+            )}
+          </div>
         </Zone>
 
         {/* YOUR TURN badge */}
@@ -786,17 +784,17 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
         <Zone box={S.youAvatar}>
           <div
             style={{
-              height: "78%",
-              aspectRatio: "1",
+              width: "100%",
+              height: "100%",
               borderRadius: "50%",
-              background: isMyTurn ? "#0a1730" : "#0a1730cc",
-              color: "#F5C66B",
+              color: "#141c2f",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontWeight: 800,
-              fontSize: "1.9cqw",
-              boxShadow: isMyTurn ? "0 0 2cqw #F5C66B" : "none",
+              fontWeight: 900,
+              fontSize: "2cqw",
+              fontFamily: "system-ui",
+              boxShadow: isMyTurn ? "0 0 1.4cqw #F5C66B" : "none",
             }}
           >
             {initials(me?.name ?? "You")}
