@@ -101,21 +101,18 @@ const suitIdx = (c: TCard) => SUIT_ORDER.indexOf(c[1]);
 
 /**
  * A hand cluster + its rendering kind.
- *   "meld"     — complete valid drop (3+ set or 3+ same-suit run). Green shelf.
- *   "partial"  — pair (2 same rank) or partial run (2 same-suit consecutive). No shelf.
- *   "single"   — one loose card.
- * Layout order: melds first (biggest to smallest), then partials, then singletons.
+ *   "meld"  — complete valid drop (3+ set or 3+ same-suit run). Own tray, green shelf.
+ *   "loose" — every remaining card (pairs, partial runs, singletons) in ONE tray on the right.
+ * Layout: melds first, biggest to smallest; then a single loose group.
  */
-type HandGroup = { cards: TCard[]; kind: "meld" | "partial" | "single" };
+type HandGroup = { cards: TCard[]; kind: "meld" | "loose" };
 
 function groupHand(hand: TCard[]): HandGroup[] {
   const remaining = new Set(hand);
   const melds: HandGroup[] = [];
-  const partials: HandGroup[] = [];
-  const take = (cs: TCard[], kind: HandGroup["kind"]) => {
+  const takeMeld = (cs: TCard[]) => {
     const sorted = [...cs].sort((a, b) => rankIdx(a) - rankIdx(b) || suitIdx(a) - suitIdx(b));
-    if (kind === "meld") melds.push({ cards: sorted, kind });
-    else if (kind === "partial") partials.push({ cards: sorted, kind });
+    melds.push({ cards: sorted, kind: "meld" });
     for (const c of cs) remaining.delete(c);
   };
   const rem = () => [...remaining];
@@ -123,7 +120,7 @@ function groupHand(hand: TCard[]): HandGroup[] {
   // 1. Sets of 3+
   const byRank: Record<string, TCard[]> = {};
   for (const c of rem()) (byRank[c[0]] ||= []).push(c);
-  for (const list of Object.values(byRank)) if (list.length >= 3) take(list, "meld");
+  for (const list of Object.values(byRank)) if (list.length >= 3) takeMeld(list);
 
   // 2. Runs of 3+ (same suit, consecutive rank)
   const bySuit: Record<string, TCard[]> = {};
@@ -134,40 +131,20 @@ function groupHand(hand: TCard[]): HandGroup[] {
     while (i < list.length) {
       let j = i + 1;
       while (j < list.length && rankIdx(list[j]) === rankIdx(list[j - 1]) + 1) j++;
-      if (j - i >= 3) take(list.slice(i, j), "meld");
+      if (j - i >= 3) takeMeld(list.slice(i, j));
       i = j;
     }
   }
 
-  // 3. Pairs (2 same rank)
-  const rByRank: Record<string, TCard[]> = {};
-  for (const c of rem()) (rByRank[c[0]] ||= []).push(c);
-  for (const list of Object.values(rByRank)) if (list.length === 2) take(list, "partial");
-
-  // 4. Partial runs (2 consecutive same suit)
-  const rBySuit: Record<string, TCard[]> = {};
-  for (const c of rem()) (rBySuit[c[1]] ||= []).push(c);
-  for (const list of Object.values(rBySuit)) {
-    list.sort((a, b) => rankIdx(a) - rankIdx(b));
-    for (let i = 0; i < list.length - 1; i++) {
-      if (remaining.has(list[i]) && remaining.has(list[i + 1]) && rankIdx(list[i + 1]) === rankIdx(list[i]) + 1) {
-        take([list[i], list[i + 1]], "partial");
-        i++;
-      }
-    }
-  }
-
-  // Ordering:
-  //   melds first, biggest to smallest (tiebreak: lowest rank first)
-  //   then partials, ordered by lowest rank
-  //   then singletons, ordered by rank ASC — each its own single-card group
+  // Meld ordering: biggest first, tiebreak by lowest rank
   melds.sort((a, b) => b.cards.length - a.cards.length || rankIdx(a.cards[0]) - rankIdx(b.cards[0]));
-  partials.sort((a, b) => rankIdx(a.cards[0]) - rankIdx(b.cards[0]));
-  const singles: HandGroup[] = rem()
-    .sort((a, b) => rankIdx(a) - rankIdx(b))
-    .map((c) => ({ cards: [c], kind: "single" as const }));
 
-  return [...melds, ...partials, ...singles];
+  // Everything left goes into a single loose group, sorted by rank ASC then suit.
+  // Rank-ASC ordering naturally packs pairs next to each other.
+  const loose = rem().sort((a, b) => rankIdx(a) - rankIdx(b) || suitIdx(a) - suitIdx(b));
+  const groups: HandGroup[] = [...melds];
+  if (loose.length > 0) groups.push({ cards: loose, kind: "loose" });
+  return groups;
 }
 function isSet(cards: TCard[]) {
   if (cards.length < 3) return false;
@@ -840,37 +817,35 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
         >
           {groupHand(myHand).map((group, gi) => {
             const isMeld = group.kind === "meld";
-            const isSingle = group.kind === "single";
             const isActive = group.cards.some((c) => selected.includes(c));
             return (
               <div
                 key={`${gi}-${group.cards.join(",")}`}
                 style={{ display: "flex", flexDirection: "column", alignItems: "center" }}
               >
-                {/* cluster tray — singletons render without a tray */}
+                {/* tray — melds overlap tight, loose group lays cards flat with small gap */}
                 <div
                   style={{
                     display: "flex",
                     alignItems: "flex-end",
-                    padding: isSingle ? 0 : "0.55cqw 0.7cqw 0.4cqw",
-                    borderRadius: isSingle ? 0 : "0.9cqw",
-                    background: isSingle
-                      ? "transparent"
-                      : isActive
-                        ? "linear-gradient(180deg,#c9e5ff,#9ecdf5)"
-                        : "linear-gradient(180deg,#f6f1e4,#e6dcc4)",
-                    boxShadow: isSingle
-                      ? "none"
-                      : "0 0.35cqw 0.7cqw rgba(0,0,0,0.35), inset 0 0.1cqw 0 rgba(255,255,255,0.7)",
-                    border: isSingle
-                      ? "none"
-                      : isActive
-                        ? "0.15cqw solid #3aa0ff"
-                        : "0.1cqw solid rgba(0,0,0,0.15)",
+                    padding: "0.55cqw 0.7cqw 0.4cqw",
+                    borderRadius: "0.9cqw",
+                    background: isActive
+                      ? "linear-gradient(180deg,#c9e5ff,#9ecdf5)"
+                      : "linear-gradient(180deg,#f6f1e4,#e6dcc4)",
+                    boxShadow: "0 0.35cqw 0.7cqw rgba(0,0,0,0.35), inset 0 0.1cqw 0 rgba(255,255,255,0.7)",
+                    border: isActive ? "0.15cqw solid #3aa0ff" : "0.1cqw solid rgba(0,0,0,0.15)",
+                    gap: isMeld ? 0 : "0.25cqw",
                   }}
                 >
                   {group.cards.map((c, ci) => (
-                    <div key={c} style={{ marginLeft: ci === 0 ? 0 : "-2.9cqw", zIndex: ci }}>
+                    <div
+                      key={c}
+                      style={{
+                        marginLeft: isMeld && ci !== 0 ? "-2.9cqw" : 0,
+                        zIndex: ci,
+                      }}
+                    >
                       <BigCard card={c} selected={selected.includes(c)} onClick={() => toggle(c)} />
                     </div>
                   ))}
