@@ -93,12 +93,71 @@ function initials(name: string) {
 // ---- meld helpers (mirror engine rules; Ace low-only, same-suit runs, sets) ----
 const RANK_ORDER = "A23456789TJQK";
 const SUIT_ORDER = "SHDC";
-function sortHand(hand: TCard[]): TCard[] {
-  return [...hand].sort((a, b) => {
-    const dr = RANK_ORDER.indexOf(a[0]) - RANK_ORDER.indexOf(b[0]);
-    if (dr !== 0) return dr;
-    return SUIT_ORDER.indexOf(a[1]) - SUIT_ORDER.indexOf(b[1]);
-  });
+const rankIdx = (c: TCard) => RANK_ORDER.indexOf(c[0]);
+const suitIdx = (c: TCard) => SUIT_ORDER.indexOf(c[1]);
+
+/**
+ * Auto-group the hand into clusters the way a human would fan them:
+ *   1. complete sets (3+ same rank)
+ *   2. complete runs (3+ consecutive same suit)
+ *   3. pairs
+ *   4. partial runs (2 consecutive same suit)
+ *   5. leftover singletons (each its own group)
+ * Groups are ordered by their lowest rank so the fan reads left-to-right.
+ */
+function groupHand(hand: TCard[]): TCard[][] {
+  const remaining = new Set(hand);
+  const groups: TCard[][] = [];
+  const take = (cs: TCard[]) => {
+    groups.push([...cs].sort((a, b) => rankIdx(a) - rankIdx(b) || suitIdx(a) - suitIdx(b)));
+    for (const c of cs) remaining.delete(c);
+  };
+  const rem = () => [...remaining];
+
+  // 1. Sets of 3+
+  const byRank: Record<string, TCard[]> = {};
+  for (const c of rem()) (byRank[c[0]] ||= []).push(c);
+  for (const list of Object.values(byRank)) if (list.length >= 3) take(list);
+
+  // 2. Runs of 3+ (same suit, consecutive rank)
+  const bySuit: Record<string, TCard[]> = {};
+  for (const c of rem()) (bySuit[c[1]] ||= []).push(c);
+  for (const list of Object.values(bySuit)) {
+    list.sort((a, b) => rankIdx(a) - rankIdx(b));
+    let i = 0;
+    while (i < list.length) {
+      let j = i + 1;
+      while (j < list.length && rankIdx(list[j]) === rankIdx(list[j - 1]) + 1) j++;
+      if (j - i >= 3) take(list.slice(i, j));
+      i = j;
+    }
+  }
+
+  // 3. Pairs
+  const rByRank: Record<string, TCard[]> = {};
+  for (const c of rem()) (rByRank[c[0]] ||= []).push(c);
+  for (const list of Object.values(rByRank)) if (list.length === 2) take(list);
+
+  // 4. Partial runs (2 consecutive same suit)
+  const rBySuit: Record<string, TCard[]> = {};
+  for (const c of rem()) (rBySuit[c[1]] ||= []).push(c);
+  for (const list of Object.values(rBySuit)) {
+    list.sort((a, b) => rankIdx(a) - rankIdx(b));
+    for (let i = 0; i < list.length - 1; i++) {
+      if (remaining.has(list[i]) && remaining.has(list[i + 1]) && rankIdx(list[i + 1]) === rankIdx(list[i]) + 1) {
+        take([list[i], list[i + 1]]);
+        i++;
+      }
+    }
+  }
+
+  // 5. Singletons — each its own group so gaps make it clear they aren't part of a cluster
+  const singletons = rem().sort((a, b) => rankIdx(a) - rankIdx(b));
+  for (const c of singletons) take([c]);
+
+  // Order clusters by their lowest rank left-to-right
+  groups.sort((a, b) => rankIdx(a[0]) - rankIdx(b[0]));
+  return groups;
 }
 function isSet(cards: TCard[]) {
   if (cards.length < 3) return false;
@@ -667,7 +726,7 @@ export function TongitsGameTableArt({ code }: { code: string; room: Room }) {
           <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.15cqw" }}>{me?.name ?? "You"}</span>
         </Zone>
 
-        {/* your hand */}
+        {/* your hand — auto-grouped clusters, overlapping cards within each cluster */}
         <div
           style={{
             position: "absolute",
@@ -678,13 +737,24 @@ export function TongitsGameTableArt({ code }: { code: string; room: Room }) {
             display: "flex",
             alignItems: "flex-end",
             justifyContent: "center",
-            gap: "0.4cqw",
+            gap: "1.2cqw",
             padding: "0.5cqw",
-            flexWrap: "wrap",
           }}
         >
-          {sortHand(myHand).map((c) => (
-            <BigCard key={c} card={c} selected={selected.includes(c)} onClick={() => toggle(c)} />
+          {groupHand(myHand).map((group, gi) => (
+            <div
+              key={`${gi}-${group.join(",")}`}
+              style={{ display: "flex", alignItems: "flex-end" }}
+            >
+              {group.map((c, ci) => (
+                <div
+                  key={c}
+                  style={{ marginLeft: ci === 0 ? 0 : "-1.8cqw", zIndex: ci }}
+                >
+                  <BigCard card={c} selected={selected.includes(c)} onClick={() => toggle(c)} />
+                </div>
+              ))}
+            </div>
           ))}
         </div>
       </div>
