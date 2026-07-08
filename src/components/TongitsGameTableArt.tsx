@@ -92,6 +92,14 @@ function initials(name: string) {
 
 // ---- meld helpers (mirror engine rules; Ace low-only, same-suit runs, sets) ----
 const RANK_ORDER = "A23456789TJQK";
+const SUIT_ORDER = "SHDC";
+function sortHand(hand: TCard[]): TCard[] {
+  return [...hand].sort((a, b) => {
+    const dr = RANK_ORDER.indexOf(a[0]) - RANK_ORDER.indexOf(b[0]);
+    if (dr !== 0) return dr;
+    return SUIT_ORDER.indexOf(a[1]) - SUIT_ORDER.indexOf(b[1]);
+  });
+}
 function isSet(cards: TCard[]) {
   if (cards.length < 3) return false;
   return cards.every((c) => c[0] === cards[0][0]);
@@ -675,7 +683,7 @@ export function TongitsGameTableArt({ code }: { code: string; room: Room }) {
             flexWrap: "wrap",
           }}
         >
-          {myHand.map((c) => (
+          {sortHand(myHand).map((c) => (
             <BigCard key={c} card={c} selected={selected.includes(c)} onClick={() => toggle(c)} />
           ))}
         </div>
