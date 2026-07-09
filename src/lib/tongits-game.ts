@@ -78,6 +78,20 @@ export const splitJackpot = (code: string) =>
   call<{ ok: boolean; waiting?: boolean; split?: boolean }>("splitTongitsJackpot", { code });
 
 // ===== hooks =====
+/**
+ * Firestore rejects nested arrays, so the CF stores each exposed meld as
+ * { cards: Card[] } on the wire. Unwrap back to Card[][] here so every
+ * consumer keeps the natural shape.
+ */
+function decodeMelds(raw: unknown): Record<string, Card[][]> {
+  const out: Record<string, Card[][]> = {};
+  const src = (raw ?? {}) as Record<string, Array<{ cards?: Card[] } | Card[]>>;
+  for (const uid of Object.keys(src)) {
+    out[uid] = (src[uid] ?? []).map((entry) => (Array.isArray(entry) ? entry : entry?.cards ?? []));
+  }
+  return out;
+}
+
 export function useGameState(code: string | null) {
   const [gs, setGs] = useState<TongitsGameState | null>(null);
   useEffect(() => {
@@ -89,7 +103,12 @@ export function useGameState(code: string | null) {
     if (!db) return;
     return onSnapshot(
       doc(db, "game_rooms", code, "game", "state"),
-      (snap) => setGs(snap.exists() ? (snap.data() as TongitsGameState) : null),
+      (snap) => {
+        if (!snap.exists()) return setGs(null);
+        const data = snap.data() as TongitsGameState;
+        data.melds = decodeMelds(data.melds);
+        setGs(data);
+      },
       () => setGs(null)
     );
   }, [code]);

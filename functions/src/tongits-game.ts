@@ -47,6 +47,26 @@ type GamePublic = {
   lastAction?: string;
 };
 
+/**
+ * Firestore doesn't allow nested arrays (Card[][]), so we serialize each
+ * exposed meld as an object { cards: Card[] } before writing and unwrap on
+ * read. Callers keep working with the natural Card[][] type in memory.
+ */
+type MeldsWire = Record<string, { cards: Card[] }[]>;
+function encodeMelds(m: Record<string, Card[][]>): MeldsWire {
+  const out: MeldsWire = {};
+  for (const uid of Object.keys(m)) out[uid] = m[uid].map((cards) => ({ cards }));
+  return out;
+}
+function decodeMelds(raw: unknown): Record<string, Card[][]> {
+  const out: Record<string, Card[][]> = {};
+  const src = (raw ?? {}) as Record<string, Array<{ cards?: Card[] } | Card[]>>;
+  for (const uid of Object.keys(src)) {
+    out[uid] = (src[uid] ?? []).map((entry) => (Array.isArray(entry) ? entry : entry?.cards ?? []));
+  }
+  return out;
+}
+
 // ===== refs =====
 const roomRef = (code: string) => db.doc(`game_rooms/${code}`);
 const gsRef = (code: string) => db.doc(`game_rooms/${code}/game/state`);
@@ -98,6 +118,8 @@ async function loadCtx(tx: Transaction, code: string): Promise<Ctx> {
   const gsSnap = await tx.get(gsRef(code));
   if (!gsSnap.exists) throw new HttpsError("failed-precondition", "No active game.");
   const gs = gsSnap.data() as GamePublic;
+  // Un-nest the melds wire format so in-memory code stays Card[][].
+  gs.melds = decodeMelds(gs.melds);
   const deckSnap = await tx.get(deckRef(code));
   const deck = (deckSnap.exists ? (deckSnap.data() as { stock: Card[] }).stock : []) ?? [];
   const hands: Record<string, Card[]> = {};
@@ -139,7 +161,8 @@ function commitProgress(
 ) {
   refreshCounts(ctx);
   ctx.gs.lastAction = action;
-  tx.set(gsRef(code), ctx.gs);
+  // Firestore can't take nested arrays, so encode melds before persist.
+  tx.set(gsRef(code), { ...ctx.gs, melds: encodeMelds(ctx.gs.melds) });
   tx.set(deckRef(code), { stock: ctx.deck });
   const uidsToWrite = changedHandUids ?? ctx.gs.seats.map((s) => s.uid);
   for (const uid of uidsToWrite) tx.set(handRef(code, uid), { cards: ctx.hands[uid] });
@@ -316,14 +339,14 @@ async function resolveAndSettle(
       winnerName,
       jackpotWon: jackpot,
       values,
-      melds: ctx.gs.melds,
+      melds: encodeMelds(ctx.gs.melds),
       completedAt: now,
     },
   });
 
   // Tear down the live game (hands + deck), leave a small ended marker.
   ctx.gs.status = "ended";
-  tx.set(gsRef(code), { ...ctx.gs, status: "ended" });
+  tx.set(gsRef(code), { ...ctx.gs, status: "ended", melds: encodeMelds(ctx.gs.melds) });
   tx.set(deckRef(code), { stock: [] });
   for (const s of seats) tx.set(handRef(code, s.uid), { cards: [] });
 }
@@ -415,7 +438,7 @@ export const startTongitsGame = onCall(async (request) => {
       tx.set(handRef(code, s.uid), { cards: handMap[s.uid] });
     }
     tx.set(deckRef(code), { stock });
-    tx.set(gsRef(code), gs);
+    tx.set(gsRef(code), { ...gs, melds: encodeMelds(gs.melds) });
     tx.update(roomRef(code), {
       players: { ...room.players, ...jackpotContrib },
       status: "in_game",
