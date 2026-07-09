@@ -49,8 +49,13 @@ export function useImageAvailable(src: string) {
   return ok;
 }
 
-/** True when the viewport is at least `min` px wide (painted art is desktop-only). */
-export function useIsWide(min = 900) {
+/**
+ * True when the viewport is at least `min` px wide.
+ * Default 700 covers most phones in landscape (iPhone 13/14 = 844, iPhone SE = 667,
+ * common Android = 800+) so the painted art activates once portrait mobiles
+ * rotate — matching the /tongits section's landscape-only gate.
+ */
+export function useIsWide(min = 700) {
   const [wide, setWide] = useState(true);
   useEffect(() => {
     const check = () => setWide(window.innerWidth >= min);
