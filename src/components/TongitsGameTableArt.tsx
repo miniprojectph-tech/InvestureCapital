@@ -270,6 +270,36 @@ function isRun(cards: TCard[]) {
 function isValidMeld(cards: TCard[]) {
   return isSet(cards) || isRun(cards);
 }
+/**
+ * Return two hand cards that, together with `top`, form a valid 3-card meld —
+ * so PICK can be enabled automatically the moment such a combo exists in hand.
+ * Returns null if no combo works.
+ */
+function findAutoPickWith(hand: TCard[], top: TCard): TCard[] | null {
+  const topIdx = RANK_ORDER.indexOf(top[0]);
+
+  // Set: need two more cards of the same rank as the top.
+  const sameRank = hand.filter((c) => c[0] === top[0]);
+  if (sameRank.length >= 2) return [sameRank[0], sameRank[1]];
+
+  // Run: two same-suit cards whose ranks combine with top into a 3-run.
+  // Three window configurations: [top-2, top-1, top], [top-1, top, top+1], [top, top+1, top+2].
+  const sameSuit = hand.filter((c) => c[1] === top[1]);
+  const findByIdx = (targetIdx: number) => sameSuit.find((c) => RANK_ORDER.indexOf(c[0]) === targetIdx);
+  const windows: Array<[number, number]> = [
+    [topIdx - 2, topIdx - 1],
+    [topIdx - 1, topIdx + 1],
+    [topIdx + 1, topIdx + 2],
+  ];
+  for (const [a, b] of windows) {
+    if (a < 0 || b >= RANK_ORDER.length) continue;
+    const c1 = findByIdx(a);
+    const c2 = findByIdx(b);
+    if (c1 && c2 && c1 !== c2) return [c1, c2];
+  }
+  return null;
+}
+
 function canSapawAny(card: TCard, allMelds: TCard[][]) {
   for (const m of allMelds) {
     // set: same rank as the meld
@@ -589,7 +619,13 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
   const anySapawPossible = isMyTurn && gs.phase === "discard" && myHand.some((c) => canSapawAny(c, allExposedMelds));
 
   const canDraw = isMyTurn && gs.phase === "draw" && gs.stockCount > 0;
-  const canPick = isMyTurn && gs.phase === "draw" && !!discardTop && selected.length >= 2 && isValidMeld([...selected, discardTop]);
+  // Auto-detect a valid pick: any two cards in hand that would form a set or
+  // run WITH the top discard. Enables PICK without the user having to select
+  // the meld cards first; on click we auto-select them and take the discard.
+  const autoPickCards: TCard[] | null = discardTop ? findAutoPickWith(myHand, discardTop) : null;
+  const userSelectedPick = !!discardTop && selected.length >= 2 && isValidMeld([...selected, discardTop]);
+  const canPick = isMyTurn && gs.phase === "draw" && !!discardTop && (userSelectedPick || !!autoPickCards);
+  const pickCards: TCard[] = userSelectedPick ? selected : (autoPickCards ?? []);
 
   function toggle(card: TCard) {
     setError(null);
@@ -697,7 +733,15 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
       label: "PICK",
       enabled: canPick,
       busyKey: "pick",
-      onClick: () => act("pick", () => takeDiscard(code, [...selected, discardTop]), { hideCards: selected }),
+      onClick: () => {
+        // Show the user which cards we're picking with, then send the move.
+        if (!userSelectedPick) setSelected(pickCards);
+        return act(
+          "pick",
+          () => takeDiscard(code, [...pickCards, discardTop]),
+          { hideCards: pickCards }
+        );
+      },
       disabledHint: pickDisabledHint,
     });
   } else if (anySapawPossible) {
