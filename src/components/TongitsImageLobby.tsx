@@ -91,7 +91,7 @@ function Zone({
   );
 }
 
-export function TongitsImageLobby() {
+export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }) {
   const router = useRouter();
   const { user, demoMode } = useAuth();
   const { state } = useGameState();
@@ -135,6 +135,12 @@ export function TongitsImageLobby() {
       await joinRoom(code);
       router.push(`/tongits/room/${code}`);
     } catch (e) {
+      // Ghost-room recovery: if the server says we're already in it, just go in.
+      const msg = e instanceof Error ? e.message.toLowerCase() : "";
+      if (msg.includes("already in this room") || msg.includes("already in the room")) {
+        router.push(`/tongits/room/${code}`);
+        return;
+      }
       fail(e);
     } finally {
       setBusy(null);
@@ -155,6 +161,12 @@ export function TongitsImageLobby() {
       >
         {/* Baked art */}
         <img src={assets.lobbyFull} alt="Tongits lobby" className="absolute inset-0 w-full h-full object-contain" />
+
+        {topBanner && (
+          <div className="absolute left-1/2 -translate-x-1/2 z-30" style={{ top: "2%", width: "56%" }}>
+            {topBanner}
+          </div>
+        )}
 
         {error && (
           <div

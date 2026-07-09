@@ -38,6 +38,9 @@ type Room = {
   status: RoomStatus;
   chatEnabled: boolean;
   players: Record<string, RoomPlayer>;
+  // Array mirror of players keys — indexed so the lobby can find a user's
+  // active room with array-contains without a per-user field-path index.
+  playerUids: string[];
   gamesPlayed: number;
   createdAt: number;
   updatedAt: number;
@@ -233,6 +236,7 @@ export const createTongitsRoom = onCall(async (request) => {
       players: {
         [uid]: { uid, name, seat: 0, isReady: false, agreedToChallenge: false, joinedAt: now, jackpotContributed: 0 },
       },
+      playerUids: [uid],
       gamesPlayed: 0,
       createdAt: now,
       updatedAt: now,
@@ -279,6 +283,7 @@ export const joinTongitsRoom = onCall(async (request) => {
     room.players[uid] = {
       uid, name, seat, isReady: false, agreedToChallenge: false, joinedAt: now, jackpotContributed: 0,
     };
+    room.playerUids = Object.keys(room.players);
     await finalizeRoom(tx, room, now);
     return { code };
   });
@@ -358,6 +363,7 @@ export const leaveTongitsRoom = onCall(async (request) => {
     }
     tx.update(roomRef(code), {
       players: room.players,
+      playerUids: Object.keys(room.players),
       creatorUserId: room.creatorUserId,
       status: "open",
       updatedAt: now,

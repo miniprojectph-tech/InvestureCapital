@@ -7,20 +7,39 @@ import { Plus, LogIn, Loader2, Globe, Lock, Minus, ChevronRight, Trophy } from "
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useGameState } from "@/lib/game";
-import { useOpenRooms, createRoom, joinRoom, seatedPlayers, MIN_CHALLENGE, MAX_PLAYERS } from "@/lib/tongits";
+import { useOpenRooms, useMyActiveRoom, createRoom, joinRoom, seatedPlayers, MIN_CHALLENGE, MAX_PLAYERS } from "@/lib/tongits";
 import { useTongitsLeaderboard, rowPoints, useImageAvailable, useIsWide } from "@/lib/tongits-social";
 import { TongitsShell, ArcadePanel, T } from "@/components/TongitsShell";
 import { TongitsImageLobby } from "@/components/TongitsImageLobby";
 import { useTongitsAssets } from "@/lib/tongitsAssets";
 
 export default function TongitsLobbyPage() {
+  const router = useRouter();
+  const { user } = useAuth();
   const assets = useTongitsAssets();
   const hasArt = useImageAvailable(assets.lobbyFull);
   const wide = useIsWide();
-  // Use the painted lobby art on wide screens once the file is present; otherwise
-  // fall back to the responsive CSS arcade lobby (also the mobile experience).
-  if (hasArt && wide) return <TongitsImageLobby />;
-  return <CssLobby />;
+  const activeRoom = useMyActiveRoom(user?.uid ?? null);
+  // Any lobby variant (fancy or CSS) — if the user is still a member of a
+  // non-terminated room, offer to route them back in so they don't get stuck.
+  const banner = activeRoom ? (
+    <button
+      onClick={() => router.push(`/tongits/room/${activeRoom.roomCode}`)}
+      className="w-full mb-3 px-3 py-2.5 rounded-lg bg-gold/15 border border-gold/50 text-[12px] text-gold text-left flex items-center justify-between hover:bg-gold/25 transition group"
+    >
+      <span className="flex flex-col">
+        <span className="font-bold uppercase tracking-wider text-[11px]">You have an active room</span>
+        <span className="text-white/80 text-[12px] font-normal">
+          Room {activeRoom.roomCode} · {activeRoom.status.replace("_", " ")}
+        </span>
+      </span>
+      <span className="text-gold font-semibold whitespace-nowrap flex items-center gap-1">
+        Return <ChevronRight className="w-4 h-4 -mr-1 group-hover:translate-x-0.5 transition" />
+      </span>
+    </button>
+  ) : null;
+  if (hasArt && wide) return <TongitsImageLobby topBanner={banner} />;
+  return <CssLobby topBanner={banner} />;
 }
 
 const SUITS = ["♠", "♣", "♥", "♦"];
@@ -33,7 +52,7 @@ const ACCENTS = [
   { from: "#2a63c9", to: "#123f8a", ring: "#5fa8f5" },
 ];
 
-function CssLobby() {
+function CssLobby({ topBanner }: { topBanner?: React.ReactNode }) {
   const router = useRouter();
   const { demoMode } = useAuth();
   const { state } = useGameState();
@@ -75,6 +94,13 @@ function CssLobby() {
       await joinRoom(code);
       router.push(`/tongits/room/${code}`);
     } catch (e) {
+      // If the join server said "you're already in this room", route straight
+      // to it — the user got separated from their seat and just needs to go back.
+      const msg = e instanceof Error ? e.message.toLowerCase() : "";
+      if (msg.includes("already in this room") || msg.includes("already in the room")) {
+        router.push(`/tongits/room/${code}`);
+        return;
+      }
       fail(e);
     } finally {
       setBusy(null);
@@ -83,6 +109,7 @@ function CssLobby() {
 
   return (
     <TongitsShell>
+      {topBanner}
       {error && (
         <div className="mb-3 px-3 py-2 bg-red-500/20 border border-red-400/40 rounded-lg text-[12px] text-red-200">
           {error}

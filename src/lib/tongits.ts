@@ -51,6 +51,9 @@ export type TongitsRoom = {
   status: TongitsStatus;
   chatEnabled: boolean;
   players: Record<string, TongitsPlayer>;
+  // Array mirror of `players` keys — lets the lobby find a user's active room
+  // via array-contains without needing a per-user field-path index.
+  playerUids?: string[];
   gamesPlayed: number;
   createdAt: number;
   updatedAt: number;
@@ -158,6 +161,43 @@ export function useOpenRooms() {
   }, [demoMode]);
 
   return { rooms, loading };
+}
+
+/**
+ * Live "my currently-active room" lookup. Returns any room where this uid is
+ * in playerUids and the room hasn't reached a terminal state — so a user who
+ * dropped connection mid-game can be shepherded back in from the lobby.
+ */
+export function useMyActiveRoom(uid: string | null) {
+  const [room, setRoom] = useState<TongitsRoom | null>(null);
+  useEffect(() => {
+    if (!uid) {
+      setRoom(null);
+      return;
+    }
+    const { db } = getFirebase();
+    if (!db) return;
+    const q = query(
+      collection(db, "game_rooms"),
+      where("playerUids", "array-contains", uid),
+      limit(5)
+    );
+    return onSnapshot(
+      q,
+      (snap) => {
+        const rows = snap.docs.map((d) => d.data() as TongitsRoom);
+        // Prefer in-progress states first, then open/ready, then post_game.
+        const rank = (s: string) =>
+          s === "in_game" ? 0 : s === "ready" ? 1 : s === "open" ? 2 : s === "post_game" ? 3 : 99;
+        const live = rows
+          .filter((r) => r.status !== "cancelled" && r.status !== "completed")
+          .sort((a, b) => rank(a.status) - rank(b.status));
+        setRoom(live[0] ?? null);
+      },
+      () => setRoom(null)
+    );
+  }, [uid]);
+  return room;
 }
 
 /** Live single room. */
