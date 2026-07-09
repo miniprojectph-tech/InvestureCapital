@@ -587,7 +587,20 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
       await fn();
       setSelected([]);
     } catch (e) {
-      setError(e instanceof Error ? e.message.replace(/^.*\/ /, "") : "Move failed");
+      const raw = e instanceof Error ? e.message : "";
+      const stripped = raw.replace(/^.*\/ /, "");
+      // Cloud Function errors sometimes surface only as the raw code (e.g.
+      // "INTERNAL"). Translate common codes to something users can act on.
+      const code = stripped.toUpperCase();
+      const friendly =
+        code === "INTERNAL" || code === "UNKNOWN"
+          ? "Something went wrong on the server. Please try again."
+          : code === "UNAUTHENTICATED"
+            ? "Please sign in again to continue."
+            : code === "DEADLINE_EXCEEDED" || code === "DEADLINE-EXCEEDED"
+              ? "That took too long — check your connection and try again."
+              : stripped || "Move failed";
+      setError(friendly);
     } finally {
       setBusy(null);
     }
@@ -603,13 +616,38 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
   const inDrawPhase = isMyTurn && gs.phase === "draw";
   const strip = anySapawPossible ? assets.actionButtons5 : assets.actionButtons4;
   const stripCfg = anySapawPossible ? PILL5 : PILL4;
+  // Explain why a pill is grayed out when the user has selected a valid group but
+  // the engine won't let them act yet. Fires on click of the disabled button.
+  const dropDisabledHint = inDrawPhase && selected.length >= 3 && isValidMeld(selected)
+    ? "Draw a card first (tap DRAW or the deck), then drop your meld."
+    : selected.length > 0 && selected.length < 3
+      ? "Melds need at least 3 cards."
+      : selected.length >= 3 && !isValidMeld(selected)
+        ? "That group isn't a valid meld (3+ same rank, or 3+ same-suit run)."
+        : "Select a valid meld from your hand first.";
   const pillActions = [
-    { label: "DROP", enabled: canDrop, busyKey: "drop", onClick: () => act("drop", () => meld(code, selected)) },
-    { label: "FIGHT", enabled: canFight, busyKey: "fight", onClick: () => act("fight", () => callTongits(code)) },
-    { label: "UNGROUP", enabled: canUngroup, busyKey: "ungroup", onClick: () => setSelected([]) },
+    {
+      label: "DROP",
+      enabled: canDrop,
+      busyKey: "drop",
+      onClick: () => act("drop", () => meld(code, selected)),
+      disabledHint: dropDisabledHint,
+    },
+    {
+      label: "FIGHT",
+      enabled: canFight,
+      busyKey: "fight",
+      onClick: () => act("fight", () => callTongits(code)),
+      disabledHint: inDrawPhase
+        ? "You can only fight during the discard phase."
+        : !iHaveMeld
+          ? "You need an exposed meld before you can fight."
+          : undefined,
+    },
+    { label: "UNGROUP", enabled: canUngroup, busyKey: "ungroup", onClick: () => setSelected([]), disabledHint: undefined as string | undefined },
     inDrawPhase
-      ? { label: "DRAW", enabled: canDraw, busyKey: "draw", onClick: () => act("draw", () => draw(code)) }
-      : { label: "DUMP", enabled: canDump, busyKey: "dump", onClick: () => act("dump", () => discard(code, selected[0])) },
+      ? { label: "DRAW", enabled: canDraw, busyKey: "draw", onClick: () => act("draw", () => draw(code)), disabledHint: undefined as string | undefined }
+      : { label: "DUMP", enabled: canDump, busyKey: "dump", onClick: () => act("dump", () => discard(code, selected[0])), disabledHint: selected.length !== 1 ? "Select exactly one card to dump." : undefined },
   ];
   if (anySapawPossible) {
     pillActions.push({
@@ -617,6 +655,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
       enabled: sapawEligible,
       busyKey: "sapaw-hint",
       onClick: () => setError("Tap an exposed meld to sapaw onto it."),
+      disabledHint: selected.length !== 1 ? "Select one card to sapaw." : undefined,
     });
   }
 
@@ -775,7 +814,20 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
           disabled={!canDraw}
           title="Draw from stock"
         >
-          <div style={{ position: "relative", transform: "scale(1.5)", transformOrigin: "center" }}>
+          <style>{`
+            @keyframes tongitsPull {
+              0%, 100% { transform: scale(1.5); }
+              50% { transform: scale(1.58); filter: drop-shadow(0 0 0.8cqw rgba(245,198,107,0.65)); }
+            }
+          `}</style>
+          <div
+            style={{
+              position: "relative",
+              transform: "scale(1.5)",
+              transformOrigin: "center",
+              animation: canDraw ? "tongitsPull 1.4s ease-in-out infinite" : undefined,
+            }}
+          >
             <BigCard faceDown />
             <span
               style={{
@@ -864,11 +916,18 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
           {stripCfg.pills.map((p, i) => {
             const a = pillActions[i];
             const isBusy = busy === a.busyKey;
+            const clickable = (a.enabled && !isBusy) || (!a.enabled && a.disabledHint);
             return (
               <button
                 key={a.label}
-                onClick={a.enabled && !isBusy ? a.onClick : undefined}
-                disabled={!a.enabled || isBusy}
+                onClick={
+                  a.enabled && !isBusy
+                    ? a.onClick
+                    : !a.enabled && a.disabledHint
+                      ? () => setError(a.disabledHint!)
+                      : undefined
+                }
+                disabled={isBusy}
                 style={{
                   position: "absolute",
                   left: `${p.l * 100}%`,
@@ -877,7 +936,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
                   height: `${stripCfg.h * 100}%`,
                   background: "transparent",
                   border: "none",
-                  cursor: a.enabled ? "pointer" : "not-allowed",
+                  cursor: clickable ? "pointer" : "not-allowed",
                   opacity: a.enabled ? 1 : 0.4,
                   display: "flex",
                   alignItems: "center",

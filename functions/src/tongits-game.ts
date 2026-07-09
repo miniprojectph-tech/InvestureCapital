@@ -123,13 +123,26 @@ function refreshCounts(ctx: Ctx) {
   ctx.gs.stockCount = ctx.deck.length;
 }
 
-/** Persist the in-progress game (no resolution). */
-function commitProgress(tx: Transaction, code: string, ctx: Ctx, action: string) {
+/**
+ * Persist the in-progress game (no resolution).
+ * `changedHandUids` should list only the players whose cards actually moved
+ * (usually just the acting player) so we skip needless writes; if omitted, all
+ * hands are written (used by advanceTurn callers that don't touch hands but
+ * historically wrote them all).
+ */
+function commitProgress(
+  tx: Transaction,
+  code: string,
+  ctx: Ctx,
+  action: string,
+  changedHandUids?: string[]
+) {
   refreshCounts(ctx);
   ctx.gs.lastAction = action;
   tx.set(gsRef(code), ctx.gs);
   tx.set(deckRef(code), { stock: ctx.deck });
-  for (const s of ctx.gs.seats) tx.set(handRef(code, s.uid), { cards: ctx.hands[s.uid] });
+  const uidsToWrite = changedHandUids ?? ctx.gs.seats.map((s) => s.uid);
+  for (const uid of uidsToWrite) tx.set(handRef(code, uid), { cards: ctx.hands[uid] });
   tx.update(roomRef(code), { updatedAt: Date.now() });
 }
 
@@ -431,7 +444,7 @@ export const tongitsDraw = onCall({ minInstances: 1 }, async (request) => {
     ctx.hands[uid].push(card);
     ctx.gs.phase = "discard";
     ctx.gs.consecutiveTimeouts[uid] = 0;
-    commitProgress(tx, code, ctx, `${ctx.gs.seats.find((s) => s.uid === uid)?.name} drew`);
+    commitProgress(tx, code, ctx, `${ctx.gs.seats.find((s) => s.uid === uid)?.name} drew`, [uid]);
     return { ok: true };
   });
 });
@@ -459,7 +472,7 @@ export const tongitsTakeDiscard = onCall({ minInstances: 1 }, async (request) =>
     ctx.gs.phase = "discard";
     ctx.gs.consecutiveTimeouts[uid] = 0;
     if (await checkTongits(tx, code, ctx, uid)) return { ok: true, ended: true };
-    commitProgress(tx, code, ctx, "took discard + melded");
+    commitProgress(tx, code, ctx, "took discard + melded", [uid]);
     return { ok: true };
   });
 });
@@ -477,7 +490,7 @@ export const tongitsMeld = onCall({ minInstances: 1 }, async (request) => {
     ctx.gs.melds[uid].push(cards);
     ctx.gs.hasExposed[uid] = true;
     if (await checkTongits(tx, code, ctx, uid)) return { ok: true, ended: true };
-    commitProgress(tx, code, ctx, "melded");
+    commitProgress(tx, code, ctx, "melded", [uid]);
     return { ok: true };
   });
 });
@@ -500,7 +513,7 @@ export const tongitsSapaw = onCall({ minInstances: 1 }, async (request) => {
     target[meldIndex] = next;
     ctx.hands[uid].splice(ctx.hands[uid].indexOf(card), 1);
     if (await checkTongits(tx, code, ctx, uid)) return { ok: true, ended: true };
-    commitProgress(tx, code, ctx, "sapaw");
+    commitProgress(tx, code, ctx, "sapaw", [uid]);
     return { ok: true };
   });
 });
@@ -519,7 +532,7 @@ export const tongitsDiscard = onCall({ minInstances: 1 }, async (request) => {
     // Discarding your last card is a Tongits.
     if (await checkTongits(tx, code, ctx, uid)) return { ok: true, ended: true };
     advanceTurn(ctx, now);
-    commitProgress(tx, code, ctx, "discarded");
+    commitProgress(tx, code, ctx, "discarded", [uid]);
     return { ok: true };
   });
 });
@@ -587,7 +600,7 @@ export const enforceTongitsTimeout = onCall(async (request) => {
       return { ok: true, ended: true };
     }
     advanceTurn(ctx, now);
-    commitProgress(tx, code, ctx, "auto-played (timeout)");
+    commitProgress(tx, code, ctx, "auto-played (timeout)", [cur]);
     return { ok: true, autoPlayed: true };
   });
 });
