@@ -17,11 +17,50 @@ const RESULT_LABEL: Record<string, string> = {
 
 const AUTO_QUIT_MS = 15_000;
 
+// Slot bounds measured from public/tongits/victory-popup.png (1672x941).
+// If the base image changes, re-run scripts/measure-victory.cjs and update these.
+const S = {
+  winnerAvatar: { l: 25, t: 30, w: 10, h: 20 },
+  winnerName: { l: 45, t: 32, w: 34, h: 9 },
+  winnerPoints: { l: 47, t: 50, w: 21, h: 6 },
+  ru1Avatar: { l: 27, t: 65, w: 4, h: 7 },
+  ru1Text: { l: 33, t: 65, w: 45, h: 7 },
+  ru1Points: { l: 79, t: 65, w: 13, h: 7 },
+  ru2Avatar: { l: 27, t: 76, w: 4, h: 7 },
+  ru2Text: { l: 33, t: 76, w: 45, h: 7 },
+  ru2Points: { l: 79, t: 76, w: 13, h: 7 },
+  continueBtn: { l: 20, t: 87, w: 24, h: 10 },
+  timerBadge: { l: 47, t: 87, w: 6, h: 10 },
+  quitBtn: { l: 56, t: 87, w: 24, h: 10 },
+  resultLabel: { l: 30, t: 21, w: 40, h: 5 },
+};
+
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   if (parts.length === 0) return "?";
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+type Box = { l: number; t: number; w: number; h: number };
+function Slot({ box, children, style }: { box: Box; children?: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: `${box.l}%`,
+        top: `${box.t}%`,
+        width: `${box.w}%`,
+        height: `${box.h}%`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
 }
 
 /**
@@ -42,9 +81,8 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
   const winner = seats.find((s) => s.uid === r.winnerUserId);
   const losers = seats.filter((s) => s.uid !== r.winnerUserId);
   const iAmWinner = user?.uid === r.winnerUserId;
-  const myNet = iAmWinner ? C * seats.length + r.jackpotWon : -C;
+  const winnerPayout = C * seats.length + r.jackpotWon;
 
-  // Countdown → auto-quit to lobby.
   useEffect(() => {
     const start = Date.now();
     const interval = setInterval(() => {
@@ -91,207 +129,199 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
   }
 
   const secondsLeft = Math.ceil(msLeft / 1000);
-  const gold = "#F5C66B";
-  const cream = "#f4ead2";
-  const border = "#c9a559";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div
         className="relative"
         style={{
-          width: "min(92vw, 620px)",
-          aspectRatio: "16 / 11",
+          width: "min(94vw, calc(94dvh * 1672 / 941))",
+          aspectRatio: "1672 / 941",
           containerType: "inline-size",
         }}
       >
-        {/* Optional baked art — a transparent PNG frame with VICTORY ribbon + slots. */}
         <img
           src={assets.victoryPopup}
           alt=""
-          onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-          className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+          className="absolute inset-0 w-full h-full object-contain pointer-events-none select-none"
+          draggable={false}
         />
 
-        {/* Fallback frame — renders when the PNG isn't uploaded / fails to load. */}
-        <div
-          className="absolute inset-0 rounded-3xl"
-          style={{
-            background: `linear-gradient(180deg, ${cream}, #e6d9b0)`,
-            border: `4px solid ${border}`,
-            boxShadow: "0 10px 40px rgba(0,0,0,0.55)",
-            zIndex: -1,
-          }}
-        />
-
-        {/* Title */}
-        <div className="absolute top-0 left-0 right-0 flex flex-col items-center -translate-y-1/3">
-          <div
-            className="text-center px-8 py-2 rounded-2xl"
-            style={{
-              background: "linear-gradient(180deg, #2c4b8f, #163170)",
-              border: `3px solid ${gold}`,
-              fontWeight: 900,
-              letterSpacing: "0.15em",
-              fontSize: "clamp(28px, 5cqw, 44px)",
-              color: gold,
-              textShadow: "0 3px 0 rgba(0,0,0,0.35)",
-            }}
-          >
-            {iAmWinner ? "VICTORY!" : "MATCH OVER"}
-          </div>
-          <div
-            className="text-center px-4 py-1 mt-1 rounded-md"
-            style={{
-              background: "#8f1d2a",
-              color: "#fff5d8",
-              fontWeight: 800,
-              fontSize: "clamp(10px, 1.4cqw, 13px)",
-              letterSpacing: "0.1em",
-            }}
-          >
-            {iAmWinner ? "TONGITS CHAMPION!" : RESULT_LABEL[r.resultType] ?? r.resultType}
-          </div>
-        </div>
-
-        {/* Winner row */}
-        <div className="absolute top-[22%] left-[8%] right-[8%] flex items-center gap-4">
-          <div
-            className="flex-shrink-0 rounded-full flex items-center justify-center relative"
-            style={{
-              width: "clamp(64px, 12cqw, 96px)",
-              height: "clamp(64px, 12cqw, 96px)",
-              background: "linear-gradient(180deg, #2c4b8f, #163170)",
-              border: `4px solid ${gold}`,
-              color: gold,
-              fontWeight: 900,
-              fontSize: "clamp(20px, 3cqw, 28px)",
-            }}
-          >
-            {winner ? initials(winner.name) : "?"}
-            <div
-              className="absolute -bottom-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-md"
+        {/* Result label ribbon (only for losers — winners have "TONGITS CHAMPION!" baked in) */}
+        {!iAmWinner && (
+          <Slot box={S.resultLabel}>
+            <span
               style={{
-                background: "#8f1d2a",
                 color: "#fff5d8",
-                fontWeight: 900,
-                fontSize: "clamp(9px, 1.1cqw, 11px)",
-                letterSpacing: "0.08em",
-                whiteSpace: "nowrap",
-              }}
-            >
-              WINNER
-            </div>
-          </div>
-          <div className="flex-1 min-w-0 flex flex-col gap-1">
-            <div
-              className="px-4 py-2 rounded-lg truncate"
-              style={{
-                background: `linear-gradient(180deg, ${cream}, #d9c99b)`,
-                border: `2px solid ${border}`,
-                color: "#4a2f0d",
+                background: "#8f1d2a",
                 fontWeight: 800,
-                fontSize: "clamp(14px, 2.4cqw, 22px)",
+                fontSize: "1.3cqw",
+                letterSpacing: "0.08em",
+                padding: "0.4cqw 1.2cqw",
+                borderRadius: "0.5cqw",
               }}
             >
-              {winner?.name ?? "Winner"}
-            </div>
-            <div
-              className="px-4 py-1.5 rounded-lg text-center"
-              style={{
-                background: "linear-gradient(180deg, #2c4b8f, #163170)",
-                border: `2px solid ${gold}`,
-                color: gold,
-                fontWeight: 900,
-                fontSize: "clamp(14px, 2.4cqw, 20px)",
-                fontFamily: "monospace",
-              }}
-            >
-              +{C * seats.length + r.jackpotWon} GP
-            </div>
-          </div>
-        </div>
+              {RESULT_LABEL[r.resultType] ?? r.resultType}
+            </span>
+          </Slot>
+        )}
+
+        {/* Winner avatar — initials sit inside the crowned blue circle */}
+        <Slot box={S.winnerAvatar}>
+          <span style={{ color: "#F5C66B", fontWeight: 900, fontSize: "3.2cqw", fontFamily: "system-ui" }}>
+            {winner ? initials(winner.name) : "?"}
+          </span>
+        </Slot>
+
+        {/* Winner name — big tan banner on the right of the avatar */}
+        <Slot box={S.winnerName}>
+          <span
+            style={{
+              color: "#4a2f0d",
+              fontWeight: 900,
+              fontSize: "2.6cqw",
+              letterSpacing: "0.02em",
+              padding: "0 1cqw",
+              maxWidth: "100%",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+            }}
+          >
+            {winner?.name ?? "Winner"}
+          </span>
+        </Slot>
+
+        {/* Points banner — blue bar below the name */}
+        <Slot box={S.winnerPoints}>
+          <span
+            style={{
+              color: "#F5C66B",
+              fontWeight: 900,
+              fontSize: "2.4cqw",
+              fontFamily: "monospace",
+            }}
+          >
+            +{winnerPayout.toLocaleString()} GP
+          </span>
+        </Slot>
 
         {/* Runner-up rows */}
-        <div className="absolute top-[55%] left-[8%] right-[8%] flex flex-col gap-1.5">
-          {losers.map((s, i) => (
-            <div key={s.uid} className="flex items-center gap-3">
-              <div
-                className="flex-shrink-0 rounded-full flex items-center justify-center"
+        {losers[0] && (
+          <>
+            <Slot box={S.ru1Avatar}>
+              <span style={{ color: "#fff", fontWeight: 800, fontSize: "1.4cqw", fontFamily: "system-ui" }}>
+                {initials(losers[0].name)}
+              </span>
+            </Slot>
+            <Slot box={S.ru1Text} style={{ justifyContent: "flex-start" }}>
+              <span
                 style={{
-                  width: "clamp(28px, 4.5cqw, 40px)",
-                  height: "clamp(28px, 4.5cqw, 40px)",
-                  background: i === 0 ? "#c14a4a" : "#3d8f4c",
-                  color: "#fff",
+                  color: "#4a2f0d",
                   fontWeight: 800,
-                  fontSize: "clamp(10px, 1.4cqw, 14px)",
-                  border: "2px solid rgba(255,255,255,0.7)",
+                  fontSize: "1.6cqw",
+                  paddingLeft: "0.6cqw",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
                 }}
               >
-                {initials(s.name)}
-              </div>
-              <div
-                className="flex-1 min-w-0 truncate text-[clamp(12px,1.9cqw,16px)]"
-                style={{ color: "#4a2f0d", fontWeight: 700 }}
-              >
-                {s.name}
-                {user?.uid === s.uid && <span style={{ color: "#8f1d2a" }}> · you</span>}
-              </div>
-              <div
-                className="font-mono text-[clamp(12px,1.9cqw,16px)] whitespace-nowrap"
-                style={{ color: "#8f1d2a", fontWeight: 900 }}
-              >
+                {losers[0].name}
+                {user?.uid === losers[0].uid && <span style={{ color: "#8f1d2a" }}> · you</span>}
+              </span>
+            </Slot>
+            <Slot box={S.ru1Points}>
+              <span style={{ color: "#8f1d2a", fontWeight: 900, fontSize: "1.7cqw", fontFamily: "monospace" }}>
                 −{C} GP
-              </div>
-            </div>
-          ))}
-        </div>
+              </span>
+            </Slot>
+          </>
+        )}
+        {losers[1] && (
+          <>
+            <Slot box={S.ru2Avatar}>
+              <span style={{ color: "#fff", fontWeight: 800, fontSize: "1.4cqw", fontFamily: "system-ui" }}>
+                {initials(losers[1].name)}
+              </span>
+            </Slot>
+            <Slot box={S.ru2Text} style={{ justifyContent: "flex-start" }}>
+              <span
+                style={{
+                  color: "#4a2f0d",
+                  fontWeight: 800,
+                  fontSize: "1.6cqw",
+                  paddingLeft: "0.6cqw",
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {losers[1].name}
+                {user?.uid === losers[1].uid && <span style={{ color: "#8f1d2a" }}> · you</span>}
+              </span>
+            </Slot>
+            <Slot box={S.ru2Points}>
+              <span style={{ color: "#8f1d2a", fontWeight: 900, fontSize: "1.7cqw", fontFamily: "monospace" }}>
+                −{C} GP
+              </span>
+            </Slot>
+          </>
+        )}
 
-        {/* Buttons + timer */}
-        <div className="absolute bottom-4 left-4 right-4 flex items-center gap-3 justify-center">
-          <button
-            onClick={onContinue}
-            disabled={!!busy}
-            className="flex-1 max-w-[240px] py-3 rounded-full text-[clamp(14px,2cqw,18px)] font-black tracking-wide disabled:opacity-60"
+        {/* Buttons and timer — hit-boxes only; the visuals are baked into the PNG */}
+        <button
+          onClick={onContinue}
+          disabled={!!busy}
+          style={{
+            position: "absolute",
+            left: `${S.continueBtn.l}%`,
+            top: `${S.continueBtn.t}%`,
+            width: `${S.continueBtn.w}%`,
+            height: `${S.continueBtn.h}%`,
+            background: "transparent",
+            border: "none",
+            cursor: busy ? "not-allowed" : "pointer",
+            fontWeight: 900,
+            color: "transparent",
+          }}
+          aria-label="Continue"
+        >
+          {busy === "again" && <Loader2 className="w-6 h-6 mx-auto animate-spin text-[#4a2f0d]" />}
+        </button>
+
+        <Slot box={S.timerBadge}>
+          <span
             style={{
-              background: `linear-gradient(180deg, #ffdf7a, #c9a559)`,
-              color: "#4a2f0d",
-              border: `3px solid ${border}`,
-              boxShadow: "0 4px 0 #7a5216, 0 6px 14px rgba(0,0,0,0.35)",
-            }}
-          >
-            {busy === "again" ? <Loader2 className="w-4 h-4 mx-auto animate-spin" /> : "CONTINUE"}
-          </button>
-          <div
-            className="flex-shrink-0 rounded-full flex items-center justify-center"
-            style={{
-              width: "clamp(44px, 6cqw, 58px)",
-              height: "clamp(44px, 6cqw, 58px)",
-              background: "linear-gradient(180deg, #2c4b8f, #163170)",
-              border: `3px solid ${gold}`,
-              color: gold,
+              color: "#F5C66B",
               fontWeight: 900,
-              fontSize: "clamp(16px, 2.4cqw, 22px)",
+              fontSize: "2.4cqw",
               fontFamily: "monospace",
-              boxShadow: "0 4px 0 #0a1a3d, 0 6px 14px rgba(0,0,0,0.35)",
+              textShadow: "0 0.15cqw 0.3cqw rgba(0,0,0,0.5)",
             }}
           >
             {secondsLeft}
-          </div>
-          <button
-            onClick={onQuit}
-            disabled={!!busy}
-            className="flex-1 max-w-[240px] py-3 rounded-full text-[clamp(14px,2cqw,18px)] font-black tracking-wide disabled:opacity-60"
-            style={{
-              background: "linear-gradient(180deg, #4a75d0, #2846a0)",
-              color: "#fff",
-              border: `3px solid ${gold}`,
-              boxShadow: "0 4px 0 #0a1a3d, 0 6px 14px rgba(0,0,0,0.35)",
-            }}
-          >
-            {busy === "quit" || busy === "auto" ? <Loader2 className="w-4 h-4 mx-auto animate-spin" /> : "QUIT"}
-          </button>
-        </div>
+          </span>
+        </Slot>
+
+        <button
+          onClick={onQuit}
+          disabled={!!busy}
+          style={{
+            position: "absolute",
+            left: `${S.quitBtn.l}%`,
+            top: `${S.quitBtn.t}%`,
+            width: `${S.quitBtn.w}%`,
+            height: `${S.quitBtn.h}%`,
+            background: "transparent",
+            border: "none",
+            cursor: busy ? "not-allowed" : "pointer",
+            fontWeight: 900,
+            color: "transparent",
+          }}
+          aria-label="Quit"
+        >
+          {(busy === "quit" || busy === "auto") && <Loader2 className="w-6 h-6 mx-auto animate-spin text-white" />}
+        </button>
       </div>
     </div>
   );
