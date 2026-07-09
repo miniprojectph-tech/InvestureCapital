@@ -41,6 +41,7 @@ import { useTongitsAssets } from "@/lib/tongitsAssets";
 import { TongitsTable } from "@/components/TongitsTable";
 import { TongitsWaitingRoomArt } from "@/components/TongitsWaitingRoomArt";
 import { TongitsGameTableArt } from "@/components/TongitsGameTableArt";
+import { TongitsVictoryPopup } from "@/components/TongitsVictoryPopup";
 import { PlayingCard } from "@/components/PlayingCard";
 import { AssetImage, TONGITS_ART } from "@/components/AssetImage";
 
@@ -183,7 +184,7 @@ export default function TongitsRoomPage() {
 
   // Post-game result.
   if (room.status === "post_game" && room.lastResult) {
-    return <ResultScreen code={code} room={room} onError={setError} />;
+    return <TongitsVictoryPopup code={code} room={room} />;
   }
 
   return (

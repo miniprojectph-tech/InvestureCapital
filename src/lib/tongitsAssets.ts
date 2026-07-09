@@ -15,7 +15,8 @@ export type TongitsAssetKey =
   | "lobbyBg"
   | "table"
   | "actionButtons4"
-  | "actionButtons5";
+  | "actionButtons5"
+  | "victoryPopup";
 
 export const TONGITS_ASSET_SLOTS: {
   key: TongitsAssetKey;
@@ -32,6 +33,7 @@ export const TONGITS_ASSET_SLOTS: {
   { key: "table", label: "In-game table — base", def: "/tongits/table.png", hint: "16:9 blank playing table (slots visible, no cards)" },
   { key: "actionButtons4", label: "Action buttons — 4-pill", def: "/tongits/action-buttons-4.png", hint: "transparent PNG: Drop/Fight/UnGroup/Dump (no Sapaw)" },
   { key: "actionButtons5", label: "Action buttons — 5-pill", def: "/tongits/action-buttons-5.png", hint: "transparent PNG: Drop/Fight/UnGroup/Dump/Sapaw" },
+  { key: "victoryPopup", label: "Victory popup — base", def: "/tongits/victory-popup.png", hint: "transparent PNG frame: VICTORY ribbon + winner/runner-up slots + CONTINUE/QUIT" },
 ];
 
 export type TongitsAssets = Record<TongitsAssetKey, string>;
