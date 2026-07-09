@@ -506,12 +506,23 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(Date.now());
   const [assetsReady, setAssetsReady] = useState(false);
+  // Optimistic: cards the user just committed to a move — hide them immediately
+  // so the hand feels responsive; drop them from this shadow as soon as the
+  // authoritative snapshot reflects the change (or roll back on failure).
+  const [pendingRemoved, setPendingRemoved] = useState<TCard[]>([]);
   const enforcedFor = useRef(0);
 
   useEffect(() => {
     const t = setInterval(() => setTick(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Auto-dismiss the error toast so a stale hint never lingers after the state moves on.
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 3500);
+    return () => clearTimeout(t);
+  }, [error]);
 
   // Preload the critical PNGs so the bare skeleton never flashes before the paint lands.
   useEffect(() => {
@@ -545,6 +556,9 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
 
   useEffect(() => {
     setSelected((sel) => sel.filter((c) => myHand.includes(c)));
+    // Once the snapshot no longer contains an optimistically-removed card, we
+    // can retire that entry — the server confirmed the move.
+    setPendingRemoved((prev) => prev.filter((c) => myHand.includes(c)));
   }, [myHand]);
 
   if (!gs || !assetsReady) {
@@ -578,19 +592,22 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
   const canPick = isMyTurn && gs.phase === "draw" && !!discardTop && selected.length >= 2 && isValidMeld([...selected, discardTop]);
 
   function toggle(card: TCard) {
+    setError(null);
     setSelected((sel) => (sel.includes(card) ? sel.filter((c) => c !== card) : [...sel, card]));
   }
-  async function act(key: string, fn: () => Promise<unknown>) {
+  async function act(key: string, fn: () => Promise<unknown>, optimistic?: { hideCards?: TCard[] }) {
     setError(null);
     setBusy(key);
+    const shadow = optimistic?.hideCards ?? [];
+    if (shadow.length) setPendingRemoved((prev) => [...prev, ...shadow]);
     try {
       await fn();
       setSelected([]);
     } catch (e) {
+      // Roll back the optimistic hide so the cards reappear in the hand.
+      if (shadow.length) setPendingRemoved((prev) => prev.filter((c) => !shadow.includes(c)));
       const raw = e instanceof Error ? e.message : "";
       const stripped = raw.replace(/^.*\/ /, "");
-      // Cloud Function errors sometimes surface only as the raw code (e.g.
-      // "INTERNAL"). Translate common codes to something users can act on.
       const code = stripped.toUpperCase();
       const friendly =
         code === "INTERNAL" || code === "UNKNOWN"
@@ -607,30 +624,48 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
   }
   async function onSapawPick(targetUid: string, meldIndex: number) {
     if (selected.length !== 1) return;
-    await act("sapaw", () => sapawCard(code, targetUid, meldIndex, selected[0]));
+    await act("sapaw", () => sapawCard(code, targetUid, meldIndex, selected[0]), { hideCards: [selected[0]] });
   }
 
   // Pill row swaps its 4th button based on phase:
-  //   - draw phase: DROP, FIGHT, UNGROUP, DRAW
-  //   - discard phase: DROP, FIGHT, UNGROUP, DUMP [, SAPAW]
+  //   - draw phase:    DROP, FIGHT, UNGROUP, DRAW, [PICK]
+  //   - discard phase: DROP, FIGHT, UNGROUP, DUMP, [SAPAW]
   const inDrawPhase = isMyTurn && gs.phase === "draw";
-  const strip = anySapawPossible ? assets.actionButtons5 : assets.actionButtons4;
-  const stripCfg = anySapawPossible ? PILL5 : PILL4;
-  // Explain why a pill is grayed out when the user has selected a valid group but
-  // the engine won't let them act yet. Fires on click of the disabled button.
-  const dropDisabledHint = inDrawPhase && selected.length >= 3 && isValidMeld(selected)
-    ? "Draw a card first (tap DRAW or the deck), then drop your meld."
-    : selected.length > 0 && selected.length < 3
-      ? "Melds need at least 3 cards."
-      : selected.length >= 3 && !isValidMeld(selected)
-        ? "That group isn't a valid meld (3+ same rank, or 3+ same-suit run)."
-        : "Select a valid meld from your hand first.";
-  const pillActions = [
+  const showPick = inDrawPhase && !!discardTop;
+  const showFivePill = anySapawPossible || showPick;
+  const strip = showFivePill ? assets.actionButtons5 : assets.actionButtons4;
+  const stripCfg = showFivePill ? PILL5 : PILL4;
+  // Explain why DROP is grayed out (fires on click of the disabled pill).
+  const dropDisabledHint = !isMyTurn
+    ? "Wait for your turn to drop a meld."
+    : inDrawPhase && selected.length >= 3 && isValidMeld(selected)
+      ? "Draw a card first (tap DRAW or the deck), then drop your meld."
+      : selected.length > 0 && selected.length < 3
+        ? "Melds need at least 3 cards."
+        : selected.length >= 3 && !isValidMeld(selected)
+          ? "That group isn't a valid meld (3+ same rank, or 3+ same-suit run)."
+          : "Select a valid meld from your hand first.";
+  const pickDisabledHint = !isMyTurn
+    ? "Wait for your turn to pick the discard."
+    : !discardTop
+      ? "The discard pile is empty."
+      : selected.length < 2
+        ? "Select 2+ cards that form a valid meld with the top discard."
+        : !isValidMeld([...selected, discardTop])
+          ? "Those cards + the top discard aren't a valid meld."
+          : undefined;
+  const pillActions: Array<{
+    label: string;
+    enabled: boolean;
+    busyKey: string;
+    onClick: () => void;
+    disabledHint: string | undefined;
+  }> = [
     {
       label: "DROP",
       enabled: canDrop,
       busyKey: "drop",
-      onClick: () => act("drop", () => meld(code, selected)),
+      onClick: () => act("drop", () => meld(code, selected), { hideCards: selected }),
       disabledHint: dropDisabledHint,
     },
     {
@@ -638,18 +673,34 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
       enabled: canFight,
       busyKey: "fight",
       onClick: () => act("fight", () => callTongits(code)),
-      disabledHint: inDrawPhase
-        ? "You can only fight during the discard phase."
-        : !iHaveMeld
-          ? "You need an exposed meld before you can fight."
-          : undefined,
+      disabledHint: !isMyTurn
+        ? "Wait for your turn."
+        : inDrawPhase
+          ? "You can only fight during the discard phase."
+          : !iHaveMeld
+            ? "You need an exposed meld before you can fight."
+            : undefined,
     },
-    { label: "UNGROUP", enabled: canUngroup, busyKey: "ungroup", onClick: () => setSelected([]), disabledHint: undefined as string | undefined },
+    {
+      label: "UNGROUP",
+      enabled: canUngroup,
+      busyKey: "ungroup",
+      onClick: () => setSelected([]),
+      disabledHint: "Select some cards first.",
+    },
     inDrawPhase
-      ? { label: "DRAW", enabled: canDraw, busyKey: "draw", onClick: () => act("draw", () => draw(code)), disabledHint: undefined as string | undefined }
-      : { label: "DUMP", enabled: canDump, busyKey: "dump", onClick: () => act("dump", () => discard(code, selected[0])), disabledHint: selected.length !== 1 ? "Select exactly one card to dump." : undefined },
+      ? { label: "DRAW", enabled: canDraw, busyKey: "draw", onClick: () => act("draw", () => draw(code)), disabledHint: !gs.stockCount ? "Stock is empty." : undefined }
+      : { label: "DUMP", enabled: canDump, busyKey: "dump", onClick: () => act("dump", () => discard(code, selected[0]), { hideCards: [selected[0]] }), disabledHint: !isMyTurn ? "Wait for your turn." : selected.length !== 1 ? "Select exactly one card to dump." : undefined },
   ];
-  if (anySapawPossible) {
+  if (showPick) {
+    pillActions.push({
+      label: "PICK",
+      enabled: canPick,
+      busyKey: "pick",
+      onClick: () => act("pick", () => takeDiscard(code, [...selected, discardTop]), { hideCards: selected }),
+      disabledHint: pickDisabledHint,
+    });
+  } else if (anySapawPossible) {
     pillActions.push({
       label: "SAPAW",
       enabled: sapawEligible,
@@ -995,7 +1046,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
             padding: "0.4cqw",
           }}
         >
-          {groupHand(myHand).map((group, gi) => {
+          {groupHand(myHand.filter((c) => !pendingRemoved.includes(c))).map((group, gi) => {
             const isMeld = group.kind === "meld";
             const isActive = group.cards.some((c) => selected.includes(c));
             return (
