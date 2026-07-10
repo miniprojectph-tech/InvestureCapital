@@ -48,7 +48,7 @@ export const investorNav: NavGroup[] = [
   {
     label: "Community Games",
     items: [
-      { label: "Play", href: "/play", icon: "play" },
+      { label: "Fishing Game", href: "/play", icon: "play" },
       { label: "Rewards", href: "/rewards", icon: "gift" },
       { label: "Tongits", href: "/tongits", icon: "spade" },
     ],

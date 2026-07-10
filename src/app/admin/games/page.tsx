@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, Save, Sparkles, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Loader2, Plus, Trash2, Save, Sparkles, AlertCircle, CheckCircle2, AlertTriangle } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
@@ -25,6 +25,13 @@ import {
   type GamesSettings,
   type Fish,
 } from "@/lib/game";
+import {
+  useSettings,
+  saveSettings,
+  DEFAULT_GAME_ACCESS,
+  type GameAccessRequirement,
+} from "@/lib/settings";
+import { usePlans } from "@/lib/plans";
 
 function assetKind(url?: string): "video" | "audio" | "image" {
   if (!url) return "image";
@@ -181,6 +188,12 @@ export default function AdminGamesPage() {
   const [univDraft, setUnivDraft] = useState<GamesSettings | null>(null);
   const [savingUniv, setSavingUniv] = useState(false);
 
+  // Game access gate
+  const { settings: platformSettings } = useSettings();
+  const { plans } = usePlans({ onlyActive: true });
+  const [gaDraft, setGaDraft] = useState<GameAccessRequirement | null>(null);
+  const [savingGa, setSavingGa] = useState(false);
+
   // Fish editor
   const [editing, setEditing] = useState<Fish | null>(null);
   const [isNew, setIsNew] = useState(false);
@@ -191,6 +204,10 @@ export default function AdminGamesPage() {
   useEffect(() => {
     if (univDraft === null) setUnivDraft(gamesSettings);
   }, [gamesSettings, univDraft]);
+  useEffect(() => {
+    if (gaDraft === null && platformSettings.gameAccess)
+      setGaDraft({ ...DEFAULT_GAME_ACCESS, ...platformSettings.gameAccess });
+  }, [platformSettings, gaDraft]);
 
   if (loading || !draft) {
     return (
@@ -231,6 +248,22 @@ export default function AdminGamesPage() {
       setError(e instanceof Error ? e.message : "Save failed");
     } finally {
       setSavingUniv(false);
+    }
+  }
+
+  async function saveGameAccess() {
+    const { db } = getFirebase();
+    if (!db || !user?.isAdmin || !gaDraft) return;
+    setSavingGa(true);
+    setError(null);
+    setMsg(null);
+    try {
+      await saveSettings(db, { gameAccess: gaDraft }, user.uid);
+      setMsg("Game access settings saved.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSavingGa(false);
     }
   }
 
@@ -299,6 +332,101 @@ export default function AdminGamesPage() {
           <AlertCircle className="w-3.5 h-3.5" /> {error}
         </div>
       )}
+
+      {/* Community Games access gate */}
+      <Card className="mb-3">
+        <CardHeader
+          title="Community Games access"
+          subtitle="Require an active plan to unlock Fishing Game, Rewards, and Tongits"
+        />
+        {gaDraft && (
+          <>
+            <div className="flex items-center justify-between gap-3 p-3 bg-canvas border border-border rounded-lg mb-3">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-9 h-9 rounded-md flex items-center justify-center ${
+                    gaDraft.enabled ? "bg-gold/15 text-gold" : "bg-card-elev text-text-muted"
+                  }`}
+                >
+                  <AlertTriangle className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-[12px] font-medium m-0">
+                    {gaDraft.enabled ? "Gate active — plan required" : "Gate off — everyone can play"}
+                  </p>
+                  <p className="text-[10px] text-text-subtle mt-0.5 m-0">
+                    {gaDraft.enabled && gaDraft.requiredPlanName
+                      ? `Requires: ${gaDraft.requiredPlanName} (min ₱${(gaDraft.minInvestment ?? 0).toLocaleString()})`
+                      : "Toggle on and pick a plan to restrict access"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setGaDraft({ ...gaDraft, enabled: !gaDraft.enabled })}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                  gaDraft.enabled ? "bg-gold" : "bg-border"
+                )}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow-lg transform transition-transform",
+                    gaDraft.enabled ? "translate-x-5" : "translate-x-0"
+                  )}
+                />
+              </button>
+            </div>
+
+            {gaDraft.enabled && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="block text-[11px] text-text-muted mb-1">Required plan</label>
+                  <select
+                    value={gaDraft.requiredPlanId}
+                    onChange={(e) => {
+                      const plan = plans.find((p) => p.id === e.target.value);
+                      setGaDraft({
+                        ...gaDraft,
+                        requiredPlanId: e.target.value,
+                        requiredPlanName: plan?.name ?? "",
+                        minInvestment: gaDraft.minInvestment || plan?.minInvestment || 0,
+                      });
+                    }}
+                    className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] text-text outline-none focus:border-gold/40 w-full"
+                  >
+                    <option value="">Select a plan…</option>
+                    {plans.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} ({p.durationDays}d · {p.dailyRate}%)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] text-text-muted mb-1">Minimum investment (₱)</label>
+                  <input
+                    type="number"
+                    value={gaDraft.minInvestment}
+                    onChange={(e) =>
+                      setGaDraft({ ...gaDraft, minInvestment: parseInt(e.target.value) || 0 })
+                    }
+                    className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-gold/40 w-full"
+                  />
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={saveGameAccess}
+              disabled={savingGa}
+              className="w-full py-2.5 bg-gold text-gold-dark rounded-lg text-[12px] font-medium disabled:opacity-60 flex items-center justify-center gap-1.5"
+            >
+              <Save className="w-3.5 h-3.5" />
+              {savingGa ? "Saving…" : "Save access settings"}
+            </button>
+          </>
+        )}
+      </Card>
 
       {/* General (cross-game) settings */}
       <Card className="mb-3">
