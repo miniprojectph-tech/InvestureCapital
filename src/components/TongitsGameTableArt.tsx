@@ -6,17 +6,18 @@ import { useAuth } from "@/lib/auth";
 import {
   useGameState,
   useMyHand,
-  draw,
-  takeDiscard,
-  meld,
-  sapawCard,
-  discard,
-  callTongits,
-  enforceTimeout,
+  draw as cfDraw,
+  takeDiscard as cfTakeDiscard,
+  meld as cfMeld,
+  sapawCard as cfSapawCard,
+  discard as cfDiscard,
+  callTongits as cfCallTongits,
+  enforceTimeout as cfEnforceTimeout,
   cardLabel,
   isRedSuit,
   type Card as TCard,
 } from "@/lib/tongits-game";
+import { useTongitsWs } from "@/lib/tongits-ws";
 import type { TongitsRoom as Room } from "@/lib/tongits";
 import { useTongitsAssets } from "@/lib/tongitsAssets";
 
@@ -518,8 +519,31 @@ function MeldRow({ melds, onPick }: { melds: TCard[][]; onPick?: (i: number) => 
 // ---- main ----
 export function TongitsGameTableArt({ code, room }: { code: string; room: Room }) {
   const { user } = useAuth();
-  const gs = useGameState(code);
-  const myHand = useMyHand(code, user?.uid ?? null);
+  const uid_ = user?.uid ?? null;
+
+  // Firestore listeners (fallback)
+  const fsGs = useGameState(code);
+  const fsHand = useMyHand(code, uid_);
+
+  // WebSocket (primary when connected)
+  const ws = useTongitsWs(code, uid_, (msg) => setError(msg));
+  const useWs = ws.connected;
+
+  // Prefer WS state when connected; fall back to Firestore
+  const gs = (useWs && ws.gs) || fsGs;
+  const myHand = useWs ? ws.hand : fsHand;
+
+  // Action dispatchers: WS when connected, Cloud Functions otherwise
+  const draw = useWs ? ws.draw : (async () => { await cfDraw(code); });
+  const takeDiscard = useWs ? ws.takeDiscard : (async (mc: TCard[]) => { await cfTakeDiscard(code, mc); });
+  const meld_ = useWs ? ws.meld : (async (cs: TCard[]) => { await cfMeld(code, cs); });
+  const sapawCard_ = useWs
+    ? (async (tu: string, mi: number, c: TCard) => { await ws.sapaw(tu, mi, c); })
+    : (async (tu: string, mi: number, c: TCard) => { await cfSapawCard(code, tu, mi, c); });
+  const discard_ = useWs ? ws.discard : (async (c: TCard) => { await cfDiscard(code, c); });
+  const callTongits_ = useWs ? ws.call : (async () => { await cfCallTongits(code); });
+  const enforceTimeout_ = useWs ? ws.enforceTimeout : (async () => { await cfEnforceTimeout(code); });
+
   const assets = useTongitsAssets();
 
   // Streak-leader lookup for the trophy slots.
@@ -580,7 +604,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
     if (!gs || gs.status !== "in_game") return;
     if (tick > gs.turnDeadline + 1500 && enforcedFor.current !== gs.turnDeadline) {
       enforcedFor.current = gs.turnDeadline;
-      enforceTimeout(code).catch(() => {});
+      enforceTimeout_().catch(() => {});
     }
   }, [tick, gs, code]);
 
@@ -660,7 +684,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
   }
   async function onSapawPick(targetUid: string, meldIndex: number) {
     if (selected.length !== 1) return;
-    await act("sapaw", () => sapawCard(code, targetUid, meldIndex, selected[0]), { hideCards: [selected[0]] });
+    await act("sapaw", () => sapawCard_(targetUid, meldIndex, selected[0]), { hideCards: [selected[0]] });
   }
 
   // Pill row swaps its 4th button based on phase:
@@ -701,14 +725,14 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
       label: "DROP",
       enabled: canDrop,
       busyKey: "drop",
-      onClick: () => act("drop", () => meld(code, selected), { hideCards: selected }),
+      onClick: () => act("drop", () => meld_(selected), { hideCards: selected }),
       disabledHint: dropDisabledHint,
     },
     {
       label: "FIGHT",
       enabled: canFight,
       busyKey: "fight",
-      onClick: () => act("fight", () => callTongits(code)),
+      onClick: () => act("fight", () => callTongits_()),
       disabledHint: !isMyTurn
         ? "Wait for your turn."
         : inDrawPhase
@@ -725,8 +749,8 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
       disabledHint: "Select some cards first.",
     },
     inDrawPhase
-      ? { label: "DRAW", enabled: canDraw, busyKey: "draw", onClick: () => act("draw", () => draw(code)), disabledHint: !gs.stockCount ? "Stock is empty." : undefined }
-      : { label: "DUMP", enabled: canDump, busyKey: "dump", onClick: () => act("dump", () => discard(code, selected[0]), { hideCards: [selected[0]] }), disabledHint: !isMyTurn ? "Wait for your turn." : selected.length !== 1 ? "Select exactly one card to dump." : undefined },
+      ? { label: "DRAW", enabled: canDraw, busyKey: "draw", onClick: () => act("draw", () => draw()), disabledHint: !gs.stockCount ? "Stock is empty." : undefined }
+      : { label: "DUMP", enabled: canDump, busyKey: "dump", onClick: () => act("dump", () => discard_(selected[0]), { hideCards: [selected[0]] }), disabledHint: !isMyTurn ? "Wait for your turn." : selected.length !== 1 ? "Select exactly one card to dump." : undefined },
   ];
   if (showPick) {
     pillActions.push({
@@ -738,7 +762,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
         if (!userSelectedPick) setSelected(pickCards);
         return act(
           "pick",
-          () => takeDiscard(code, [...pickCards, discardTop]),
+          () => takeDiscard([...pickCards, discardTop]),
           { hideCards: pickCards }
         );
       },
@@ -905,7 +929,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
         {/* STOCK (draw) — card scaled to fill the tall placeholder box */}
         <Zone
           box={S.stock}
-          onClick={canDraw ? () => act("draw", () => draw(code)) : undefined}
+          onClick={canDraw ? () => act("draw", () => draw()) : undefined}
           disabled={!canDraw}
           title="Draw from stock"
         >
@@ -945,7 +969,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
         {/* DISCARD (pick) — card scaled to match stock */}
         <Zone
           box={S.discard}
-          onClick={canPick ? () => act("pick", () => takeDiscard(code, [...selected, discardTop])) : undefined}
+          onClick={canPick ? () => act("pick", () => takeDiscard([...selected, discardTop])) : undefined}
           disabled={!canPick && !discardTop}
           title="Pick the discard"
         >

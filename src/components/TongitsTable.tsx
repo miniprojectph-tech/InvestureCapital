@@ -7,15 +7,16 @@ import { useAuth } from "@/lib/auth";
 import {
   useGameState,
   useMyHand,
-  draw,
-  takeDiscard,
-  meld,
-  sapawCard,
-  discard,
-  callTongits,
-  enforceTimeout,
+  draw as cfDraw,
+  takeDiscard as cfTakeDiscard,
+  meld as cfMeld,
+  sapawCard as cfSapawCard,
+  discard as cfDiscard,
+  callTongits as cfCallTongits,
+  enforceTimeout as cfEnforceTimeout,
   type Card as TCard,
 } from "@/lib/tongits-game";
+import { useTongitsWs } from "@/lib/tongits-ws";
 import type { TongitsRoom as Room } from "@/lib/tongits";
 import { PlayingCard } from "./PlayingCard";
 import { AssetImage, TONGITS_ART } from "./AssetImage";
@@ -113,11 +114,30 @@ function Seat({
 
 export function TongitsTable({ code }: { code: string; room: Room }) {
   const { user } = useAuth();
-  const gs = useGameState(code);
-  const myHand = useMyHand(code, user?.uid ?? null);
+  const uid_ = user?.uid ?? null;
+
+  const fsGs = useGameState(code);
+  const fsHand = useMyHand(code, uid_);
+
+  const [error, setError] = useState<string | null>(null);
+  const wsHook = useTongitsWs(code, uid_, (msg) => setError(msg));
+  const useWs = wsHook.connected;
+
+  const gs = (useWs && wsHook.gs) || fsGs;
+  const myHand = useWs ? wsHook.hand : fsHand;
+
+  const draw = useWs ? wsHook.draw : (async () => { await cfDraw(code); });
+  const takeDiscard = useWs ? wsHook.takeDiscard : (async (mc: TCard[]) => { await cfTakeDiscard(code, mc); });
+  const meld = useWs ? wsHook.meld : (async (cs: TCard[]) => { await cfMeld(code, cs); });
+  const sapawCard = useWs
+    ? (async (tu: string, mi: number, c: TCard) => { await wsHook.sapaw(tu, mi, c); })
+    : (async (tu: string, mi: number, c: TCard) => { await cfSapawCard(code, tu, mi, c); });
+  const discard_ = useWs ? wsHook.discard : (async (c: TCard) => { await cfDiscard(code, c); });
+  const callTongits = useWs ? wsHook.call : (async () => { await cfCallTongits(code); });
+  const enforceTimeout = useWs ? wsHook.enforceTimeout : (async () => { await cfEnforceTimeout(code); });
+
   const [selected, setSelected] = useState<TCard[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(Date.now());
   const enforcedFor = useRef(0);
 
@@ -130,7 +150,7 @@ export function TongitsTable({ code }: { code: string; room: Room }) {
     if (!gs || gs.status !== "in_game") return;
     if (tick > gs.turnDeadline + 1500 && enforcedFor.current !== gs.turnDeadline) {
       enforcedFor.current = gs.turnDeadline;
-      enforceTimeout(code).catch(() => {});
+      enforceTimeout().catch(() => {});
     }
   }, [tick, gs, code]);
 
@@ -170,7 +190,7 @@ export function TongitsTable({ code }: { code: string; room: Room }) {
   }
   async function onSapaw(targetUid: string, meldIndex: number) {
     if (selected.length !== 1) return;
-    await act("sapaw", () => sapawCard(code, targetUid, meldIndex, selected[0]));
+    await act("sapaw", () => sapawCard(targetUid, meldIndex, selected[0]));
   }
 
   const canTakeDiscard = isMyTurn && gs.phase === "draw" && !!discardTop && selected.length >= 2;
@@ -296,13 +316,13 @@ export function TongitsTable({ code }: { code: string; room: Room }) {
       <div className="flex flex-wrap gap-2">
         {isMyTurn && gs.phase === "draw" && (
           <>
-            <ActionBtn label="Draw from stock" tone="green" busy={busy === "draw"} onClick={() => act("draw", () => draw(code))} />
+            <ActionBtn label="Draw from stock" tone="green" busy={busy === "draw"} onClick={() => act("draw", () => draw())} />
             <ActionBtn
               label="Take discard + meld"
               tone="gold"
               disabled={!canTakeDiscard}
               busy={busy === "take"}
-              onClick={() => act("take", () => takeDiscard(code, [...selected, discardTop]))}
+              onClick={() => act("take", () => takeDiscard([...selected, discardTop]))}
             />
           </>
         )}
@@ -313,21 +333,21 @@ export function TongitsTable({ code }: { code: string; room: Room }) {
               tone="gold"
               disabled={selected.length < 3}
               busy={busy === "meld"}
-              onClick={() => act("meld", () => meld(code, selected))}
+              onClick={() => act("meld", () => meld(selected))}
             />
             <ActionBtn
               label="Discard"
               tone="green"
               disabled={selected.length !== 1}
               busy={busy === "discard"}
-              onClick={() => act("discard", () => discard(code, selected[0]))}
+              onClick={() => act("discard", () => discard_(selected[0]))}
             />
             <ActionBtn
               label="Call (Tumba)"
               tone="vault"
               disabled={!iHaveMeld}
               busy={busy === "call"}
-              onClick={() => act("call", () => callTongits(code))}
+              onClick={() => act("call", () => callTongits())}
             />
           </>
         )}
