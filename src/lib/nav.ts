@@ -17,7 +17,8 @@ export type IconName =
   | "gift"
   | "fish"
   | "share"
-  | "spade";
+  | "spade"
+  | "refresh";
 
 export type NavItem = {
   label: string;
@@ -81,6 +82,7 @@ export const adminNav: NavGroup[] = [
       { label: "Active vaults", href: "/admin/active-vaults", icon: "lock" },
       { label: "Transactions", href: "/admin/transactions", icon: "receipt" },
       { label: "Activity log", href: "/admin/activity", icon: "activity" },
+      { label: "Reinvestments", href: "/admin/reinvestments", icon: "refresh" },
     ],
   },
   {

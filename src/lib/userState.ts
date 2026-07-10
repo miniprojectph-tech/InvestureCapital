@@ -24,6 +24,7 @@ export type StoredActivePlan = {
   dailyRate?: number; // percent
   durationDays?: number;
   planName?: string;
+  source?: "reinvest";
 };
 
 export type CompletedPlan = StoredActivePlan & {
@@ -416,4 +417,59 @@ export async function activatePlanFor(
       console.error("referral claim write failed", err);
     }
   }
+}
+
+export async function reinvestFromWallet(
+  db: Firestore,
+  uid: string,
+  planId: string,
+  planName: string,
+  capital: number,
+  planRate?: number,
+  planDuration?: number
+): Promise<void> {
+  if (capital <= 0) throw new Error("Amount must be greater than zero");
+  const ref = doc(db, "users", uid);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) throw new Error("User document not found");
+  const cur = snap.data() as UserState;
+
+  const wallet = cur.balances.wallet ?? 0;
+  if (capital > wallet) throw new Error("Insufficient wallet balance");
+
+  const newPlan: StoredActivePlan = {
+    id: `${Date.now()}-${planId}`,
+    planId,
+    capital,
+    startedAt: Date.now(),
+    planName,
+    source: "reinvest",
+    ...(planRate != null ? { dailyRate: planRate } : {}),
+    ...(planDuration != null ? { durationDays: planDuration } : {}),
+  };
+
+  const vaultCredit =
+    planRate != null && planDuration != null ? capital * (planRate / 100) * planDuration : 0;
+
+  const updates: Record<string, unknown> = {
+    activePlans: [...cur.activePlans, newPlan],
+    "balances.wallet": wallet - capital,
+    "balances.vault": (cur.balances.vault ?? 0) + vaultCredit,
+  };
+
+  if (!cur.balances.vaultLockStartedAt) {
+    updates["balances.vaultLockStartedAt"] = Date.now();
+  }
+  if (vaultCredit > 0 && !cur.balances.vaultLastCompoundedAt) {
+    updates["balances.vaultLastCompoundedAt"] = Date.now();
+  }
+
+  await updateDoc(ref, updates);
+  await logActivity(db, uid, {
+    type: "reinvest",
+    title: `Reinvested — ${planName}`,
+    subtitle: `₱${capital.toLocaleString()} from wallet · vault +₱${vaultCredit.toLocaleString()}`,
+    amount: capital,
+    amountKind: "out",
+  });
 }

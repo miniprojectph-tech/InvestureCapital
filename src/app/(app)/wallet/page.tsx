@@ -1,25 +1,33 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { ArrowUpRight, RefreshCw, ArrowDownRight, Loader2 } from "lucide-react";
 import { Bar, BarChart, Cell, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { WithdrawModal } from "@/components/WithdrawModal";
+import { ReinvestModal } from "@/components/ReinvestModal";
 import { formatPHP, cn } from "@/lib/utils";
 import { mockActivity, mockPlans } from "@/lib/mock-data";
 import { useUserState } from "@/lib/useUserState";
-import { computeDailyIncome } from "@/lib/userState";
+import { computeDailyIncome, reinvestFromWallet } from "@/lib/userState";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { requestWithdrawal } from "@/lib/withdrawals";
+import type { StoredPlan } from "@/lib/plans";
 
 export default function WalletPage() {
-  const router = useRouter();
   const { state, loading } = useUserState();
   const { user, demoMode } = useAuth();
   const [withdrawOpen, setWithdrawOpen] = useState(false);
+  const [reinvestOpen, setReinvestOpen] = useState(false);
+
+  async function handleReinvest(plan: StoredPlan, amount: number) {
+    if (demoMode || !user) return;
+    const { db } = getFirebase();
+    if (!db) return;
+    await reinvestFromWallet(db, user.uid, plan.id, plan.name, amount, plan.dailyRate, plan.durationDays);
+  }
 
   async function handleWithdraw(amount: number) {
     if (demoMode || !user) return;
@@ -79,7 +87,7 @@ export default function WalletPage() {
               <ArrowUpRight className="w-3.5 h-3.5" /> Withdraw
             </button>
             <button
-              onClick={() => router.push(`/plans?prefill=${walletBalance}`)}
+              onClick={() => setReinvestOpen(true)}
               disabled={walletBalance <= 0}
               className="flex-1 px-3.5 py-2.5 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center justify-center gap-1.5 hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -171,6 +179,12 @@ export default function WalletPage() {
         onClose={() => setWithdrawOpen(false)}
         availableBalance={walletBalance}
         onSubmit={handleWithdraw}
+      />
+      <ReinvestModal
+        open={reinvestOpen}
+        onClose={() => setReinvestOpen(false)}
+        availableBalance={walletBalance}
+        onSubmit={handleReinvest}
       />
     </div>
   );

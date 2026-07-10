@@ -25,6 +25,7 @@ import {
   Fish,
   Share2,
   Spade,
+  RefreshCw,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -51,6 +52,7 @@ const iconMap: Record<IconName, LucideIcon> = {
   fish: Fish,
   share: Share2,
   spade: Spade,
+  refresh: RefreshCw,
 };
 
 type SidebarProps = {
