@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, CheckCircle2, AlertCircle, ChevronLeft, X, Gift } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { GameAccessGate } from "@/components/GameAccessGate";
 import {
   useGameState,
   useGameConfig,
@@ -838,6 +839,7 @@ export default function PlayPage() {
   const fill = !portraitHint;
 
   return (
+    <GameAccessGate>
     <div className="fixed inset-0 z-40 bg-black overflow-y-auto overscroll-none">
       {/* leave the immersive game and return to the app */}
       <button
@@ -1785,6 +1787,7 @@ export default function PlayPage() {
         )}
       </AnimatePresence>
     </div>
+    </GameAccessGate>
   );
 }
 

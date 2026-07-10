@@ -26,6 +26,7 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_PAYMENT_METHODS,
   DEFAULT_AI_TRADING,
+  DEFAULT_GAME_ACCESS,
   PAYMENT_METHOD_LABELS,
   type PlatformSettings,
   type PaymentMethodConfig,
@@ -33,6 +34,7 @@ import {
   type AiTradingProvider,
 } from "@/lib/settings";
 import { uploadPaymentMethodQr, deletePaymentMethodQr } from "@/lib/storage";
+import { usePlans } from "@/lib/plans";
 
 const methodIcons = {
   gotyme: Building2,
@@ -49,6 +51,7 @@ const methodAccountLabel: Record<PaymentMethodId, string> = {
 export default function AdminSettingsPage() {
   const { user } = useAuth();
   const { settings, loading } = useSettings();
+  const { plans } = usePlans({ onlyActive: true });
   const [draft, setDraft] = useState<PlatformSettings>(DEFAULT_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -61,6 +64,7 @@ export default function AdminSettingsPage() {
         ...settings,
         paymentMethods: { ...DEFAULT_PAYMENT_METHODS, ...settings.paymentMethods },
         aiTrading: { ...DEFAULT_AI_TRADING, ...settings.aiTrading },
+        gameAccess: { ...DEFAULT_GAME_ACCESS, ...settings.gameAccess },
       });
   }, [loading, settings]);
 
@@ -554,6 +558,92 @@ export default function AdminSettingsPage() {
           they should be kept server-side (Cloud Function or backend proxy) so investors never
           receive them in the browser.
         </p>
+      </Card>
+
+      {/* Community Games access gate */}
+      <Card className="mb-3">
+        <CardHeader
+          title="Community Games access"
+          subtitle="Require an active plan to unlock Reef, Rewards, and Tongits. When disabled, all signed-in users can play."
+        />
+        <div className="flex items-center justify-between gap-3 p-3 bg-canvas border border-border rounded-lg mb-4">
+          <div className="flex items-center gap-3">
+            <div
+              className={`w-9 h-9 rounded-md flex items-center justify-center ${
+                draft.gameAccess?.enabled ? "bg-gold/15 text-gold" : "bg-card-elev text-text-muted"
+              }`}
+            >
+              <AlertTriangle className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-[12px] font-medium m-0">
+                {draft.gameAccess?.enabled ? "Gate active — plan required" : "Gate off — everyone can play"}
+              </p>
+              <p className="text-[10px] text-text-subtle mt-0.5 m-0">
+                {draft.gameAccess?.enabled && draft.gameAccess.requiredPlanName
+                  ? `Requires: ${draft.gameAccess.requiredPlanName} (min ₱${(draft.gameAccess.minInvestment ?? 0).toLocaleString()})`
+                  : "Toggle on and pick a plan to restrict access"}
+              </p>
+            </div>
+          </div>
+          <Toggle
+            on={!!draft.gameAccess?.enabled}
+            onChange={(v) =>
+              setDraft((d) => ({
+                ...d,
+                gameAccess: { ...DEFAULT_GAME_ACCESS, ...d.gameAccess, enabled: v },
+              }))
+            }
+          />
+        </div>
+
+        {draft.gameAccess?.enabled && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Required plan">
+              <select
+                value={draft.gameAccess?.requiredPlanId ?? ""}
+                onChange={(e) => {
+                  const plan = plans.find((p) => p.id === e.target.value);
+                  setDraft((d) => ({
+                    ...d,
+                    gameAccess: {
+                      ...DEFAULT_GAME_ACCESS,
+                      ...d.gameAccess,
+                      requiredPlanId: e.target.value,
+                      requiredPlanName: plan?.name ?? "",
+                      minInvestment: d.gameAccess?.minInvestment || plan?.minInvestment || 0,
+                    },
+                  }));
+                }}
+                className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] text-text outline-none focus:border-gold/40 w-full"
+              >
+                <option value="">Select a plan…</option>
+                {plans.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({p.durationDays}d · {p.dailyRate}%)
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Minimum investment (₱)">
+              <input
+                type="number"
+                value={draft.gameAccess?.minInvestment ?? 0}
+                onChange={(e) =>
+                  setDraft((d) => ({
+                    ...d,
+                    gameAccess: {
+                      ...DEFAULT_GAME_ACCESS,
+                      ...d.gameAccess,
+                      minInvestment: parseInt(e.target.value) || 0,
+                    },
+                  }))
+                }
+                className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-gold/40 w-full"
+              />
+            </Field>
+          </div>
+        )}
       </Card>
 
       <Card className="mb-3">

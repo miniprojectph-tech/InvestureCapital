@@ -17,6 +17,7 @@ import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
 import { cn, formatPHP } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { GameAccessGate } from "@/components/GameAccessGate";
 import { useGameState } from "@/lib/game";
 import {
   useRewards,
@@ -74,6 +75,7 @@ export default function RewardsPage() {
   }
 
   return (
+    <GameAccessGate>
     <div>
       <TopHeader title="Rewards" subtitle="Exchange your Reef points" />
 
@@ -272,5 +274,6 @@ export default function RewardsPage() {
         )}
       </Modal>
     </div>
+    </GameAccessGate>
   );
 }

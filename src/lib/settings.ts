@@ -41,6 +41,20 @@ export const DEFAULT_AI_TRADING: AiTradingConfig = {
   supportedPairs: ["BTC/USDT", "ETH/USDT", "SOL/USDT"],
 };
 
+export type GameAccessRequirement = {
+  enabled: boolean;
+  requiredPlanId: string;
+  requiredPlanName: string;
+  minInvestment: number;
+};
+
+export const DEFAULT_GAME_ACCESS: GameAccessRequirement = {
+  enabled: false,
+  requiredPlanId: "",
+  requiredPlanName: "",
+  minInvestment: 0,
+};
+
 export type PlatformSettings = {
   vaultDailyRate: number; // percent, e.g. 1.0
   vaultLockDays: number;
@@ -49,6 +63,7 @@ export type PlatformSettings = {
   maintenanceMode: boolean;
   paymentMethods?: PaymentMethodsConfig;
   aiTrading?: AiTradingConfig;
+  gameAccess?: GameAccessRequirement;
   updatedAt?: number;
   updatedBy?: string;
 };
@@ -70,6 +85,7 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   maintenanceMode: false,
   paymentMethods: DEFAULT_PAYMENT_METHODS,
   aiTrading: DEFAULT_AI_TRADING,
+  gameAccess: DEFAULT_GAME_ACCESS,
 };
 
 export type PaymentMethodId = "gotyme" | "gcash" | "bankTransfer";
