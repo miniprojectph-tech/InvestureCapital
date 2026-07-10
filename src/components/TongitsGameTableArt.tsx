@@ -258,8 +258,9 @@ function groupHand(hand: TCard[]): HandGroup[] {
   return groups;
 }
 function isSet(cards: TCard[]) {
-  if (cards.length < 3) return false;
-  return cards.every((c) => c[0] === cards[0][0]);
+  if (cards.length < 3 || cards.length > 4) return false;
+  if (!cards.every((c) => c[0] === cards[0][0])) return false;
+  return new Set(cards.map((c) => c[1])).size === cards.length;
 }
 function isRun(cards: TCard[]) {
   if (cards.length < 3) return false;
@@ -654,6 +655,14 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
   function toggle(card: TCard) {
     setError(null);
     setSelected((sel) => (sel.includes(card) ? sel.filter((c) => c !== card) : [...sel, card]));
+  }
+  function toggleGroup(cards: TCard[]) {
+    setError(null);
+    setSelected((sel) => {
+      const allSelected = cards.every((c) => sel.includes(c));
+      if (allSelected) return sel.filter((c) => !cards.includes(c));
+      return [...sel.filter((c) => !cards.includes(c)), ...cards];
+    });
   }
   async function act(key: string, fn: () => Promise<unknown>, optimistic?: { hideCards?: TCard[] }) {
     setError(null);
@@ -1145,7 +1154,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
                         zIndex: ci,
                       }}
                     >
-                      <BigCard card={c} selected={selected.includes(c)} onClick={() => toggle(c)} />
+                      <BigCard card={c} selected={selected.includes(c)} onClick={() => isMeld ? toggleGroup(group.cards) : toggle(c)} />
                     </div>
                   ))}
                 </div>
