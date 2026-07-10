@@ -7,7 +7,6 @@ import { Bar, BarChart, Cell, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { WithdrawModal } from "@/components/WithdrawModal";
-import { TopUpPanel } from "@/components/TopUpPanel";
 import { formatPHP, cn } from "@/lib/utils";
 import { mockActivity, mockPlans } from "@/lib/mock-data";
 import { useUserState } from "@/lib/useUserState";
@@ -55,12 +54,11 @@ export default function WalletPage() {
     <div>
       <TopHeader
         title="Income wallet"
-        subtitle="Daily plan payouts — withdrawable, reinvestable, or top up to fund new plans"
+        subtitle="Daily plan payouts — withdrawable or reinvestable into new plans"
       />
 
-      {/* Split: Available balance + Top up */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-        {/* LEFT — Available balance + actions */}
+      {/* Available balance + actions */}
+      <div className="mb-3">
         <div className="bg-card border border-border rounded-xl p-5 flex flex-col">
           <p className="text-[10px] text-text-subtle uppercase tracking-wider m-0 mb-1.5">
             Available balance
@@ -72,7 +70,7 @@ export default function WalletPage() {
             <span className="text-green font-mono">+{formatPHP(daily)} today</span>
             <span className="text-text-subtle">Next payout in 12h 43m</span>
           </div>
-          <div className="flex gap-2 mt-auto pt-5">
+          <div className="flex gap-2 mt-4 max-w-md">
             <button
               onClick={() => setWithdrawOpen(true)}
               disabled={walletBalance <= 0}
@@ -89,9 +87,6 @@ export default function WalletPage() {
             </button>
           </div>
         </div>
-
-        {/* RIGHT — Top up request panel */}
-        <TopUpPanel />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">

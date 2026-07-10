@@ -356,9 +356,6 @@ export async function activatePlanFor(
   const snap = await getDoc(ref);
   if (!snap.exists()) throw new Error("User document not found");
   const cur = snap.data() as UserState;
-  if (cur.balances.wallet < capital) {
-    throw new Error("Insufficient wallet balance to activate this plan");
-  }
 
   const newPlan: StoredActivePlan = {
     id: `${Date.now()}-${planId}`,
@@ -377,7 +374,6 @@ export async function activatePlanFor(
     planRate != null && planDuration != null ? capital * (planRate / 100) * planDuration : 0;
 
   const updates: Record<string, unknown> = {
-    "balances.wallet": cur.balances.wallet - capital,
     activePlans: [...cur.activePlans, newPlan],
     "balances.vault": (cur.balances.vault ?? 0) + vaultCredit,
   };

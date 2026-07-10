@@ -12,8 +12,10 @@ import {
 import { ActivatePlanModal } from "./ActivatePlanModal";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
-import { activatePlanFor } from "@/lib/userState";
+import { requestPlanActivation } from "@/lib/planRequests";
+import { uploadReceipt } from "@/lib/storage";
 import { usePlans } from "@/lib/plans";
+import type { PaymentMethodId } from "@/lib/settings";
 
 type Mode = "single" | "monthly";
 
@@ -47,26 +49,46 @@ export function PlansCalculator() {
     if (prefillAmount !== null) setAmount(prefillAmount);
   }, [prefillAmount]);
 
-  async function handleActivate(plan: Plan, capitalAmount: number) {
+  async function handleActivate(
+    plan: Plan,
+    capitalAmount: number,
+    payment: { method: PaymentMethodId; referenceNumber?: string; receiptFile?: File }
+  ) {
     if (demoMode || !user) return;
-    const { db } = getFirebase();
+    const { db, storage } = getFirebase();
     if (!db) return;
-    await activatePlanFor(
-      db,
-      user.uid,
-      plan.id,
-      plan.name,
-      capitalAmount,
-      plan.dailyRate,
-      plan.durationDays,
-      {
-        referralEnabled: plan.referralEnabled,
-        referralBonusType: plan.referralBonusType,
-        referralBonusValue: plan.referralBonusValue,
-        referralReleaseType: plan.referralReleaseType,
-        clearingPeriodDays: plan.clearingPeriodDays,
-      }
-    );
+
+    let receiptUrl: string | undefined;
+    let receiptPath: string | undefined;
+    if (payment.receiptFile && storage) {
+      const uploaded = await uploadReceipt(storage, user.uid, payment.receiptFile);
+      receiptUrl = uploaded.url;
+      receiptPath = uploaded.path;
+    }
+
+    await requestPlanActivation(db, {
+      userId: user.uid,
+      userName: user.name,
+      userEmail: user.email,
+      planId: plan.id,
+      planName: plan.name,
+      amount: capitalAmount,
+      dailyRate: plan.dailyRate,
+      durationDays: plan.durationDays,
+      method: payment.method,
+      referenceNumber: payment.referenceNumber,
+      receiptUrl,
+      receiptPath,
+      referralConfig: plan.referralEnabled
+        ? {
+            referralEnabled: plan.referralEnabled,
+            referralBonusType: plan.referralBonusType,
+            referralBonusValue: plan.referralBonusValue,
+            referralReleaseType: plan.referralReleaseType,
+            clearingPeriodDays: plan.clearingPeriodDays,
+          }
+        : undefined,
+    });
   }
 
   const selected = useMemo(

@@ -71,7 +71,7 @@ export const adminNav: NavGroup[] = [
       { label: "Dashboard", href: "/admin", icon: "dashboard" },
       { label: "Investors", href: "/admin/investors", icon: "users" },
       { label: "Plans", href: "/admin/plans", icon: "coins" },
-      { label: "Top-up requests", href: "/admin/topups", icon: "wallet" },
+      { label: "Plan requests", href: "/admin/plan-requests", icon: "coins" },
       { label: "Withdrawals", href: "/admin/withdrawals", icon: "withdraw" },
       { label: "Referrals", href: "/admin/referrals", icon: "share" },
       { label: "Vault accounts", href: "/admin/vault", icon: "lock" },
