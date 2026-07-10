@@ -243,6 +243,7 @@ async function persistSettlement(input: SettleInput) {
         jackpotWon: jackpot,
         values,
         melds: encodeMelds(live.gs.melds),
+        hands: Object.fromEntries(seats.map((s) => [s.uid, live.hands[s.uid]])),
         completedAt: now,
       },
     });

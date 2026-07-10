@@ -36,6 +36,7 @@ export type TongitsResult = {
   jackpotWon: number;
   values: Record<string, number>;
   melds: Record<string, Card[][]>;
+  hands?: Record<string, Card[]>;
   completedAt: number;
 };
 
@@ -54,9 +55,9 @@ export function cardScore(c: Card): number {
 
 // ===== callables =====
 async function call<T>(name: string, data: Record<string, unknown>): Promise<T> {
-  const { functions } = getFirebase();
-  if (!functions) throw new Error("Not connected");
-  const fn = httpsCallable<Record<string, unknown>, T>(functions, name);
+  const { gameFunctions } = getFirebase();
+  if (!gameFunctions) throw new Error("Not connected");
+  const fn = httpsCallable<Record<string, unknown>, T>(gameFunctions, name);
   return (await fn(data)).data;
 }
 
@@ -99,7 +100,7 @@ export function useGameState(code: string | null) {
       setGs(null);
       return;
     }
-    const { db } = getFirebase();
+    const { gameDb: db } = getFirebase();
     if (!db) return;
     return onSnapshot(
       doc(db, "game_rooms", code, "game", "state"),
@@ -122,7 +123,7 @@ export function useMyHand(code: string | null, uid: string | null) {
       setCards([]);
       return;
     }
-    const { db } = getFirebase();
+    const { gameDb: db } = getFirebase();
     if (!db) return;
     return onSnapshot(
       doc(db, "game_rooms", code, "hands", uid),

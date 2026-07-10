@@ -1,6 +1,9 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import type { Transaction } from "firebase-admin/firestore";
-import { db } from "./init";
+import { db, gameDb } from "./init";
+
+// Region for all live Tongits actions — sits next to the game-live-asia DB.
+const GAME_REGION = "asia-southeast1";
 import {
   deal,
   isValidMeld,
@@ -68,10 +71,12 @@ function decodeMelds(raw: unknown): Record<string, Card[][]> {
 }
 
 // ===== refs =====
-const roomRef = (code: string) => db.doc(`game_rooms/${code}`);
-const gsRef = (code: string) => db.doc(`game_rooms/${code}/game/state`);
-const handRef = (code: string, uid: string) => db.doc(`game_rooms/${code}/hands/${uid}`);
-const deckRef = (code: string) => db.doc(`game_rooms/${code}/secret/deck`);
+// Game state (rooms + gs + hands + deck + chat) lives on gameDb (Singapore).
+// User economy, transactions, and match history live on the default db (us-central).
+const roomRef = (code: string) => gameDb.doc(`game_rooms/${code}`);
+const gsRef = (code: string) => gameDb.doc(`game_rooms/${code}/game/state`);
+const handRef = (code: string, uid: string) => gameDb.doc(`game_rooms/${code}/hands/${uid}`);
+const deckRef = (code: string) => gameDb.doc(`game_rooms/${code}/secret/deck`);
 const userStateRef = (uid: string) => db.doc(`users/${uid}/game/state`);
 const lbRef = (uid: string) => db.doc(`tongits_leaderboard/${uid}`);
 const txnCol = () => db.collection("game_point_transactions");
@@ -179,35 +184,48 @@ function advanceTurn(ctx: Ctx, now: number) {
 
 // ===== resolution + settlement =====
 
-async function resolveAndSettle(
+/**
+ * Inputs settleEconomy needs. Produced by settleGameStateInTx during the
+ * gameDb transaction so we can settle the economy after that transaction
+ * commits.
+ */
+type SettleEcoInputs = {
+  code: string;
+  now: number;
+  seats: Seat[];
+  values: Record<string, number>;
+  winnerUid: string;
+  resultType: ResultType;
+  jackpot: number;
+  payoutJackpot: boolean;
+  C: number;
+  secret: boolean;
+  matchId: string;
+  matchDurationSeconds: number;
+};
+
+/**
+ * Runs INSIDE the gameDb transaction. Writes only to gameDb — room →
+ * post_game with lastResult, gs → ended, deck cleared, hands cleared. Returns
+ * everything settleEconomy needs to finalise on the default db.
+ */
+function settleGameStateInTx(
   tx: Transaction,
   code: string,
   ctx: Ctx,
   resultType: ResultType,
   winnerUid: string,
   opts: { secret: boolean; forfeitUid?: string }
-) {
+): SettleEcoInputs {
   const now = Date.now();
   const seats = ctx.gs.seats;
   const C = (ctx.room.challengePoints as number) ?? 0;
 
-  // Final unmelded values (winner is 0 on a Tongits).
   const values: Record<string, number> = {};
   for (const s of seats) {
     values[s.uid] = s.uid === winnerUid && resultType === "tongits_win" ? 0 : handValue(ctx.hands[s.uid]);
   }
-  if (opts.forfeitUid) values[opts.forfeitUid] = 9999; // forfeiter counts as worst
-
-  // Read all economy + leaderboard docs before writing.
-  const stateSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
-  const lbSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
-  for (const s of seats) {
-    const snap = await tx.get(userStateRef(s.uid));
-    stateSnaps[s.uid] = (snap.exists ? snap.data() : {}) as FirebaseFirestore.DocumentData;
-    const lb = await tx.get(lbRef(s.uid));
-    lbSnaps[s.uid] = (lb.exists ? lb.data() : {}) as FirebaseFirestore.DocumentData;
-  }
-  const keys = periodKeys(now);
+  if (opts.forfeitUid) values[opts.forfeitUid] = 9999;
 
   // Streak-based jackpot: same winner two hands in a row claims the pot.
   const prevWinnerUid = (ctx.room.lastWinnerUid as string | null | undefined) ?? null;
@@ -218,112 +236,16 @@ async function resolveAndSettle(
   const nextLastWinnerUid = payoutJackpot ? null : winnerUid;
   const jackpot = payoutJackpot ? ctx.gs.jackpotPoints : 0;
 
-  // Match + per-player result records.
-  const matchRef = db.collection("game_matches").doc();
-  tx.set(matchRef, {
-    roomCode: code,
-    winnerUserId: winnerUid,
-    resultType,
-    matchStatus: "completed",
-    matchDurationSeconds: Math.round((now - (ctx.gs.startedAt ?? now)) / 1000),
-    createdAt: ctx.gs.startedAt ?? now,
-    completedAt: now,
-  });
+  // Pre-generate matchId (default-db collection id) so lastResult can point at
+  // the match record that settleEconomy will write after commit.
+  const matchId = db.collection("game_matches").doc().id;
 
-  const ranked = [...seats].sort((a, b) => values[a.uid] - values[b.uid]);
-  ranked.forEach((s, i) => {
-    const isWinner = s.uid === winnerUid;
-    const cur = stateSnaps[s.uid];
-    const points = (cur.points as number) ?? 0;
-    const locked = (cur.lockedPoints as number) ?? 0;
-    const rp = (cur.rankingPoints as number) ?? 0;
-    const games = (cur.tongitsGames as number) ?? 0;
-    const wins = (cur.tongitsWins as number) ?? 0;
-    const losses = (cur.tongitsLosses as number) ?? 0;
-
-    const rankingEarned = isWinner
-      ? (resultType === "tongits_win" ? RP_TONGITS : RP_SHOWDOWN) + (opts.secret ? RP_SECRET : 0)
-      : RP_LOSS;
-    const winnings = isWinner ? C * seats.length + jackpot : 0; // pool = 3C (+ jackpot)
-
-    tx.set(
-      userStateRef(s.uid),
-      {
-        points: points + winnings,
-        lockedPoints: Math.max(0, locked - C), // release this game's stake
-        rankingPoints: rp + rankingEarned,
-        tongitsGames: games + 1,
-        tongitsWins: wins + (isWinner ? 1 : 0),
-        tongitsLosses: losses + (isWinner ? 0 : 1),
-      },
-      { merge: true }
-    );
-
-    tx.set(db.collection("game_match_results").doc(), {
-      matchId: matchRef.id,
-      userId: s.uid,
-      finalPosition: isWinner ? 1 : i + 1,
-      finalHandValue: values[s.uid],
-      pointsEarned: winnings,
-      pointsLost: isWinner ? 0 : C,
-      rankingPointsEarned: rankingEarned,
-      createdAt: now,
-    });
-
-    tx.set(txnCol().doc(), {
-      userId: s.uid,
-      type: isWinner ? "challenge_points_won" : "challenge_points_lost",
-      amount: isWinner ? winnings : C,
-      roomCode: code,
-      matchId: matchRef.id,
-      description: isWinner
-        ? `Won ${winnings} in Tongits room ${code}`
-        : `Lost ${C} in Tongits room ${code}`,
-      createdAt: now,
-    });
-
-    // Rolling leaderboard: reset a period bucket when its key rolls over.
-    const lb = lbSnaps[s.uid];
-    const roll = (key: string, storedKey: unknown, storedRP: unknown) =>
-      (storedKey === key ? ((storedRP as number) ?? 0) : 0) + rankingEarned;
-    tx.set(
-      lbRef(s.uid),
-      {
-        uid: s.uid,
-        name: s.name,
-        allTimeRP: ((lb.allTimeRP as number) ?? 0) + rankingEarned,
-        wins: ((lb.wins as number) ?? 0) + (isWinner ? 1 : 0),
-        games: ((lb.games as number) ?? 0) + 1,
-        dayKey: keys.day,
-        dayRP: roll(keys.day, lb.dayKey, lb.dayRP),
-        weekKey: keys.week,
-        weekRP: roll(keys.week, lb.weekKey, lb.weekRP),
-        monthKey: keys.month,
-        monthRP: roll(keys.month, lb.monthKey, lb.monthRP),
-        updatedAt: now,
-      },
-      { merge: true }
-    );
-  });
-
-  if (payoutJackpot && jackpot > 0) {
-    tx.set(txnCol().doc(), {
-      userId: winnerUid,
-      type: "jackpot_won",
-      amount: jackpot,
-      roomCode: code,
-      matchId: matchRef.id,
-      description: `Won the ${jackpot} jackpot in room ${code}`,
-      createdAt: now,
-    });
-  }
-
-  // Post-game room state: keep jackpot unless streak paid out; reset ready/agreed.
   const players = { ...(ctx.room.players as Record<string, Record<string, unknown>>) };
   for (const uid of Object.keys(players)) {
     players[uid] = { ...players[uid], isReady: false, agreedToChallenge: false };
   }
   const winnerName = seats.find((s) => s.uid === winnerUid)?.name ?? "Winner";
+
   tx.update(roomRef(code), {
     players,
     status: "post_game",
@@ -333,96 +255,212 @@ async function resolveAndSettle(
     gamesPlayed: ((ctx.room.gamesPlayed as number) ?? 0) + 1,
     updatedAt: now,
     lastResult: {
-      matchId: matchRef.id,
+      matchId,
       resultType,
       winnerUserId: winnerUid,
       winnerName,
       jackpotWon: jackpot,
       values,
       melds: encodeMelds(ctx.gs.melds),
+      hands: Object.fromEntries(seats.map((s) => [s.uid, ctx.hands[s.uid]])),
       completedAt: now,
     },
   });
 
-  // Tear down the live game (hands + deck), leave a small ended marker.
   ctx.gs.status = "ended";
   tx.set(gsRef(code), { ...ctx.gs, status: "ended", melds: encodeMelds(ctx.gs.melds) });
   tx.set(deckRef(code), { stock: [] });
   for (const s of seats) tx.set(handRef(code, s.uid), { cards: [] });
+
+  return {
+    code,
+    now,
+    seats,
+    values,
+    winnerUid,
+    resultType,
+    jackpot,
+    payoutJackpot,
+    C,
+    secret: opts.secret,
+    matchId,
+    matchDurationSeconds: Math.round((now - (ctx.gs.startedAt ?? now)) / 1000),
+  };
 }
 
-/** Detect a Tongits (empty hand) for the acting player and resolve if so. */
-async function checkTongits(tx: Transaction, code: string, ctx: Ctx, uid: string): Promise<boolean> {
-  if (ctx.hands[uid].length > 0) return false;
-  const secret = !ctx.gs.turnStartExposed; // won without a pre-existing exposed meld
-  await resolveAndSettle(tx, code, ctx, "tongits_win", uid, { secret });
-  return true;
+/**
+ * Runs AFTER the gameDb transaction commits. Its own default-db transaction:
+ * writes user points, ranking, tongits stats, match records, transactions,
+ * and the rolling leaderboard.
+ *
+ * If this throws, the room is already post_game but balances/history didn't
+ * apply. The lastResult on the room carries enough info to retry from an
+ * ops function later.
+ */
+async function settleEconomy(input: SettleEcoInputs) {
+  const { code, now, seats, values, winnerUid, resultType, jackpot, payoutJackpot, C, secret, matchId, matchDurationSeconds } = input;
+  await db.runTransaction(async (tx) => {
+    const stateSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
+    const lbSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
+    for (const s of seats) {
+      const snap = await tx.get(userStateRef(s.uid));
+      stateSnaps[s.uid] = (snap.exists ? snap.data() : {}) as FirebaseFirestore.DocumentData;
+      const lb = await tx.get(lbRef(s.uid));
+      lbSnaps[s.uid] = (lb.exists ? lb.data() : {}) as FirebaseFirestore.DocumentData;
+    }
+    const keys = periodKeys(now);
+
+    tx.set(db.doc(`game_matches/${matchId}`), {
+      roomCode: code,
+      winnerUserId: winnerUid,
+      resultType,
+      matchStatus: "completed",
+      matchDurationSeconds,
+      createdAt: now - matchDurationSeconds * 1000,
+      completedAt: now,
+    });
+
+    const ranked = [...seats].sort((a, b) => values[a.uid] - values[b.uid]);
+    ranked.forEach((s, i) => {
+      const isWinner = s.uid === winnerUid;
+      const cur = stateSnaps[s.uid];
+      const points = (cur.points as number) ?? 0;
+      const locked = (cur.lockedPoints as number) ?? 0;
+      const rp = (cur.rankingPoints as number) ?? 0;
+      const games = (cur.tongitsGames as number) ?? 0;
+      const wins = (cur.tongitsWins as number) ?? 0;
+      const losses = (cur.tongitsLosses as number) ?? 0;
+
+      const rankingEarned = isWinner
+        ? (resultType === "tongits_win" ? RP_TONGITS : RP_SHOWDOWN) + (secret ? RP_SECRET : 0)
+        : RP_LOSS;
+      const winnings = isWinner ? C * seats.length + jackpot : 0;
+
+      tx.set(
+        userStateRef(s.uid),
+        {
+          points: points + winnings,
+          lockedPoints: Math.max(0, locked - C),
+          rankingPoints: rp + rankingEarned,
+          tongitsGames: games + 1,
+          tongitsWins: wins + (isWinner ? 1 : 0),
+          tongitsLosses: losses + (isWinner ? 0 : 1),
+        },
+        { merge: true }
+      );
+
+      tx.set(db.collection("game_match_results").doc(), {
+        matchId,
+        userId: s.uid,
+        finalPosition: isWinner ? 1 : i + 1,
+        finalHandValue: values[s.uid],
+        pointsEarned: winnings,
+        pointsLost: isWinner ? 0 : C,
+        rankingPointsEarned: rankingEarned,
+        createdAt: now,
+      });
+
+      tx.set(txnCol().doc(), {
+        userId: s.uid,
+        type: isWinner ? "challenge_points_won" : "challenge_points_lost",
+        amount: isWinner ? winnings : C,
+        roomCode: code,
+        matchId,
+        description: isWinner
+          ? `Won ${winnings} in Tongits room ${code}`
+          : `Lost ${C} in Tongits room ${code}`,
+        createdAt: now,
+      });
+
+      const lb = lbSnaps[s.uid];
+      const roll = (key: string, storedKey: unknown, storedRP: unknown) =>
+        (storedKey === key ? ((storedRP as number) ?? 0) : 0) + rankingEarned;
+      tx.set(
+        lbRef(s.uid),
+        {
+          uid: s.uid,
+          name: s.name,
+          allTimeRP: ((lb.allTimeRP as number) ?? 0) + rankingEarned,
+          wins: ((lb.wins as number) ?? 0) + (isWinner ? 1 : 0),
+          games: ((lb.games as number) ?? 0) + 1,
+          dayKey: keys.day,
+          dayRP: roll(keys.day, lb.dayKey, lb.dayRP),
+          weekKey: keys.week,
+          weekRP: roll(keys.week, lb.weekKey, lb.weekRP),
+          monthKey: keys.month,
+          monthRP: roll(keys.month, lb.monthKey, lb.monthRP),
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+    });
+
+    if (payoutJackpot && jackpot > 0) {
+      tx.set(txnCol().doc(), {
+        userId: winnerUid,
+        type: "jackpot_won",
+        amount: jackpot,
+        roomCode: code,
+        matchId,
+        description: `Won the ${jackpot} jackpot in room ${code}`,
+        createdAt: now,
+      });
+    }
+  });
+}
+
+/**
+ * Detect a Tongits (empty hand) and, if so, tear down the game state inside
+ * the current gameDb transaction and return the settle inputs. The caller
+ * must run `settleEconomy(returnValue)` after the gameDb transaction commits.
+ * Returns null if no Tongits occurred (the caller keeps going normally).
+ */
+function checkTongits(tx: Transaction, code: string, ctx: Ctx, uid: string): SettleEcoInputs | null {
+  if (ctx.hands[uid].length > 0) return null;
+  const secret = !ctx.gs.turnStartExposed;
+  return settleGameStateInTx(tx, code, ctx, "tongits_win", uid, { secret });
 }
 
 // ===== callables =====
 
-/** Start the match once the room is locked & ready. Deals, collects antes. */
-export const startTongitsGame = onCall(async (request) => {
+/**
+ * Start the match once the room is locked & ready. Deals, collects antes.
+ * Two-phase because room lives on gameDb (Singapore) while user economy lives
+ * on the default db (us-central):
+ *   Phase A (default db): validate + deduct antes from each player's points.
+ *   Phase B (gameDb): validate room again, create gs/deck/hands, flip to in_game.
+ * If B fails after A, we refund the antes.
+ */
+export const startTongitsGame = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const now = Date.now();
 
-  return db.runTransaction(async (tx) => {
-    const roomSnap = await tx.get(roomRef(code));
-    if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
-    const room = roomSnap.data() as FirebaseFirestore.DocumentData;
-    if (!room.players?.[uid]) throw new HttpsError("permission-denied", "You're not in this room.");
-    if (room.status !== "ready") throw new HttpsError("failed-precondition", "Room isn't ready to start.");
+  // Read the room from gameDb first so both phases work with the same seats/ante.
+  const roomSnapPre = await roomRef(code).get();
+  if (!roomSnapPre.exists) throw new HttpsError("not-found", "Room not found.");
+  const roomPre = roomSnapPre.data() as FirebaseFirestore.DocumentData;
+  if (!roomPre.players?.[uid]) throw new HttpsError("permission-denied", "You're not in this room.");
+  if (roomPre.status !== "ready") throw new HttpsError("failed-precondition", "Room isn't ready to start.");
 
-    const players = Object.values(room.players as Record<string, { uid: string; seat: number; name: string }>);
-    if (players.length !== 3) throw new HttpsError("failed-precondition", "Need exactly 3 players.");
-    const seats: Seat[] = players
-      .map((p) => ({ uid: p.uid, seat: p.seat, name: p.name }))
-      .sort((a, b) => a.seat - b.seat);
+  const playersPre = Object.values(roomPre.players as Record<string, { uid: string; seat: number; name: string }>);
+  if (playersPre.length !== 3) throw new HttpsError("failed-precondition", "Need exactly 3 players.");
+  const seats: Seat[] = playersPre.map((p) => ({ uid: p.uid, seat: p.seat, name: p.name })).sort((a, b) => a.seat - b.seat);
+  const ante = (roomPre.jackpotAnte as number) ?? 0;
 
-    // Collect the jackpot ante from each player's available points.
-    const ante = (room.jackpotAnte as number) ?? 0;
-    const stateSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
-    for (const s of seats) {
-      const snap = await tx.get(userStateRef(s.uid));
-      stateSnaps[s.uid] = (snap.exists ? snap.data() : {}) as FirebaseFirestore.DocumentData;
-      if (ante > 0 && ((stateSnaps[s.uid].points as number) ?? 0) < ante) {
-        throw new HttpsError("failed-precondition", `${s.name} can't cover the ${ante} jackpot ante.`);
+  // Phase A — deduct antes on the default (us-central) db.
+  if (ante > 0) {
+    await db.runTransaction(async (tx) => {
+      const stateSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
+      for (const s of seats) {
+        const snap = await tx.get(userStateRef(s.uid));
+        stateSnaps[s.uid] = (snap.exists ? snap.data() : {}) as FirebaseFirestore.DocumentData;
+        if (((stateSnaps[s.uid].points as number) ?? 0) < ante) {
+          throw new HttpsError("failed-precondition", `${s.name} can't cover the ${ante} jackpot ante.`);
+        }
       }
-    }
-
-    const { hands, stock } = deal();
-    const handMap: Record<string, Card[]> = {};
-    seats.forEach((s, i) => (handMap[s.uid] = hands[i])); // seat 0 (dealer) gets 13
-
-    const gs: GamePublic = {
-      status: "in_game",
-      round: ((room.gamesPlayed as number) ?? 0) + 1,
-      turnSeat: 0,
-      turnUid: seats[0].uid, // dealer plays first, no draw
-      phase: "discard",
-      stockCount: stock.length,
-      discard: [],
-      melds: Object.fromEntries(seats.map((s) => [s.uid, [] as Card[][]])),
-      handCounts: Object.fromEntries(seats.map((s) => [s.uid, handMap[s.uid].length])),
-      hasExposed: Object.fromEntries(seats.map((s) => [s.uid, false])),
-      turnStartExposed: false,
-      seats,
-      turnDeadline: now + TURN_MS,
-      consecutiveTimeouts: Object.fromEntries(seats.map((s) => [s.uid, 0])),
-      jackpotPoints: ((room.jackpotPoints as number) ?? 0) + ante * seats.length,
-      startedAt: now,
-    };
-
-    // Writes.
-    const jackpotContrib: Record<string, Record<string, unknown>> = {};
-    for (const s of seats) {
-      if (ante > 0) {
-        tx.set(
-          userStateRef(s.uid),
-          { points: ((stateSnaps[s.uid].points as number) ?? 0) - ante },
-          { merge: true }
-        );
+      for (const s of seats) {
+        tx.set(userStateRef(s.uid), { points: ((stateSnaps[s.uid].points as number) ?? 0) - ante }, { merge: true });
         tx.set(txnCol().doc(), {
           userId: s.uid,
           type: "jackpot_ante",
@@ -433,50 +471,118 @@ export const startTongitsGame = onCall(async (request) => {
           createdAt: now,
         });
       }
-      const prev = (room.players[s.uid].jackpotContributed as number) ?? 0;
-      jackpotContrib[s.uid] = { ...room.players[s.uid], jackpotContributed: prev + ante };
-      tx.set(handRef(code, s.uid), { cards: handMap[s.uid] });
-    }
-    tx.set(deckRef(code), { stock });
-    tx.set(gsRef(code), { ...gs, melds: encodeMelds(gs.melds) });
-    tx.update(roomRef(code), {
-      players: { ...room.players, ...jackpotContrib },
-      status: "in_game",
-      jackpotPoints: gs.jackpotPoints,
-      startedAt: now,
-      updatedAt: now,
     });
-    return { ok: true };
-  });
+  }
+
+  // Phase B — create game state on gameDb. If this fails, refund the antes.
+  try {
+    const { hands, stock } = deal();
+    const handMap: Record<string, Card[]> = {};
+    seats.forEach((s, i) => (handMap[s.uid] = hands[i]));
+
+    await gameDb.runTransaction(async (tx) => {
+      const roomSnap = await tx.get(roomRef(code));
+      if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
+      const room = roomSnap.data() as FirebaseFirestore.DocumentData;
+      if (room.status !== "ready") throw new HttpsError("failed-precondition", "Room isn't ready to start.");
+
+      const gs: GamePublic = {
+        status: "in_game",
+        round: ((room.gamesPlayed as number) ?? 0) + 1,
+        turnSeat: 0,
+        turnUid: seats[0].uid,
+        phase: "discard",
+        stockCount: stock.length,
+        discard: [],
+        melds: Object.fromEntries(seats.map((s) => [s.uid, [] as Card[][]])),
+        handCounts: Object.fromEntries(seats.map((s) => [s.uid, handMap[s.uid].length])),
+        hasExposed: Object.fromEntries(seats.map((s) => [s.uid, false])),
+        turnStartExposed: false,
+        seats,
+        turnDeadline: now + TURN_MS,
+        consecutiveTimeouts: Object.fromEntries(seats.map((s) => [s.uid, 0])),
+        jackpotPoints: ((room.jackpotPoints as number) ?? 0) + ante * seats.length,
+        startedAt: now,
+      };
+
+      const jackpotContrib: Record<string, Record<string, unknown>> = {};
+      for (const s of seats) {
+        const prev = (room.players[s.uid].jackpotContributed as number) ?? 0;
+        jackpotContrib[s.uid] = { ...room.players[s.uid], jackpotContributed: prev + ante };
+        tx.set(handRef(code, s.uid), { cards: handMap[s.uid] });
+      }
+      tx.set(deckRef(code), { stock });
+      tx.set(gsRef(code), { ...gs, melds: encodeMelds(gs.melds) });
+      tx.update(roomRef(code), {
+        players: { ...room.players, ...jackpotContrib },
+        status: "in_game",
+        jackpotPoints: gs.jackpotPoints,
+        startedAt: now,
+        updatedAt: now,
+      });
+    });
+  } catch (err) {
+    if (ante > 0) {
+      // Refund on failure so nobody's balance is stuck out.
+      await db.runTransaction(async (tx) => {
+        for (const s of seats) {
+          const snap = await tx.get(userStateRef(s.uid));
+          const cur = (snap.exists ? snap.data() : {}) as FirebaseFirestore.DocumentData;
+          tx.set(userStateRef(s.uid), { points: ((cur.points as number) ?? 0) + ante }, { merge: true });
+          tx.set(txnCol().doc(), {
+            userId: s.uid,
+            type: "jackpot_ante_refund",
+            amount: ante,
+            roomCode: code,
+            matchId: null,
+            description: `Refund ante ${ante} — game start failed in room ${code}`,
+            createdAt: Date.now(),
+          });
+        }
+      }).catch((refundErr) => {
+        // Best-effort — log and let the outer error propagate.
+        // eslint-disable-next-line no-console
+        console.error("Ante refund failed", { code, refundErr });
+      });
+    }
+    throw err;
+  }
+  return { ok: true };
 });
 
-export const tongitsDraw = onCall({ minInstances: 1 }, async (request) => {
+export const tongitsDraw = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
-  return db.runTransaction(async (tx) => {
+  let eco: SettleEcoInputs | null = null;
+  await gameDb.runTransaction(async (tx) => {
     const ctx = await loadCtx(tx, code);
     requireTurn(ctx, uid, "draw");
     if (ctx.deck.length === 0) {
       // Stock exhausted → showdown, lowest hand wins (draw).
       const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
       const winner = resolveShowdown(entries);
-      await resolveAndSettle(tx, code, ctx, "draw_win", winner, { secret: false });
-      return { ok: true, ended: true };
+      eco = settleGameStateInTx(tx, code, ctx, "draw_win", winner, { secret: false });
+      return;
     }
     const card = ctx.deck.shift() as Card;
     ctx.hands[uid].push(card);
     ctx.gs.phase = "discard";
     ctx.gs.consecutiveTimeouts[uid] = 0;
     commitProgress(tx, code, ctx, `${ctx.gs.seats.find((s) => s.uid === uid)?.name} drew`, [uid]);
-    return { ok: true };
   });
+  if (eco) {
+    await settleEconomy(eco);
+    return { ok: true, ended: true };
+  }
+  return { ok: true };
 });
 
-export const tongitsTakeDiscard = onCall({ minInstances: 1 }, async (request) => {
+export const tongitsTakeDiscard = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const meldCards = ((request.data as { meldCards?: Card[] })?.meldCards ?? []).map(String);
-  return db.runTransaction(async (tx) => {
+  let eco: SettleEcoInputs | null = null;
+  await gameDb.runTransaction(async (tx) => {
     const ctx = await loadCtx(tx, code);
     requireTurn(ctx, uid, "draw");
     const top = ctx.gs.discard[ctx.gs.discard.length - 1];
@@ -494,17 +600,22 @@ export const tongitsTakeDiscard = onCall({ minInstances: 1 }, async (request) =>
     ctx.gs.hasExposed[uid] = true;
     ctx.gs.phase = "discard";
     ctx.gs.consecutiveTimeouts[uid] = 0;
-    if (await checkTongits(tx, code, ctx, uid)) return { ok: true, ended: true };
-    commitProgress(tx, code, ctx, "took discard + melded", [uid]);
-    return { ok: true };
+    eco = checkTongits(tx, code, ctx, uid);
+    if (!eco) commitProgress(tx, code, ctx, "took discard + melded", [uid]);
   });
+  if (eco) {
+    await settleEconomy(eco);
+    return { ok: true, ended: true };
+  }
+  return { ok: true };
 });
 
-export const tongitsMeld = onCall({ minInstances: 1 }, async (request) => {
+export const tongitsMeld = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const cards = ((request.data as { cards?: Card[] })?.cards ?? []).map(String);
-  return db.runTransaction(async (tx) => {
+  let eco: SettleEcoInputs | null = null;
+  await gameDb.runTransaction(async (tx) => {
     const ctx = await loadCtx(tx, code);
     requireTurn(ctx, uid, "discard");
     if (!isValidMeld(cards)) throw new HttpsError("invalid-argument", "That isn't a valid meld.");
@@ -512,20 +623,25 @@ export const tongitsMeld = onCall({ minInstances: 1 }, async (request) => {
     for (const c of cards) ctx.hands[uid].splice(ctx.hands[uid].indexOf(c), 1);
     ctx.gs.melds[uid].push(cards);
     ctx.gs.hasExposed[uid] = true;
-    if (await checkTongits(tx, code, ctx, uid)) return { ok: true, ended: true };
-    commitProgress(tx, code, ctx, "melded", [uid]);
-    return { ok: true };
+    eco = checkTongits(tx, code, ctx, uid);
+    if (!eco) commitProgress(tx, code, ctx, "melded", [uid]);
   });
+  if (eco) {
+    await settleEconomy(eco);
+    return { ok: true, ended: true };
+  }
+  return { ok: true };
 });
 
-export const tongitsSapaw = onCall({ minInstances: 1 }, async (request) => {
+export const tongitsSapaw = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const data = (request.data ?? {}) as { targetUid?: string; meldIndex?: number; card?: string };
   const targetUid = String(data.targetUid ?? "");
   const meldIndex = Number(data.meldIndex);
   const card = String(data.card ?? "");
-  return db.runTransaction(async (tx) => {
+  let eco: SettleEcoInputs | null = null;
+  await gameDb.runTransaction(async (tx) => {
     const ctx = await loadCtx(tx, code);
     requireTurn(ctx, uid, "discard");
     const target = ctx.gs.melds[targetUid];
@@ -535,35 +651,46 @@ export const tongitsSapaw = onCall({ minInstances: 1 }, async (request) => {
     if (!next) throw new HttpsError("invalid-argument", "That card can't be added to that meld.");
     target[meldIndex] = next;
     ctx.hands[uid].splice(ctx.hands[uid].indexOf(card), 1);
-    if (await checkTongits(tx, code, ctx, uid)) return { ok: true, ended: true };
-    commitProgress(tx, code, ctx, "sapaw", [uid]);
-    return { ok: true };
+    eco = checkTongits(tx, code, ctx, uid);
+    if (!eco) commitProgress(tx, code, ctx, "sapaw", [uid]);
   });
+  if (eco) {
+    await settleEconomy(eco);
+    return { ok: true, ended: true };
+  }
+  return { ok: true };
 });
 
-export const tongitsDiscard = onCall({ minInstances: 1 }, async (request) => {
+export const tongitsDiscard = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const card = String((request.data as { card?: string })?.card ?? "");
   const now = Date.now();
-  return db.runTransaction(async (tx) => {
+  let eco: SettleEcoInputs | null = null;
+  await gameDb.runTransaction(async (tx) => {
     const ctx = await loadCtx(tx, code);
     requireTurn(ctx, uid, "discard");
     if (!ctx.hands[uid].includes(card)) throw new HttpsError("invalid-argument", "You don't hold that card.");
     ctx.hands[uid].splice(ctx.hands[uid].indexOf(card), 1);
     ctx.gs.discard.push(card);
     // Discarding your last card is a Tongits.
-    if (await checkTongits(tx, code, ctx, uid)) return { ok: true, ended: true };
+    eco = checkTongits(tx, code, ctx, uid);
+    if (eco) return;
     advanceTurn(ctx, now);
     commitProgress(tx, code, ctx, "discarded", [uid]);
-    return { ok: true };
   });
+  if (eco) {
+    await settleEconomy(eco);
+    return { ok: true, ended: true };
+  }
+  return { ok: true };
 });
 
-export const tongitsCall = onCall({ minInstances: 1 }, async (request) => {
+export const tongitsCall = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
-  return db.runTransaction(async (tx) => {
+  let eco: SettleEcoInputs | null = null;
+  await gameDb.runTransaction(async (tx) => {
     const ctx = await loadCtx(tx, code);
     requireTurn(ctx, uid, "discard");
     if ((ctx.gs.melds[uid]?.length ?? 0) === 0) {
@@ -571,17 +698,19 @@ export const tongitsCall = onCall({ minInstances: 1 }, async (request) => {
     }
     const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
     const winner = resolveShowdown(entries, uid); // caller wins ties
-    await resolveAndSettle(tx, code, ctx, "lowest_points_win", winner, { secret: false });
-    return { ok: true, ended: true };
+    eco = settleGameStateInTx(tx, code, ctx, "lowest_points_win", winner, { secret: false });
   });
+  if (eco) await settleEconomy(eco);
+  return { ok: true, ended: true };
 });
 
 /** Any player may enforce the turn timer once the deadline passes. */
-export const enforceTongitsTimeout = onCall(async (request) => {
+export const enforceTongitsTimeout = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const now = Date.now();
-  return db.runTransaction(async (tx) => {
+  let eco: SettleEcoInputs | null = null;
+  const result = await gameDb.runTransaction<{ ok: boolean; ended?: boolean; skipped?: boolean; autoPlayed?: boolean }>(async (tx) => {
     const ctx = await loadCtx(tx, code);
     if (ctx.gs.status !== "in_game") return { ok: true, ended: true };
     if (!ctx.gs.seats.some((s) => s.uid === uid)) throw new HttpsError("permission-denied", "Not your room.");
@@ -596,7 +725,7 @@ export const enforceTongitsTimeout = onCall(async (request) => {
       const others = ctx.gs.seats.filter((s) => s.uid !== cur);
       const entries = others.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
       const winner = resolveShowdown(entries);
-      await resolveAndSettle(tx, code, ctx, "player_disconnected", winner, {
+      eco = settleGameStateInTx(tx, code, ctx, "player_disconnected", winner, {
         secret: false,
         forfeitUid: cur,
       });
@@ -608,7 +737,7 @@ export const enforceTongitsTimeout = onCall(async (request) => {
       if (ctx.deck.length === 0) {
         const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
         const winner = resolveShowdown(entries);
-        await resolveAndSettle(tx, code, ctx, "draw_win", winner, { secret: false });
+        eco = settleGameStateInTx(tx, code, ctx, "draw_win", winner, { secret: false });
         return { ok: true, ended: true };
       }
       ctx.hands[cur].push(ctx.deck.shift() as Card);
@@ -619,21 +748,23 @@ export const enforceTongitsTimeout = onCall(async (request) => {
     if (ctx.hands[cur].length === 0) {
       // Auto-play emptied the hand — count it as a Tongits for that player.
       const secret = !ctx.gs.turnStartExposed;
-      await resolveAndSettle(tx, code, ctx, "tongits_win", cur, { secret });
+      eco = settleGameStateInTx(tx, code, ctx, "tongits_win", cur, { secret });
       return { ok: true, ended: true };
     }
     advanceTurn(ctx, now);
     commitProgress(tx, code, ctx, "auto-played (timeout)", [cur]);
     return { ok: true, autoPlayed: true };
   });
+  if (eco) await settleEconomy(eco);
+  return result;
 });
 
 /** Reset a finished room for another game (stakes re-lock via the ready flow). */
-export const tongitsPlayAgain = onCall(async (request) => {
+export const tongitsPlayAgain = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const now = Date.now();
-  return db.runTransaction(async (tx) => {
+  return gameDb.runTransaction(async (tx) => {
     const roomSnap = await tx.get(roomRef(code));
     if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
     const room = roomSnap.data() as FirebaseFirestore.DocumentData;
@@ -658,7 +789,12 @@ export const splitTongitsJackpot = onCall(async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const now = Date.now();
-  return db.runTransaction(async (tx) => {
+
+  type Outcome = {
+    phaseA: { ok: boolean; waiting?: boolean; split?: boolean };
+    payout: { uids: string[]; jackpot: number } | null;
+  };
+  const outcome = await gameDb.runTransaction<Outcome>(async (tx) => {
     const roomSnap = await tx.get(roomRef(code));
     if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
     const room = roomSnap.data() as FirebaseFirestore.DocumentData;
@@ -666,35 +802,38 @@ export const splitTongitsJackpot = onCall(async (request) => {
     if (!players?.[uid]) throw new HttpsError("permission-denied", "You're not in this room.");
     const uids = Object.keys(players);
 
-    // Record this player's consent.
     const consent: Record<string, boolean> = { ...((room.splitConsent as Record<string, boolean>) ?? {}) };
     consent[uid] = true;
     const everyoneAgreed = uids.every((u) => consent[u]);
     if (!everyoneAgreed) {
       tx.update(roomRef(code), { splitConsent: consent, updatedAt: now });
-      return { ok: true, waiting: true };
+      return { phaseA: { ok: true, waiting: true }, payout: null };
     }
+    tx.update(roomRef(code), { status: "cancelled", jackpotPoints: 0, completedAt: now, updatedAt: now });
+    return { phaseA: { ok: true, split: true }, payout: { uids, jackpot: (room.jackpotPoints as number) ?? 0 } };
+  });
 
-    // Split the jackpot equally; refund is exact to the peso via floor + remainder.
-    const jackpot = (room.jackpotPoints as number) ?? 0;
+  if (outcome.payout) {
+    const { uids, jackpot } = outcome.payout;
     const share = Math.floor(jackpot / uids.length);
-    const stateSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
-    for (const u of uids) stateSnaps[u] = (await tx.get(userStateRef(u))).data() ?? {};
-    uids.forEach((u, i) => {
-      const extra = i === 0 ? jackpot - share * uids.length : 0; // remainder to first
-      const amount = share + extra;
-      tx.set(userStateRef(u), { points: ((stateSnaps[u].points as number) ?? 0) + amount }, { merge: true });
-      tx.set(txnCol().doc(), {
-        userId: u,
-        type: "jackpot_split",
-        amount,
-        roomCode: code,
-        matchId: null,
-        description: `Split share of the ${jackpot} jackpot in room ${code}`,
-        createdAt: now,
+    await db.runTransaction(async (tx) => {
+      const stateSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
+      for (const u of uids) stateSnaps[u] = (await tx.get(userStateRef(u))).data() ?? {};
+      uids.forEach((u, i) => {
+        const extra = i === 0 ? jackpot - share * uids.length : 0;
+        const amount = share + extra;
+        tx.set(userStateRef(u), { points: ((stateSnaps[u].points as number) ?? 0) + amount }, { merge: true });
+        tx.set(txnCol().doc(), {
+          userId: u,
+          type: "jackpot_split",
+          amount,
+          roomCode: code,
+          matchId: null,
+          description: `Split share of the ${jackpot} jackpot in room ${code}`,
+          createdAt: now,
+        });
       });
     });
-    tx.update(roomRef(code), { status: "cancelled", jackpotPoints: 0, completedAt: now, updatedAt: now });
-    return { ok: true, split: true };
-  });
+  }
+  return outcome.phaseA;
 });
