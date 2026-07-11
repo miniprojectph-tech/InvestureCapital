@@ -359,7 +359,6 @@ const RESULT_LABEL: Record<string, string> = {
   tongits_win: "Tongits!",
   draw_win: "Draw — stock ran out",
   lowest_points_win: "Lowest hand wins",
-  player_disconnected: "Won by forfeit",
 };
 
 function ResultScreen({

@@ -10,7 +10,7 @@ import {
 import type { LiveRoom, GameState, SettleInput, ResultType } from "./types.js";
 
 const TURN_MS = 25_000;
-const MAX_TIMEOUTS = 2;
+
 
 function refreshCounts(room: LiveRoom) {
   for (const s of room.gs.seats) {
@@ -40,7 +40,7 @@ function settleGame(
   room: LiveRoom,
   resultType: ResultType,
   winnerUid: string,
-  opts: { secret: boolean; forfeitUid?: string }
+  opts: { secret: boolean }
 ): SettleInput {
   const now = Date.now();
   const seats = room.gs.seats;
@@ -53,7 +53,6 @@ function settleGame(
         ? 0
         : handValue(room.hands[s.uid]);
   }
-  if (opts.forfeitUid) values[opts.forfeitUid] = 9999;
 
   const prevWinnerUid = room.room.lastWinnerUid;
   const prevStreak = room.room.winStreak;
@@ -255,21 +254,6 @@ export function doEnforceTimeout(room: LiveRoom, uid: string): ActionResult {
   const cur = gs.turnUid;
   const timeouts = (gs.consecutiveTimeouts[cur] ?? 0) + 1;
   gs.consecutiveTimeouts[cur] = timeouts;
-
-  if (timeouts >= MAX_TIMEOUTS) {
-    const others = gs.seats.filter((s) => s.uid !== cur);
-    const entries = others.map((s) => ({
-      uid: s.uid,
-      seat: s.seat,
-      value: handValue(hands[s.uid]),
-    }));
-    const winner = resolveShowdown(entries);
-    const settle = settleGame(room, "player_disconnected", winner, {
-      secret: false,
-      forfeitUid: cur,
-    });
-    return { ok: true, settle };
-  }
 
   if (gs.phase === "draw") {
     if (deck.length === 0) {

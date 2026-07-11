@@ -30,7 +30,7 @@ export type TongitsGameState = {
 
 export type TongitsResult = {
   matchId: string;
-  resultType: "tongits_win" | "draw_win" | "lowest_points_win" | "player_disconnected";
+  resultType: "tongits_win" | "draw_win" | "lowest_points_win";
   winnerUserId: string;
   winnerName: string;
   jackpotWon: number;

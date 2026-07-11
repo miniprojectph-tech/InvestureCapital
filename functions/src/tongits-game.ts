@@ -20,13 +20,13 @@ import {
 // public state (discards, exposed melds, counts, whose turn) + their own hand.
 
 const TURN_MS = 25_000;
-const MAX_TIMEOUTS = 2;
+
 const RP_TONGITS = 30;
 const RP_SHOWDOWN = 20;
 const RP_LOSS = 2;
 const RP_SECRET = 50;
 
-type ResultType = "tongits_win" | "draw_win" | "lowest_points_win" | "player_disconnected";
+type ResultType = "tongits_win" | "draw_win" | "lowest_points_win";
 
 type Seat = { uid: string; seat: number; name: string };
 
@@ -215,7 +215,7 @@ function settleGameStateInTx(
   ctx: Ctx,
   resultType: ResultType,
   winnerUid: string,
-  opts: { secret: boolean; forfeitUid?: string }
+  opts: { secret: boolean }
 ): SettleEcoInputs {
   const now = Date.now();
   const seats = ctx.gs.seats;
@@ -225,8 +225,6 @@ function settleGameStateInTx(
   for (const s of seats) {
     values[s.uid] = s.uid === winnerUid && resultType === "tongits_win" ? 0 : handValue(ctx.hands[s.uid]);
   }
-  if (opts.forfeitUid) values[opts.forfeitUid] = 9999;
-
   // Streak-based jackpot: same winner two hands in a row claims the pot.
   const prevWinnerUid = (ctx.room.lastWinnerUid as string | null | undefined) ?? null;
   const prevStreak = (ctx.room.winStreak as number | undefined) ?? 0;
@@ -719,18 +717,6 @@ export const enforceTongitsTimeout = onCall({ region: GAME_REGION }, async (requ
     const cur = ctx.gs.turnUid;
     const timeouts = (ctx.gs.consecutiveTimeouts[cur] ?? 0) + 1;
     ctx.gs.consecutiveTimeouts[cur] = timeouts;
-
-    if (timeouts >= MAX_TIMEOUTS) {
-      // Forfeit → resolve among the other two (lowest wins), forfeiter loses.
-      const others = ctx.gs.seats.filter((s) => s.uid !== cur);
-      const entries = others.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
-      const winner = resolveShowdown(entries);
-      eco = settleGameStateInTx(tx, code, ctx, "player_disconnected", winner, {
-        secret: false,
-        forfeitUid: cur,
-      });
-      return { ok: true, ended: true };
-    }
 
     // Auto-play: draw from stock if needed, then discard the worst card.
     if (ctx.gs.phase === "draw") {

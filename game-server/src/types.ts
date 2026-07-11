@@ -61,7 +61,7 @@ export type ServerMsg =
   | { type: "ended"; gs: GameState }
   | { type: "error"; error: string };
 
-export type ResultType = "tongits_win" | "draw_win" | "lowest_points_win" | "player_disconnected";
+export type ResultType = "tongits_win" | "draw_win" | "lowest_points_win";
 
 export type SettleInput = {
   code: string;
