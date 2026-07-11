@@ -20,7 +20,7 @@ import { useTongitsAssets } from "@/lib/tongitsAssets";
 type Box = { l: number; t: number; w: number; h: number };
 
 // Measured against the 1774×887 art (2:1 ratio).
-const CARD_LEFTS = [26, 38, 50, 62, 74, 86];
+const CARD_LEFTS = [27, 39, 51, 63, 75, 87];
 const CARD_W = 10;
 const LB_ROWS_Y = [74, 78, 82, 86];
 
@@ -264,13 +264,13 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
                 </div>
               </Zone>
               {/* coin row 1 = challenge, coin row 2 = ante, people row = players */}
-              <Zone box={{ l: cl + 2, t: 44, w: 7, h: 3 }}>
+              <Zone box={{ l: cl + 2, t: 44, w: 8, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.challengePoints}</span>
               </Zone>
-              <Zone box={{ l: cl + 2, t: 47.8, w: 7, h: 3 }}>
+              <Zone box={{ l: cl + 2, t: 47.8, w: 8, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.jackpotAnte}</span>
               </Zone>
-              <Zone box={{ l: cl + 2, t: 51.6, w: 7, h: 3 }}>
+              <Zone box={{ l: cl + 2, t: 51.6, w: 8, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{count}/3</span>
               </Zone>
               <Zone
