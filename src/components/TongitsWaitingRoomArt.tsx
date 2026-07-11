@@ -146,10 +146,10 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
   const ready = room.status === "ready";
 
   return (
-    <div className="min-h-[100dvh] w-full flex items-center justify-center overflow-hidden" style={{ background: "#0c1225" }}>
+    <div className="min-h-[100dvh] w-full flex items-start justify-center overflow-hidden" style={{ background: "#0c1225" }}>
       <div
         className="relative"
-        style={{ width: "min(100vw, calc(100dvh * 1672 / 941))", aspectRatio: "1672 / 941", containerType: "inline-size" }}
+        style={{ width: "100vw", aspectRatio: "1672 / 941", containerType: "inline-size" }}
       >
         <img src={assets.waitingRoom} alt="Tongits waiting room" className="absolute inset-0 w-full h-full object-contain" />
 

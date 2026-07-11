@@ -788,10 +788,10 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
   }
 
   return (
-    <div className="min-h-[100dvh] w-full flex items-center justify-center overflow-hidden" style={{ background: "#1a0e07" }}>
+    <div className="min-h-[100dvh] w-full flex items-start justify-center overflow-hidden" style={{ background: "#1a0e07" }}>
       <div
         className="relative"
-        style={{ width: "min(100vw, calc(100dvh * 1672 / 941))", aspectRatio: "1672 / 941", containerType: "inline-size" }}
+        style={{ width: "100vw", aspectRatio: "1672 / 941", containerType: "inline-size" }}
       >
         {/* base */}
         <img src={assets.table} alt="Tongits table" className="absolute inset-0 w-full h-full object-contain" />
