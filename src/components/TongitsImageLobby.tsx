@@ -34,12 +34,12 @@ const C = {
   playerTier: { l: 9, t: 5.8, w: 11, h: 2.2 },
   levelValue: { l: 19.5, t: 7.8, w: 5, h: 2.5 },
   // create room
-  chalMinus: { l: 5.5, t: 25, w: 3.2, h: 6 },
-  chalValue: { l: 8.5, t: 25, w: 9, h: 6 },
-  chalPlus: { l: 18, t: 25, w: 3.2, h: 6 },
-  anteMinus: { l: 5.5, t: 34, w: 3.2, h: 6 },
-  anteValue: { l: 8.5, t: 34, w: 9, h: 6 },
-  antePlus: { l: 18, t: 34, w: 3.2, h: 6 },
+  chalMinus: { l: 7, t: 25, w: 3.5, h: 6 },
+  chalValue: { l: 10.5, t: 25, w: 8, h: 6 },
+  chalPlus: { l: 18.5, t: 25, w: 3.5, h: 6 },
+  anteMinus: { l: 7, t: 34, w: 3.5, h: 6 },
+  anteValue: { l: 10.5, t: 34, w: 8, h: 6 },
+  antePlus: { l: 18.5, t: 34, w: 3.5, h: 6 },
   publicBtn: { l: 9, t: 44, w: 6.5, h: 5 },
   privateBtn: { l: 16, t: 44, w: 7.5, h: 5 },
   createBtn: { l: 6, t: 50, w: 14.5, h: 6 },
@@ -255,23 +255,36 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
           const count = seatedPlayers(r).length;
           return (
             <div key={r.roomCode}>
-              <Zone box={{ l: cl, t: 35, w: CARD_W, h: 4 }}>
-                <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.3cqw", fontFamily: "monospace", letterSpacing: "0.08em" }}>
-                  {r.roomCode}
-                </span>
+              <Zone box={{ l: cl, t: 33, w: CARD_W, h: 6 }}>
+                <div className="flex flex-col items-center" style={{ lineHeight: 1.2 }}>
+                  <span style={{ color: "rgba(255,255,255,0.6)", fontSize: "0.85cqw" }}>Room</span>
+                  <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.3cqw", fontFamily: "monospace", letterSpacing: "0.08em" }}>
+                    {r.roomCode}
+                  </span>
+                </div>
               </Zone>
               {/* coin row 1 = challenge, coin row 2 = ante, people row = players */}
-              <Zone box={{ l: cl + CARD_W * 0.3, t: 44, w: CARD_W * 0.65, h: 3 }}>
+              <Zone box={{ l: cl + CARD_W * 0.45, t: 44, w: CARD_W * 0.5, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.challengePoints}</span>
               </Zone>
-              <Zone box={{ l: cl + CARD_W * 0.3, t: 47.8, w: CARD_W * 0.65, h: 3 }}>
+              <Zone box={{ l: cl + CARD_W * 0.45, t: 47.8, w: CARD_W * 0.5, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.jackpotAnte}</span>
               </Zone>
-              <Zone box={{ l: cl + CARD_W * 0.3, t: 51.6, w: CARD_W * 0.65, h: 3 }}>
+              <Zone box={{ l: cl + CARD_W * 0.45, t: 51.6, w: CARD_W * 0.5, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{count}/3</span>
               </Zone>
-              <Zone box={{ l: cl + 1.8, t: 55, w: CARD_W - 3.6, h: 4.5 }} onClick={() => onJoin(r.roomCode)} title={`Join ${r.roomCode}`}>
-                {busy === `join-${r.roomCode}` && <Loader2 className="animate-spin text-white" style={{ width: "1.6cqw", height: "1.6cqw" }} />}
+              <Zone
+                box={{ l: cl + 1.8, t: 55, w: CARD_W - 3.6, h: 4.5 }}
+                onClick={count < 3 ? () => onJoin(r.roomCode) : undefined}
+                title={count < 3 ? `Join ${r.roomCode}` : "Room full"}
+              >
+                {busy === `join-${r.roomCode}` ? (
+                  <Loader2 className="animate-spin text-white" style={{ width: "1.6cqw", height: "1.6cqw" }} />
+                ) : (
+                  <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.1cqw", textShadow: "0 1px 2px rgba(0,0,0,0.4)" }}>
+                    {count >= 3 ? "FULL" : "JOIN"}
+                  </span>
+                )}
               </Zone>
             </div>
           );
@@ -281,12 +294,12 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
         <Zone box={C.viewAll} onClick={() => router.push("/tongits/leaderboard")} title="View all" />
         {board.rows.slice(0, 4).map((row, i) => (
           <div key={row.uid}>
-            <Zone box={{ l: 36, t: LB_ROWS_Y[i] - 1.6, w: 10, h: 3.2 }} className="justify-start">
+            <Zone box={{ l: 35, t: LB_ROWS_Y[i] - 1.6, w: 11, h: 3.2 }}>
               <span style={{ color: "#fff", fontSize: "1.05cqw" }} className="truncate">
                 {row.name}
               </span>
             </Zone>
-            <Zone box={{ l: 55, t: LB_ROWS_Y[i] - 1.6, w: 5, h: 3.2 }}>
+            <Zone box={{ l: 54, t: LB_ROWS_Y[i] - 1.6, w: 5, h: 3.2 }}>
               <span style={{ color: gold, fontSize: "1.05cqw", fontFamily: "monospace" }}>{rowPoints(row, "week")}</span>
             </Zone>
           </div>
