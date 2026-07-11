@@ -79,10 +79,12 @@ export function seatedPlayers(room: TongitsRoom): TongitsPlayer[] {
 }
 
 // ===== Callable wrappers =====
+// Tongits callables live in asia-southeast1 alongside the game db. All room +
+// gameplay CFs must route through gameFunctions, not the default us-central.
 async function call<T>(name: string, data: Record<string, unknown>): Promise<T> {
-  const { functions } = getFirebase();
-  if (!functions) throw new Error("Not connected");
-  const fn = httpsCallable<Record<string, unknown>, T>(functions, name);
+  const { gameFunctions } = getFirebase();
+  if (!gameFunctions) throw new Error("Not connected");
+  const fn = httpsCallable<Record<string, unknown>, T>(gameFunctions, name);
   const res = await fn(data);
   return res.data;
 }
@@ -136,7 +138,7 @@ export function useOpenRooms() {
       setLoading(false);
       return;
     }
-    const { db } = getFirebase();
+    const { gameDb: db } = getFirebase();
     if (!db) {
       setRooms([]);
       setLoading(false);
@@ -175,7 +177,7 @@ export function useMyActiveRoom(uid: string | null) {
       setRoom(null);
       return;
     }
-    const { db } = getFirebase();
+    const { gameDb: db } = getFirebase();
     if (!db) return;
     const q = query(
       collection(db, "game_rooms"),
@@ -211,7 +213,7 @@ export function useRoom(code: string | null) {
       setLoading(false);
       return;
     }
-    const { db } = getFirebase();
+    const { gameDb: db } = getFirebase();
     if (!db) {
       setRoom(null);
       setLoading(false);
@@ -243,7 +245,7 @@ export function useRoomChat(code: string | null) {
       setMessages([]);
       return;
     }
-    const { db } = getFirebase();
+    const { gameDb: db } = getFirebase();
     if (!db) return;
     const q = query(
       collection(db, "game_rooms", code, "chat"),

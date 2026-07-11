@@ -1,8 +1,15 @@
 {
-  "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
-  },
+  "firestore": [
+    {
+      "database": "(default)",
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
+    },
+    {
+      "database": "game-live-asia",
+      "rules": "firestore.game.rules"
+    }
+  ],
   "storage": {
     "rules": "storage.rules"
   },

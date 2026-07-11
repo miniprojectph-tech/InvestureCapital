@@ -88,6 +88,16 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // === Plan activation requests ===
+    match /plan_requests/{rId} {
+      allow read: if isSignedIn()
+        && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
     // === Platform settings (readable by all signed-in, writable by admin) ===
     match /settings/{doc} {
       allow read: if isSignedIn();

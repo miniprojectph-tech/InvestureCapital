@@ -1,7 +1,10 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
-import { db } from "./init";
+import { db, gameDb } from "./init";
 import type { Transaction } from "firebase-admin/firestore";
+
+// Every room mutation runs in Singapore, next to the gameDb it writes.
+const GAME_REGION = "asia-southeast1";
 
 // ===== Community Tongits — Phase 1 (rooms + economy plumbing, no gameplay) =====
 // Points are the SHARED game economy at users/{uid}/game/state (Function-written).
@@ -56,7 +59,8 @@ function requireUid(request: { auth?: { uid?: string } }): string {
   return uid;
 }
 
-const roomRef = (code: string) => db.doc(`game_rooms/${code}`);
+// Rooms live in the Singapore game db; user economy stays on the default db.
+const roomRef = (code: string) => gameDb.doc(`game_rooms/${code}`);
 const stateRef = (uid: string) => db.doc(`users/${uid}/game/state`);
 const txnCol = () => db.collection("game_point_transactions");
 
@@ -87,78 +91,122 @@ function writeTxn(
 }
 
 /**
- * Recompute room status and, when the room is full + everyone is ready + everyone
- * agreed, atomically lock each player's challenge points (points → lockedPoints).
- * Must be the LAST thing a callable does in its transaction (it performs the reads
- * it needs before writing). Handles the room write in every branch.
+ * Post-gameDb-commit action requested by finalizeRoom / refundAndCancel. The
+ * caller runs the appropriate helper AFTER the gameDb transaction commits so
+ * economy writes happen on the default db (us-central).
+ *
+ * We accept the non-atomicity: in the rare split-brain case (room transitions
+ * on gameDb but economy write fails), the room is in the new state but stakes
+ * aren't locked/refunded. A maintenance function can reconcile. For testing
+ * this is fine.
  */
-async function finalizeRoom(tx: Transaction, room: Room, now: number): Promise<void> {
+type PostRoomAction =
+  | { kind: "lockStakes"; players: Array<{ uid: string; name: string }>; challengePoints: number; roomCode: string; now: number }
+  | { kind: "refund"; players: Array<{ uid: string; name: string; jackpotContributed: number }>; challengePoints: number; roomCode: string; returnStakes: boolean; hasJackpot: boolean; now: number };
+
+/**
+ * gameDb-only room-state transition. Writes room + playerUids and returns a
+ * follow-up action for the caller to apply on the default db if a stake lock
+ * needs to happen (room transitions to "ready").
+ */
+function finalizeRoom(tx: Transaction, room: Room, now: number): PostRoomAction | null {
   const players = Object.values(room.players);
   const full = players.length >= MAX_PLAYERS;
   const allReady = full && players.every((p) => p.isReady);
   const allAgreed = full && players.every((p) => p.agreedToChallenge);
 
   if (allReady && allAgreed && room.status !== "ready") {
-    // Lock each player's stake. Read all states before any write.
-    const snaps = await Promise.all(players.map((p) => tx.get(stateRef(p.uid))));
-    const states = snaps.map((s, i) => ({
-      uid: players[i].uid,
-      name: players[i].name,
-      points: (s.data()?.points as number) ?? 0,
-      locked: (s.data()?.lockedPoints as number) ?? 0,
-    }));
-    for (const s of states) {
-      if (s.points < room.challengePoints) {
-        throw new HttpsError(
-          "failed-precondition",
-          `${s.name} no longer has enough points for this challenge.`
-        );
-      }
-    }
-    for (const s of states) {
-      tx.set(
-        stateRef(s.uid),
-        { points: s.points - room.challengePoints, lockedPoints: s.locked + room.challengePoints },
-        { merge: true }
-      );
-      writeTxn(tx, {
-        userId: s.uid,
-        type: "challenge_points_locked",
-        amount: room.challengePoints,
-        roomCode: room.roomCode,
-        description: `Locked ${room.challengePoints} for Tongits room ${room.roomCode}`,
-        now,
-      });
-    }
     tx.update(roomRef(room.roomCode), {
       players: room.players,
+      playerUids: Object.keys(room.players),
       status: "ready",
       updatedAt: now,
     });
-    return;
+    return {
+      kind: "lockStakes",
+      players: players.map((p) => ({ uid: p.uid, name: p.name })),
+      challengePoints: room.challengePoints,
+      roomCode: room.roomCode,
+      now,
+    };
   }
 
   const status: RoomStatus = full ? "full" : "open";
-  tx.update(roomRef(room.roomCode), { players: room.players, status, updatedAt: now });
+  tx.update(roomRef(room.roomCode), {
+    players: room.players,
+    playerUids: Object.keys(room.players),
+    status,
+    updatedAt: now,
+  });
+  return null;
 }
 
-/**
- * Cancel a room, returning both any locked stakes (if the room was 'ready') and
- * each player's unclaimed jackpot contributions (the running pot from prior games).
- */
-async function refundAndCancel(tx: Transaction, room: Room, now: number): Promise<void> {
+/** gameDb-only cancel. Returns a refund action for the caller to run on default db. */
+function refundAndCancel(tx: Transaction, room: Room, now: number): PostRoomAction {
   const players = Object.values(room.players);
-  // Stakes are locked from 'ready' through the live game, until settled.
   const returnStakes = room.status === "ready" || room.status === "in_game";
   const hasJackpot = (room.jackpotPoints ?? 0) > 0;
+  tx.update(roomRef(room.roomCode), {
+    status: "cancelled",
+    jackpotPoints: 0,
+    updatedAt: now,
+    completedAt: now,
+  });
+  return {
+    kind: "refund",
+    players: players.map((p) => ({ uid: p.uid, name: p.name, jackpotContributed: p.jackpotContributed ?? 0 })),
+    challengePoints: room.challengePoints,
+    roomCode: room.roomCode,
+    returnStakes,
+    hasJackpot,
+    now,
+  };
+}
 
-  if (returnStakes || hasJackpot) {
+/** Apply the follow-up economy write on the default db. Errors are surfaced. */
+async function applyPostRoomAction(action: PostRoomAction): Promise<void> {
+  if (action.kind === "lockStakes") {
+    await db.runTransaction(async (tx) => {
+      const snaps = await Promise.all(action.players.map((p) => tx.get(stateRef(p.uid))));
+      const states = snaps.map((s, i) => ({
+        uid: action.players[i].uid,
+        name: action.players[i].name,
+        points: (s.data()?.points as number) ?? 0,
+        locked: (s.data()?.lockedPoints as number) ?? 0,
+      }));
+      for (const s of states) {
+        if (s.points < action.challengePoints) {
+          throw new HttpsError("failed-precondition", `${s.name} no longer has enough points for this challenge.`);
+        }
+      }
+      for (const s of states) {
+        tx.set(
+          stateRef(s.uid),
+          { points: s.points - action.challengePoints, lockedPoints: s.locked + action.challengePoints },
+          { merge: true }
+        );
+        writeTxn(tx, {
+          userId: s.uid,
+          type: "challenge_points_locked",
+          amount: action.challengePoints,
+          roomCode: action.roomCode,
+          description: `Locked ${action.challengePoints} for Tongits room ${action.roomCode}`,
+          now: action.now,
+        });
+      }
+    });
+    return;
+  }
+  // refund
+  const { players, challengePoints, roomCode, returnStakes, hasJackpot, now } = action;
+  if (!returnStakes && !hasJackpot) return;
+  await db.runTransaction(async (tx) => {
     const snaps = await Promise.all(players.map((p) => tx.get(stateRef(p.uid))));
     snaps.forEach((s, i) => {
       const p = players[i];
       const points = (s.data()?.points as number) ?? 0;
       const lp = (s.data()?.lockedPoints as number) ?? 0;
-      const stakeRefund = returnStakes ? Math.min(lp, room.challengePoints) : 0;
+      const stakeRefund = returnStakes ? Math.min(lp, challengePoints) : 0;
       const anteRefund = p.jackpotContributed ?? 0;
       const refund = stakeRefund + anteRefund;
       if (refund <= 0 && stakeRefund <= 0) return;
@@ -172,8 +220,8 @@ async function refundAndCancel(tx: Transaction, room: Room, now: number): Promis
           userId: p.uid,
           type: "challenge_points_returned",
           amount: stakeRefund,
-          roomCode: room.roomCode,
-          description: `Returned ${stakeRefund} stake — Tongits room ${room.roomCode} cancelled`,
+          roomCode,
+          description: `Returned ${stakeRefund} stake — Tongits room ${roomCode} cancelled`,
           now,
         });
       }
@@ -182,24 +230,18 @@ async function refundAndCancel(tx: Transaction, room: Room, now: number): Promis
           userId: p.uid,
           type: "jackpot_refunded",
           amount: anteRefund,
-          roomCode: room.roomCode,
-          description: `Refunded ${anteRefund} jackpot ante — Tongits room ${room.roomCode} cancelled`,
+          roomCode,
+          description: `Refunded ${anteRefund} jackpot ante — Tongits room ${roomCode} cancelled`,
           now,
         });
       }
     });
-  }
-  tx.update(roomRef(room.roomCode), {
-    status: "cancelled",
-    jackpotPoints: 0,
-    updatedAt: now,
-    completedAt: now,
   });
 }
 
 // ===== callables =====
 
-export const createTongitsRoom = onCall(async (request) => {
+export const createTongitsRoom = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const data = (request.data ?? {}) as { challengePoints?: number; jackpotAnte?: number; isPrivate?: boolean };
   const challengePoints = Math.floor(Number(data.challengePoints));
@@ -254,14 +296,19 @@ export const createTongitsRoom = onCall(async (request) => {
   throw new HttpsError("resource-exhausted", "Could not allocate a room code, please retry.");
 });
 
-export const joinTongitsRoom = onCall(async (request) => {
+export const joinTongitsRoom = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const code = String((request.data as { code?: string })?.code ?? "").trim();
   if (!code) throw new HttpsError("invalid-argument", "Room code required.");
   const name = await playerName(uid);
   const now = Date.now();
 
-  return db.runTransaction(async (tx) => {
+  // Point balance check runs on the default db — bail early if under-funded.
+  const stateSnap = await stateRef(uid).get();
+  const points = (stateSnap.data()?.points as number) ?? 0;
+
+  let post: PostRoomAction | null = null;
+  const result = await gameDb.runTransaction<{ code: string }>(async (tx) => {
     const snap = await tx.get(roomRef(code));
     if (!snap.exists) throw new HttpsError("not-found", "Room not found.");
     const room = snap.data() as Room;
@@ -270,9 +317,6 @@ export const joinTongitsRoom = onCall(async (request) => {
     if (room.players[uid]) throw new HttpsError("failed-precondition", "You're already in this room.");
     const count = Object.keys(room.players).length;
     if (count >= MAX_PLAYERS) throw new HttpsError("failed-precondition", "This room is full.");
-
-    const stateSnap = await tx.get(stateRef(uid));
-    const points = (stateSnap.data()?.points as number) ?? 0;
     if (points < room.challengePoints) {
       throw new HttpsError("failed-precondition", "You don't have enough Game Points to join this room.");
     }
@@ -284,19 +328,22 @@ export const joinTongitsRoom = onCall(async (request) => {
       uid, name, seat, isReady: false, agreedToChallenge: false, joinedAt: now, jackpotContributed: 0,
     };
     room.playerUids = Object.keys(room.players);
-    await finalizeRoom(tx, room, now);
+    post = finalizeRoom(tx, room, now);
     return { code };
   });
+  if (post) await applyPostRoomAction(post);
+  return result;
 });
 
-export const setTongitsReady = onCall(async (request) => {
+export const setTongitsReady = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const data = (request.data ?? {}) as { code?: string; ready?: boolean };
   const code = String(data.code ?? "").trim();
   const ready = data.ready !== false;
   const now = Date.now();
 
-  return db.runTransaction(async (tx) => {
+  let post: PostRoomAction | null = null;
+  await gameDb.runTransaction(async (tx) => {
     const snap = await tx.get(roomRef(code));
     if (!snap.exists) throw new HttpsError("not-found", "Room not found.");
     const room = snap.data() as Room;
@@ -305,17 +352,19 @@ export const setTongitsReady = onCall(async (request) => {
       throw new HttpsError("failed-precondition", "Ready can't be changed now.");
     }
     room.players[uid].isReady = ready;
-    await finalizeRoom(tx, room, now);
-    return { ok: true };
+    post = finalizeRoom(tx, room, now);
   });
+  if (post) await applyPostRoomAction(post);
+  return { ok: true };
 });
 
-export const confirmTongitsChallenge = onCall(async (request) => {
+export const confirmTongitsChallenge = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const code = String((request.data as { code?: string })?.code ?? "").trim();
   const now = Date.now();
 
-  return db.runTransaction(async (tx) => {
+  let post: PostRoomAction | null = null;
+  await gameDb.runTransaction(async (tx) => {
     const snap = await tx.get(roomRef(code));
     if (!snap.exists) throw new HttpsError("not-found", "Room not found.");
     const room = snap.data() as Room;
@@ -324,30 +373,32 @@ export const confirmTongitsChallenge = onCall(async (request) => {
       throw new HttpsError("failed-precondition", "Challenge can't be changed now.");
     }
     room.players[uid].agreedToChallenge = true;
-    await finalizeRoom(tx, room, now);
-    return { ok: true };
+    post = finalizeRoom(tx, room, now);
   });
+  if (post) await applyPostRoomAction(post);
+  return { ok: true };
 });
 
-export const leaveTongitsRoom = onCall(async (request) => {
+export const leaveTongitsRoom = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const code = String((request.data as { code?: string })?.code ?? "").trim();
   const now = Date.now();
 
-  return db.runTransaction(async (tx) => {
+  let post: PostRoomAction | null = null;
+  await gameDb.runTransaction(async (tx) => {
     const snap = await tx.get(roomRef(code));
-    if (!snap.exists) return { ok: true };
+    if (!snap.exists) return;
     const room = snap.data() as Room;
-    if (!room.players[uid]) return { ok: true };
-    if (room.status === "cancelled" || room.status === "completed") return { ok: true };
+    if (!room.players[uid]) return;
+    if (room.status === "cancelled" || room.status === "completed") return;
     if (room.status === "in_game") {
       throw new HttpsError("failed-precondition", "You can't leave during a live game — play your turn or let the timer run.");
     }
 
     // A locked (ready) room can't proceed once someone leaves pre-game → cancel + refund all.
     if (room.status === "ready") {
-      await refundAndCancel(tx, room, now);
-      return { ok: true };
+      post = refundAndCancel(tx, room, now);
+      return;
     }
 
     // Unlocked room: just remove the player.
@@ -355,9 +406,8 @@ export const leaveTongitsRoom = onCall(async (request) => {
     const remaining = Object.values(room.players);
     if (remaining.length === 0) {
       tx.update(roomRef(code), { status: "cancelled", updatedAt: now, completedAt: now });
-      return { ok: true };
+      return;
     }
-    // Hand the room to the next-seated player if the creator left.
     if (room.creatorUserId === uid) {
       room.creatorUserId = remaining.sort((a, b) => a.seat - b.seat)[0].uid;
     }
@@ -368,27 +418,32 @@ export const leaveTongitsRoom = onCall(async (request) => {
       status: "open",
       updatedAt: now,
     });
-    return { ok: true };
   });
+  if (post) await applyPostRoomAction(post);
+  return { ok: true };
 });
 
-export const cancelTongitsRoom = onCall(async (request) => {
+export const cancelTongitsRoom = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const code = String((request.data as { code?: string })?.code ?? "").trim();
   const now = Date.now();
 
-  return db.runTransaction(async (tx) => {
+  // Admin check on the default db — user profile lives there.
+  const isAdmin = (await db.doc(`users/${uid}`).get()).data()?.isAdmin === true;
+
+  let post: PostRoomAction | null = null;
+  await gameDb.runTransaction(async (tx) => {
     const snap = await tx.get(roomRef(code));
     if (!snap.exists) throw new HttpsError("not-found", "Room not found.");
     const room = snap.data() as Room;
-    const isAdmin = (await tx.get(db.doc(`users/${uid}`))).data()?.isAdmin === true;
     if (room.creatorUserId !== uid && !isAdmin) {
       throw new HttpsError("permission-denied", "Only the room creator or an admin can cancel.");
     }
-    if (room.status === "cancelled" || room.status === "completed") return { ok: true };
-    await refundAndCancel(tx, room, now);
-    return { ok: true };
+    if (room.status === "cancelled" || room.status === "completed") return;
+    post = refundAndCancel(tx, room, now);
   });
+  if (post) await applyPostRoomAction(post);
+  return { ok: true };
 });
 
 /**

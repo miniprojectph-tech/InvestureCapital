@@ -19,41 +19,41 @@ import { useTongitsAssets } from "@/lib/tongitsAssets";
 // left / top / width / height, all in % of the canvas.
 type Box = { l: number; t: number; w: number; h: number };
 
-// Measured against the 1672×941 art.
-const CARD_LEFTS = [25.8, 38, 50.1, 62.3, 74.5, 86.6];
-const CARD_W = 10.5;
-const LB_ROWS_Y = [71.4, 75.2, 79.2, 83.1]; // row centers
+// Measured against the 1774×887 art (2:1 ratio).
+const CARD_LEFTS = [24.3, 35.8, 47.2, 58.7, 70.2, 81.6];
+const CARD_W = 9.9;
+const LB_ROWS_Y = [68.5, 72.8, 77.0, 81.3];
 
 const C = {
   // top bar
-  gamePoints: { l: 65.5, t: 5.2, w: 6.5, h: 3.4 },
-  rankingPoints: { l: 78.5, t: 5.2, w: 6.5, h: 3.4 },
-  rewards: { l: 87.6, t: 2.7, w: 4.8, h: 8 },
-  menu: { l: 94, t: 2.3, w: 4.8, h: 8.5 },
-  playerName: { l: 9.3, t: 3, w: 11.4, h: 2.9 },
-  playerTier: { l: 9.3, t: 5.8, w: 11.4, h: 2 },
-  levelValue: { l: 20, t: 7.8, w: 5, h: 2.2 },
+  gamePoints: { l: 57.5, t: 5, w: 6.5, h: 3.5 },
+  rankingPoints: { l: 69.5, t: 5, w: 6.5, h: 3.5 },
+  rewards: { l: 78, t: 2.5, w: 5, h: 8.5 },
+  menu: { l: 93, t: 2.3, w: 5, h: 8.5 },
+  playerName: { l: 8, t: 3, w: 11, h: 3 },
+  playerTier: { l: 8, t: 5.8, w: 11, h: 2.2 },
+  levelValue: { l: 18, t: 7.8, w: 5, h: 2.5 },
   // create room
-  chalMinus: { l: 5.8, t: 24.5, w: 3.4, h: 6 },
-  chalValue: { l: 9, t: 24.5, w: 10, h: 6 },
-  chalPlus: { l: 19.1, t: 24.5, w: 3.4, h: 6 },
-  anteMinus: { l: 5.8, t: 33.5, w: 3.4, h: 6 },
-  anteValue: { l: 9, t: 33.5, w: 10, h: 6 },
-  antePlus: { l: 19.1, t: 33.5, w: 3.4, h: 6 },
-  publicBtn: { l: 6.2, t: 42.7, w: 6.9, h: 4.4 },
-  privateBtn: { l: 13.9, t: 42.7, w: 7.8, h: 4.4 },
-  createBtn: { l: 6.2, t: 49.3, w: 15.5, h: 5.7 },
+  chalMinus: { l: 5, t: 23, w: 3.2, h: 6 },
+  chalValue: { l: 8, t: 23, w: 9.5, h: 6 },
+  chalPlus: { l: 17.5, t: 23, w: 3.2, h: 6 },
+  anteMinus: { l: 5, t: 31.5, w: 3.2, h: 6 },
+  anteValue: { l: 8, t: 31.5, w: 9.5, h: 6 },
+  antePlus: { l: 17.5, t: 31.5, w: 3.2, h: 6 },
+  publicBtn: { l: 5.5, t: 40, w: 6.5, h: 5 },
+  privateBtn: { l: 12.5, t: 40, w: 7.5, h: 5 },
+  createBtn: { l: 5.5, t: 47, w: 14.5, h: 6 },
   // join by code
-  joinInput: { l: 5.4, t: 70.7, w: 14.4, h: 5 },
-  joinBtn: { l: 5.4, t: 78.4, w: 16.7, h: 5.8 },
+  joinInput: { l: 4.5, t: 66, w: 14, h: 5.5 },
+  joinBtn: { l: 4.5, t: 74, w: 16, h: 6.5 },
   // leaderboard
-  viewAll: { l: 54.3, t: 65, w: 5.4, h: 3.2 },
+  viewAll: { l: 50, t: 61, w: 5.5, h: 3.5 },
   // bottom nav
-  navLobby: { l: 6.3, t: 90.5, w: 13, h: 9 },
-  navLeaderboard: { l: 21.5, t: 90.9, w: 12, h: 8.5 },
-  navHistory: { l: 36.8, t: 90.9, w: 11.5, h: 8.5 },
-  navHowTo: { l: 51.1, t: 90.9, w: 13.5, h: 8.5 },
-  navPlay: { l: 76.9, t: 90.3, w: 22, h: 9.5 },
+  navLobby: { l: 5, t: 89, w: 13, h: 10 },
+  navLeaderboard: { l: 20, t: 89.5, w: 12, h: 9.5 },
+  navHistory: { l: 34, t: 89.5, w: 12, h: 9.5 },
+  navHowTo: { l: 48, t: 89.5, w: 13, h: 9.5 },
+  navPlay: { l: 72, t: 89, w: 22, h: 10 },
 };
 
 function Zone({
@@ -154,8 +154,8 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
       <div
         className="relative"
         style={{
-          width: "100vw",
-          aspectRatio: "1672 / 941",
+          width: "min(100vw, calc(100dvh * 1774 / 887))",
+          aspectRatio: "1774 / 887",
           containerType: "inline-size",
         }}
       >

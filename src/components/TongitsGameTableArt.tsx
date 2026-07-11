@@ -23,47 +23,43 @@ import { useTongitsAssets } from "@/lib/tongitsAssets";
 
 type Box = { l: number; t: number; w: number; h: number };
 
-// Slot coordinates on the 1672x941 blank table base.
+// Slot coordinates on the 1774x887 blank table base.
 // Iterate these against the painted base if any drift shows up.
 // Coordinates snapped to the placeholder-free base (public/tongits/table.png).
-// Percent values measured with scripts/measure-table.cjs on the 1672x941 asset.
+// Percent values measured with scripts/measure-table.cjs on the 1774x887 asset.
 const S = {
-  // POT number sits in the dark inner of the pot bar (measured y=6-11%).
-  pot: { l: 42, t: 6, w: 16, h: 6 } as Box,
-  trophy1: { l: 20.5, t: 6.5, w: 9, h: 13 } as Box,
-  trophy2: { l: 70.5, t: 6.5, w: 9, h: 13 } as Box,
+  pot: { l: 39.5, t: 6, w: 15, h: 6 } as Box,
+  trophy1: { l: 19.3, t: 6.5, w: 8.5, h: 13 } as Box,
+  trophy2: { l: 66.4, t: 6.5, w: 8.5, h: 13 } as Box,
 
-  // Avatar Zones snapped to the painted white circles (measured 92x88 px on the 1672x941 base).
-  opp1Avatar: { l: 8.13, t: 11.05, w: 5.5, h: 9.35 } as Box,
-  opp1Name: { l: 15, t: 11, w: 15, h: 4 } as Box,
-  opp1Cards: { l: 15, t: 15, w: 15, h: 3.5 } as Box,
-  opp1MeldA: { l: 6, t: 22, w: 27, h: 10 } as Box,
-  opp1MeldB: { l: 6, t: 33, w: 27, h: 10 } as Box,
+  opp1Avatar: { l: 5.5, t: 11, w: 5.5, h: 10 } as Box,
+  opp1Name: { l: 12, t: 11, w: 14, h: 4 } as Box,
+  opp1Cards: { l: 12, t: 15, w: 14, h: 3.5 } as Box,
+  opp1MeldA: { l: 5, t: 22, w: 26, h: 10 } as Box,
+  opp1MeldB: { l: 5, t: 33, w: 26, h: 10 } as Box,
 
-  opp2Avatar: { l: 85.89, t: 11.05, w: 5.5, h: 9.14 } as Box,
-  opp2Name: { l: 69, t: 11, w: 15, h: 4 } as Box,
-  opp2Cards: { l: 69, t: 15, w: 15, h: 3.5 } as Box,
-  opp2MeldA: { l: 67, t: 22, w: 27, h: 10 } as Box,
-  opp2MeldB: { l: 67, t: 33, w: 27, h: 10 } as Box,
+  opp2Avatar: { l: 88, t: 11, w: 5.5, h: 10 } as Box,
+  opp2Name: { l: 73, t: 11, w: 14, h: 4 } as Box,
+  opp2Cards: { l: 73, t: 15, w: 14, h: 3.5 } as Box,
+  opp2MeldA: { l: 69, t: 22, w: 26, h: 10 } as Box,
+  opp2MeldB: { l: 69, t: 33, w: 26, h: 10 } as Box,
 
-  // Stock/discard boxes on the base: outline y=20-37%, x centers ~44%/55%.
-  stock: { l: 40.5, t: 19, w: 6, h: 18 } as Box,
-  discard: { l: 51.5, t: 19, w: 6, h: 18 } as Box,
-  turnBadge: { l: 62, t: 27, w: 10, h: 6 } as Box,
-  timer: { l: 82, t: 42, w: 12, h: 5 } as Box,
+  stock: { l: 38, t: 19, w: 6, h: 18 } as Box,
+  discard: { l: 48.5, t: 19, w: 6, h: 18 } as Box,
+  turnBadge: { l: 58, t: 27, w: 10, h: 6 } as Box,
+  timer: { l: 78, t: 42, w: 12, h: 5 } as Box,
 
-  yourMelds: { l: 20, t: 45, w: 60, h: 8 } as Box,
-  buttonsStrip: { l: 29, t: 51, w: 42 },
+  yourMelds: { l: 18, t: 45, w: 58, h: 8 } as Box,
+  buttonsStrip: { l: 27, t: 51, w: 40 },
 
-  // Bottom-left avatar (You) — painted white circle at (6.46%,71.84%).
-  youAvatar: { l: 6.46, t: 71.84, w: 5.5, h: 9.35 } as Box,
-  youName: { l: 13, t: 71, w: 15, h: 4 } as Box,
-  yourHand: { l: 14, t: 68, w: 78, h: 28 } as Box,
+  youAvatar: { l: 5.5, t: 68, w: 5.5, h: 10 } as Box,
+  youName: { l: 12, t: 71, w: 14, h: 4 } as Box,
+  yourHand: { l: 13, t: 68, w: 74, h: 28 } as Box,
 
-  autoSort: { l: 93, t: 46, w: 6, h: 8 } as Box,
-  sort: { l: 93, t: 57, w: 6, h: 8 } as Box,
-  chat: { l: 93, t: 68, w: 6, h: 8 } as Box,
-  emoji: { l: 93, t: 79, w: 6, h: 8 } as Box,
+  autoSort: { l: 91, t: 42, w: 7, h: 9 } as Box,
+  sort: { l: 91, t: 53, w: 7, h: 9 } as Box,
+  chat: { l: 91, t: 64, w: 7, h: 9 } as Box,
+  emoji: { l: 91, t: 75, w: 7, h: 9 } as Box,
 };
 
 // Pill hit-boxes as fractions of the buttons-strip PNG (2048x682).
@@ -791,7 +787,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
     <div className="min-h-[100dvh] w-full flex items-start justify-center overflow-hidden" style={{ background: "#1a0e07" }}>
       <div
         className="relative"
-        style={{ width: "100vw", aspectRatio: "1672 / 941", containerType: "inline-size" }}
+        style={{ width: "min(100vw, calc(100dvh * 1774 / 887))", aspectRatio: "1774 / 887", containerType: "inline-size" }}
       >
         {/* base */}
         <img src={assets.table} alt="Tongits table" className="absolute inset-0 w-full h-full object-contain" />

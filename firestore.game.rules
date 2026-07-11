@@ -1,0 +1,52 @@
+// Rules for the secondary Firestore database `game-live-asia` (Singapore).
+// This DB holds ONLY the hot Tongits game state — no user/economy data. Admin
+// checks live on the default db (users/{uid}.isAdmin) and cross-database
+// `get()` isn't supported in rules, so we treat every write as CF-only and
+// gate reads by room membership.
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+
+    match /game_rooms/{code} {
+      // Any signed-in user can read the room doc (lobby listings, joining flow).
+      allow read: if isSignedIn();
+      // All room mutations go through Cloud Functions (admin SDK bypasses rules).
+      allow write: if false;
+
+      // Public game state — read-only to room members.
+      match /game/{doc} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/game_rooms/$(code)).data.players[request.auth.uid] != null;
+        allow write: if false;
+      }
+
+      // Private hands — only the owning player reads their own cards.
+      match /hands/{playerId} {
+        allow read: if isSignedIn() && request.auth.uid == playerId;
+        allow write: if false;
+      }
+
+      // Hidden deck/stock — server-only.
+      match /secret/{doc} {
+        allow read, write: if false;
+      }
+
+      // Chat: room members read; length-limited creates from authenticated
+      // members when the room's chatEnabled flag is on.
+      match /chat/{msgId} {
+        allow read: if isSignedIn()
+          && get(/databases/$(database)/documents/game_rooms/$(code)).data.players[request.auth.uid] != null;
+        allow create: if isSignedIn()
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.message is string
+          && request.resource.data.message.size() > 0
+          && request.resource.data.message.size() <= 300
+          && get(/databases/$(database)/documents/game_rooms/$(code)).data.players[request.auth.uid] != null
+          && get(/databases/$(database)/documents/game_rooms/$(code)).data.chatEnabled == true;
+        allow update, delete: if false;
+      }
+    }
+  }
+}

@@ -72,8 +72,8 @@ function ShowdownOverlay({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div
         style={{
-          width: "min(94vw, calc(94dvh * 1672 / 941))",
-          aspectRatio: "1672 / 941",
+          width: "min(94vw, calc(94dvh * 1774 / 887))",
+          aspectRatio: "1774 / 887",
           containerType: "inline-size",
           position: "relative",
           background: "linear-gradient(180deg, #0a1c30 0%, #0e2848 40%, #122e50 100%)",

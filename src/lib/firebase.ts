@@ -5,6 +5,10 @@ import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { getFunctions, type Functions } from "firebase/functions";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
+// Secondary Firestore + Functions region for the hot Tongits path (Singapore).
+export const GAME_REGION = "asia-southeast1";
+export const GAME_DB_ID = "game-live-asia";
+
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -17,13 +21,15 @@ const firebaseConfig = {
 let app: FirebaseApp | undefined;
 let auth: Auth | undefined;
 let db: Firestore | undefined;
+let gameDb: Firestore | undefined;
 let storage: FirebaseStorage | undefined;
 let functions: Functions | undefined;
+let gameFunctions: Functions | undefined;
 
 function getFirebase() {
   if (!firebaseConfig.apiKey) {
     // Allow the prototype to run without Firebase keys for design/preview.
-    return { app: undefined, auth: undefined, db: undefined, storage: undefined, functions: undefined };
+    return { app: undefined, auth: undefined, db: undefined, gameDb: undefined, storage: undefined, functions: undefined, gameFunctions: undefined };
   }
   if (!app) {
     app = getApps()[0] ?? initializeApp(firebaseConfig);
@@ -48,10 +54,14 @@ function getFirebase() {
     }
     auth = getAuth(app);
     db = getFirestore(app);
+    // Secondary Firestore in Singapore for the hot Tongits game state.
+    gameDb = getFirestore(app, GAME_DB_ID);
     storage = getStorage(app);
     functions = getFunctions(app);
+    // Cloud Functions for the tongits callables — same app, asia-southeast1 region.
+    gameFunctions = getFunctions(app, GAME_REGION);
   }
-  return { app, auth, db, storage, functions };
+  return { app, auth, db, gameDb, storage, functions, gameFunctions };
 }
 
 export { getFirebase };

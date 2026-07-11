@@ -20,17 +20,17 @@ type Box = { l: number; t: number; w: number; h: number };
 
 // Base overlays (against the plain Waiting Area base).
 const C = {
-  back: { l: 1.2, t: 3, w: 5, h: 7.6 },
-  roomCode: { l: 13.5, t: 5.8, w: 16, h: 4.5 },
-  challenge: { l: 35, t: 5.8, w: 8, h: 4.5 },
-  ante: { l: 50.5, t: 5.8, w: 8, h: 4.5 },
-  copyTop: { l: 61.9, t: 3.5, w: 10.8, h: 6.6 },
-  leave: { l: 73.9, t: 3.5, w: 13.8, h: 6.6 },
-  readyBtn: { l: 16.7, t: 80.2, w: 19.4, h: 9.2 },
-  agreeBtn: { l: 38.3, t: 80.2, w: 26.9, h: 9.2 },
-  chatMsgs: { l: 76.3, t: 22.8, w: 21.5, h: 53 },
-  chatInput: { l: 76.3, t: 77.4, w: 16.4, h: 5.7 },
-  chatSend: { l: 93.8, t: 77.2, w: 4.2, h: 6.2 },
+  back: { l: 1, t: 3, w: 5, h: 7.6 },
+  roomCode: { l: 12.5, t: 5.8, w: 15, h: 4.5 },
+  challenge: { l: 33, t: 5.8, w: 7.5, h: 4.5 },
+  ante: { l: 47.5, t: 5.8, w: 7.5, h: 4.5 },
+  copyTop: { l: 58, t: 3.5, w: 10, h: 6.6 },
+  leave: { l: 69.5, t: 3.5, w: 13, h: 6.6 },
+  readyBtn: { l: 15.5, t: 80.2, w: 18.5, h: 9.2 },
+  agreeBtn: { l: 36, t: 80.2, w: 25.5, h: 9.2 },
+  chatMsgs: { l: 72, t: 22.8, w: 26, h: 53 },
+  chatInput: { l: 72, t: 77.4, w: 20, h: 5.7 },
+  chatSend: { l: 93, t: 77.2, w: 5, h: 6.2 },
 };
 
 // Placed seat components (sizes preserve each PNG's aspect). Anchors are the
@@ -149,7 +149,7 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
     <div className="min-h-[100dvh] w-full flex items-start justify-center overflow-hidden" style={{ background: "#0c1225" }}>
       <div
         className="relative"
-        style={{ width: "100vw", aspectRatio: "1672 / 941", containerType: "inline-size" }}
+        style={{ width: "min(100vw, calc(100dvh * 1774 / 887))", aspectRatio: "1774 / 887", containerType: "inline-size" }}
       >
         <img src={assets.waitingRoom} alt="Tongits waiting room" className="absolute inset-0 w-full h-full object-contain" />
 
