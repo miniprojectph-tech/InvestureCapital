@@ -22,38 +22,38 @@ type Box = { l: number; t: number; w: number; h: number };
 // Measured against the 1774×887 art (2:1 ratio).
 const CARD_LEFTS = [24.3, 35.8, 47.2, 58.7, 70.2, 81.6];
 const CARD_W = 9.9;
-const LB_ROWS_Y = [67, 71, 75, 79];
+const LB_ROWS_Y = [70, 74, 78, 82];
 
 const C = {
   // top bar
-  gamePoints: { l: 66, t: 5, w: 6.5, h: 3.5 },
-  rankingPoints: { l: 78.5, t: 5, w: 6.5, h: 3.5 },
-  rewards: { l: 87.5, t: 2.5, w: 5, h: 8.5 },
-  menu: { l: 94, t: 2.3, w: 5, h: 8.5 },
+  gamePoints: { l: 68, t: 5, w: 6.5, h: 3.5 },
+  rankingPoints: { l: 80, t: 5, w: 6.5, h: 3.5 },
+  rewards: { l: 89, t: 2.5, w: 5, h: 8.5 },
+  menu: { l: 95, t: 2.3, w: 4.5, h: 8.5 },
   playerName: { l: 9, t: 3, w: 11, h: 3 },
   playerTier: { l: 9, t: 5.8, w: 11, h: 2.2 },
   levelValue: { l: 19.5, t: 7.8, w: 5, h: 2.5 },
   // create room
-  chalMinus: { l: 5.5, t: 24, w: 3.2, h: 6 },
-  chalValue: { l: 8.5, t: 24, w: 9, h: 6 },
-  chalPlus: { l: 18, t: 24, w: 3.2, h: 6 },
-  anteMinus: { l: 5.5, t: 33, w: 3.2, h: 6 },
-  anteValue: { l: 8.5, t: 33, w: 9, h: 6 },
-  antePlus: { l: 18, t: 33, w: 3.2, h: 6 },
-  publicBtn: { l: 6, t: 41, w: 6.5, h: 5 },
-  privateBtn: { l: 13, t: 41, w: 7.5, h: 5 },
-  createBtn: { l: 6, t: 48, w: 14.5, h: 6 },
+  chalMinus: { l: 5.5, t: 25, w: 3.2, h: 6 },
+  chalValue: { l: 8.5, t: 25, w: 9, h: 6 },
+  chalPlus: { l: 18, t: 25, w: 3.2, h: 6 },
+  anteMinus: { l: 5.5, t: 34, w: 3.2, h: 6 },
+  anteValue: { l: 8.5, t: 34, w: 9, h: 6 },
+  antePlus: { l: 18, t: 34, w: 3.2, h: 6 },
+  publicBtn: { l: 9, t: 44, w: 6.5, h: 5 },
+  privateBtn: { l: 16, t: 44, w: 7.5, h: 5 },
+  createBtn: { l: 6, t: 50, w: 14.5, h: 6 },
   // join by code
-  joinInput: { l: 5, t: 67, w: 14, h: 5.5 },
-  joinBtn: { l: 5, t: 75, w: 16, h: 6.5 },
+  joinInput: { l: 5, t: 69, w: 14, h: 5.5 },
+  joinBtn: { l: 5, t: 77, w: 16, h: 6.5 },
   // leaderboard
-  viewAll: { l: 53, t: 63, w: 5.5, h: 3.5 },
+  viewAll: { l: 53, t: 65, w: 5.5, h: 3.5 },
   // bottom nav
-  navLobby: { l: 6, t: 90, w: 13, h: 10 },
-  navLeaderboard: { l: 21, t: 90.5, w: 12, h: 9.5 },
-  navHistory: { l: 35, t: 90.5, w: 12, h: 9.5 },
-  navHowTo: { l: 49, t: 90.5, w: 13, h: 9.5 },
-  navPlay: { l: 73, t: 90, w: 22, h: 10 },
+  navLobby: { l: 6, t: 92, w: 13, h: 8 },
+  navLeaderboard: { l: 21, t: 92, w: 12, h: 8 },
+  navHistory: { l: 35, t: 92, w: 12, h: 8 },
+  navHowTo: { l: 49, t: 92, w: 13, h: 8 },
+  navPlay: { l: 73, t: 92, w: 22, h: 8 },
 };
 
 function Zone({
