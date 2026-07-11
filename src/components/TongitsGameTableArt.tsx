@@ -1139,14 +1139,14 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
                       : "linear-gradient(180deg,#f6f1e4,#e6dcc4)",
                     boxShadow: "0 0.35cqw 0.7cqw rgba(0,0,0,0.35), inset 0 0.1cqw 0 rgba(255,255,255,0.7)",
                     border: isActive ? "0.15cqw solid #3aa0ff" : "0.1cqw solid rgba(0,0,0,0.15)",
-                    gap: isMeld ? 0 : "0.25cqw",
+                    gap: 0,
                   }}
                 >
                   {group.cards.map((c, ci) => (
                     <div
                       key={c}
                       style={{
-                        marginLeft: isMeld && ci !== 0 ? "-2.9cqw" : 0,
+                        marginLeft: ci !== 0 ? "-2.9cqw" : 0,
                         zIndex: ci,
                       }}
                     >
