@@ -788,7 +788,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
   }
 
   return (
-    <div className="min-h-[100dvh] w-full flex items-center justify-center overflow-hidden">
+    <div className="min-h-[100dvh] w-full flex items-center justify-center overflow-hidden" style={{ background: "#1a0e07" }}>
       <div
         className="relative"
         style={{ width: "min(100vw, calc(100dvh * 1672 / 941))", aspectRatio: "1672 / 941", containerType: "inline-size" }}

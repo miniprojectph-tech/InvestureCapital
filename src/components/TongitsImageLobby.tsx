@@ -150,7 +150,7 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
   const gold = "#F5C66B";
 
   return (
-    <div className="min-h-[100dvh] w-full flex items-center justify-center overflow-hidden">
+    <div className="min-h-[100dvh] w-full flex items-center justify-center overflow-hidden" style={{ background: "#0a1740" }}>
       <div
         className="relative"
         style={{
