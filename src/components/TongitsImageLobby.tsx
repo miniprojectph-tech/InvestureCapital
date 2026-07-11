@@ -264,17 +264,17 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
                 </div>
               </Zone>
               {/* coin row 1 = challenge, coin row 2 = ante, people row = players */}
-              <Zone box={{ l: cl + CARD_W * 0.4, t: 44, w: CARD_W * 0.55, h: 3 }}>
+              <Zone box={{ l: cl + 2, t: 44, w: 7, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.challengePoints}</span>
               </Zone>
-              <Zone box={{ l: cl + CARD_W * 0.4, t: 47.8, w: CARD_W * 0.55, h: 3 }}>
+              <Zone box={{ l: cl + 2, t: 47.8, w: 7, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.jackpotAnte}</span>
               </Zone>
-              <Zone box={{ l: cl + CARD_W * 0.4, t: 51.6, w: CARD_W * 0.55, h: 3 }}>
+              <Zone box={{ l: cl + 2, t: 51.6, w: 7, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{count}/3</span>
               </Zone>
               <Zone
-                box={{ l: cl + 0.5, t: 59, w: CARD_W - 1, h: 3.5 }}
+                box={{ l: cl, t: 59, w: CARD_W, h: 3.5 }}
                 onClick={count < 3 ? () => onJoin(r.roomCode) : undefined}
                 title={count < 3 ? `Join ${r.roomCode}` : "Room full"}
               >
