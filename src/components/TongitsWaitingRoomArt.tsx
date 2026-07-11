@@ -21,9 +21,9 @@ type Box = { l: number; t: number; w: number; h: number };
 // Base overlays (against the plain Waiting Area base).
 const C = {
   back: { l: 1.2, t: 3, w: 5, h: 7.6 },
-  roomCode: { l: 12, t: 5.8, w: 12, h: 4.5 },
-  challenge: { l: 28, t: 5.8, w: 10, h: 4.5 },
-  ante: { l: 42, t: 5.8, w: 10, h: 4.5 },
+  roomCode: { l: 13, t: 5.8, w: 12.5, h: 4.5 },
+  challenge: { l: 28.5, t: 5.8, w: 12, h: 4.5 },
+  ante: { l: 43.5, t: 5.8, w: 14, h: 4.5 },
   copyTop: { l: 54, t: 3.5, w: 13, h: 6.6 },
   leave: { l: 70, t: 3.5, w: 14, h: 6.6 },
   readyBtn: { l: 16, t: 79, w: 19, h: 9 },
@@ -315,7 +315,7 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
             onKeyDown={(e) => e.key === "Enter" && send()}
             placeholder="Type a message…"
             className="w-full h-full bg-transparent text-white outline-none"
-            style={{ fontSize: "1cqw", padding: "0 1cqw" }}
+            style={{ fontSize: "1cqw", padding: "0 1cqw", textAlign: "center" }}
           />
         </div>
         <Zone box={C.chatSend} onClick={send} title="Send">
