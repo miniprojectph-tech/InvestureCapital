@@ -313,19 +313,10 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
   const r = room.lastResult!;
   const hasHands = r.hands && Object.keys(r.hands).length > 0;
   const isShowdownType = SHOWDOWN_TYPES.has(r.resultType);
-  const [showingShowdown, setShowingShowdown] = useState(isShowdownType && hasHands);
-
-  if (showingShowdown) {
-    return <ShowdownOverlay room={room} onDone={() => setShowingShowdown(false)} />;
-  }
-  const C = room.challengePoints;
-  const seats = seatedPlayers(room);
-  const winner = seats.find((s) => s.uid === r.winnerUserId);
-  const losers = seats.filter((s) => s.uid !== r.winnerUserId);
-  const iAmWinner = user?.uid === r.winnerUserId;
-  const winnerPayout = C * seats.length + r.jackpotWon;
+  const [showingShowdown, setShowingShowdown] = useState(isShowdownType && !!hasHands);
 
   useEffect(() => {
+    if (showingShowdown) return;
     const start = Date.now();
     const interval = setInterval(() => {
       const elapsed = Date.now() - start;
@@ -333,23 +324,31 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
       setMsLeft(remaining);
       if (remaining <= 0) {
         clearInterval(interval);
-        void autoQuit();
+        void doAutoQuit();
       }
     }, 100);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  async function autoQuit() {
-    if (busy) return;
-    setBusy("auto");
-    try {
-      await leaveRoom(code);
-    } catch {
-      /* room may already be cancelled — just route out */
+    async function doAutoQuit() {
+      try {
+        await leaveRoom(code);
+      } catch { /* room may already be cancelled */ }
+      router.push("/tongits");
     }
-    router.push("/tongits");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showingShowdown]);
+
+  if (showingShowdown) {
+    return <ShowdownOverlay room={room} onDone={() => setShowingShowdown(false)} />;
   }
+
+  const C = room.challengePoints;
+  const seats = seatedPlayers(room);
+  const winner = seats.find((s) => s.uid === r.winnerUserId);
+  const losers = seats.filter((s) => s.uid !== r.winnerUserId);
+  const iAmWinner = user?.uid === r.winnerUserId;
+  const winnerPayout = C * seats.length + r.jackpotWon;
+
   async function onContinue() {
     setBusy("again");
     try {
