@@ -20,14 +20,14 @@ import { useTongitsAssets } from "@/lib/tongitsAssets";
 type Box = { l: number; t: number; w: number; h: number };
 
 // Measured against the 1774×887 art (2:1 ratio).
-const CARD_LEFTS = [24.3, 35.8, 47.2, 58.7, 70.2, 81.6];
-const CARD_W = 9.9;
-const LB_ROWS_Y = [70, 74, 78, 82];
+const CARD_LEFTS = [26, 38, 50, 62, 74, 86];
+const CARD_W = 10;
+const LB_ROWS_Y = [74, 78, 82, 86];
 
 const C = {
   // top bar
-  gamePoints: { l: 68, t: 5, w: 6.5, h: 3.5 },
-  rankingPoints: { l: 80, t: 5, w: 6.5, h: 3.5 },
+  gamePoints: { l: 67, t: 6, w: 6.5, h: 3.5 },
+  rankingPoints: { l: 79, t: 6, w: 6.5, h: 3.5 },
   rewards: { l: 89, t: 2.5, w: 5, h: 8.5 },
   menu: { l: 95, t: 2.3, w: 4.5, h: 8.5 },
   playerName: { l: 9, t: 3, w: 11, h: 3 },
@@ -47,7 +47,7 @@ const C = {
   joinInput: { l: 5, t: 69, w: 14, h: 5.5 },
   joinBtn: { l: 5, t: 77, w: 16, h: 6.5 },
   // leaderboard
-  viewAll: { l: 53, t: 65, w: 5.5, h: 3.5 },
+  viewAll: { l: 56, t: 65, w: 5.5, h: 3.5 },
   // bottom nav
   navLobby: { l: 6, t: 92, w: 13, h: 8 },
   navLeaderboard: { l: 21, t: 92, w: 12, h: 8 },
@@ -221,17 +221,8 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
           <span style={{ color: gold, fontWeight: 700, fontSize: "1.6cqw", fontFamily: "monospace" }}>{ante}</span>
         </Zone>
         <Zone box={C.antePlus} onClick={() => setAnte((v) => v + 1)} />
-        <Zone
-          box={C.publicBtn}
-          onClick={() => setIsPrivate(false)}
-          className="rounded-lg"
-          title="Public"
-        >
-          {!isPrivate && <div className="w-full h-full rounded-lg" style={{ boxShadow: `inset 0 0 0 2px ${gold}` }} />}
-        </Zone>
-        <Zone box={C.privateBtn} onClick={() => setIsPrivate(true)} className="rounded-lg" title="Private">
-          {isPrivate && <div className="w-full h-full rounded-lg" style={{ boxShadow: `inset 0 0 0 2px ${gold}` }} />}
-        </Zone>
+        <Zone box={C.publicBtn} onClick={() => setIsPrivate(false)} title="Public" />
+        <Zone box={C.privateBtn} onClick={() => setIsPrivate(true)} title="Private" />
         <Zone box={C.createBtn} onClick={onCreate} title="Create room">
           {busy === "create" && <Loader2 className="animate-spin text-[#0a1740]" style={{ width: "2cqw", height: "2cqw" }} />}
         </Zone>
@@ -264,22 +255,22 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
           const count = seatedPlayers(r).length;
           return (
             <div key={r.roomCode}>
-              <Zone box={{ l: cl, t: 36, w: CARD_W, h: 3.6 }}>
+              <Zone box={{ l: cl, t: 34, w: CARD_W, h: 4 }}>
                 <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.3cqw", fontFamily: "monospace", letterSpacing: "0.08em" }}>
                   {r.roomCode}
                 </span>
               </Zone>
               {/* coin row 1 = challenge, coin row 2 = ante, people row = players */}
-              <Zone box={{ l: cl + CARD_W * 0.4, t: 45, w: CARD_W * 0.55, h: 3 }}>
+              <Zone box={{ l: cl + CARD_W * 0.3, t: 44, w: CARD_W * 0.65, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.challengePoints}</span>
               </Zone>
-              <Zone box={{ l: cl + CARD_W * 0.4, t: 48.8, w: CARD_W * 0.55, h: 3 }}>
+              <Zone box={{ l: cl + CARD_W * 0.3, t: 47.8, w: CARD_W * 0.65, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.jackpotAnte}</span>
               </Zone>
-              <Zone box={{ l: cl + CARD_W * 0.4, t: 52.6, w: CARD_W * 0.55, h: 3 }}>
+              <Zone box={{ l: cl + CARD_W * 0.3, t: 51.6, w: CARD_W * 0.65, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{count}/3</span>
               </Zone>
-              <Zone box={{ l: cl + 1.8, t: 56.3, w: CARD_W - 3.6, h: 4.5 }} onClick={() => onJoin(r.roomCode)} title={`Join ${r.roomCode}`}>
+              <Zone box={{ l: cl + 1.8, t: 55, w: CARD_W - 3.6, h: 4.5 }} onClick={() => onJoin(r.roomCode)} title={`Join ${r.roomCode}`}>
                 {busy === `join-${r.roomCode}` && <Loader2 className="animate-spin text-white" style={{ width: "1.6cqw", height: "1.6cqw" }} />}
               </Zone>
             </div>
@@ -290,12 +281,12 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
         <Zone box={C.viewAll} onClick={() => router.push("/tongits/leaderboard")} title="View all" />
         {board.rows.slice(0, 4).map((row, i) => (
           <div key={row.uid}>
-            <Zone box={{ l: 33, t: LB_ROWS_Y[i] - 1.6, w: 10, h: 3.2 }} className="justify-start">
+            <Zone box={{ l: 36, t: LB_ROWS_Y[i] - 1.6, w: 10, h: 3.2 }} className="justify-start">
               <span style={{ color: "#fff", fontSize: "1.05cqw" }} className="truncate">
                 {row.name}
               </span>
             </Zone>
-            <Zone box={{ l: 53, t: LB_ROWS_Y[i] - 1.6, w: 5, h: 3.2 }}>
+            <Zone box={{ l: 55, t: LB_ROWS_Y[i] - 1.6, w: 5, h: 3.2 }}>
               <span style={{ color: gold, fontSize: "1.05cqw", fontFamily: "monospace" }}>{rowPoints(row, "week")}</span>
             </Zone>
           </div>
