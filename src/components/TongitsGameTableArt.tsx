@@ -32,15 +32,15 @@ const S = {
   trophy1: { l: 28, t: 5, w: 7, h: 14 } as Box,
   trophy2: { l: 65, t: 5, w: 7, h: 14 } as Box,
 
-  opp1Avatar: { l: 3.5, t: 13, w: 5.5, h: 10 } as Box,
-  opp1Name: { l: 10, t: 13, w: 15, h: 4 } as Box,
-  opp1Cards: { l: 10, t: 17, w: 15, h: 3.5 } as Box,
+  opp1Avatar: { l: 7, t: 12, w: 5, h: 10 } as Box,
+  opp1Name: { l: 13, t: 13, w: 14, h: 4 } as Box,
+  opp1Cards: { l: 13, t: 17, w: 14, h: 3.5 } as Box,
   opp1MeldA: { l: 3, t: 25, w: 27, h: 10 } as Box,
   opp1MeldB: { l: 3, t: 36, w: 27, h: 10 } as Box,
 
-  opp2Avatar: { l: 90, t: 10, w: 5.5, h: 10 } as Box,
-  opp2Name: { l: 74, t: 10, w: 15, h: 4 } as Box,
-  opp2Cards: { l: 74, t: 14, w: 15, h: 3.5 } as Box,
+  opp2Avatar: { l: 87.5, t: 12, w: 5, h: 10 } as Box,
+  opp2Name: { l: 72, t: 13, w: 15, h: 4 } as Box,
+  opp2Cards: { l: 72, t: 17, w: 15, h: 3.5 } as Box,
   opp2MeldA: { l: 70, t: 25, w: 27, h: 10 } as Box,
   opp2MeldB: { l: 70, t: 36, w: 27, h: 10 } as Box,
 
@@ -52,8 +52,8 @@ const S = {
   yourMelds: { l: 18, t: 47, w: 60, h: 8 } as Box,
   buttonsStrip: { l: 27, t: 53, w: 42 },
 
-  youAvatar: { l: 3, t: 63, w: 5.5, h: 10 } as Box,
-  youName: { l: 10, t: 73, w: 15, h: 4 } as Box,
+  youAvatar: { l: 6, t: 75, w: 5, h: 10 } as Box,
+  youName: { l: 12, t: 77, w: 12, h: 4 } as Box,
   yourHand: { l: 11, t: 70, w: 78, h: 28 } as Box,
 
   autoSort: { l: 89, t: 38, w: 7, h: 9 } as Box,
