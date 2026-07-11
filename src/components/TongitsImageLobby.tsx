@@ -26,8 +26,8 @@ const LB_ROWS_Y = [74, 78, 82, 86];
 
 const C = {
   // top bar
-  gamePoints: { l: 67, t: 6, w: 6.5, h: 3.5 },
-  rankingPoints: { l: 79, t: 6, w: 6.5, h: 3.5 },
+  gamePoints: { l: 68, t: 7.5, w: 6.5, h: 3.5 },
+  rankingPoints: { l: 80, t: 7.5, w: 6.5, h: 3.5 },
   rewards: { l: 89, t: 2.5, w: 5, h: 8.5 },
   menu: { l: 95, t: 2.3, w: 4.5, h: 8.5 },
   playerName: { l: 9, t: 3, w: 11, h: 3 },
@@ -255,7 +255,7 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
           const count = seatedPlayers(r).length;
           return (
             <div key={r.roomCode}>
-              <Zone box={{ l: cl, t: 34, w: CARD_W, h: 4 }}>
+              <Zone box={{ l: cl, t: 35, w: CARD_W, h: 4 }}>
                 <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.3cqw", fontFamily: "monospace", letterSpacing: "0.08em" }}>
                   {r.roomCode}
                 </span>
