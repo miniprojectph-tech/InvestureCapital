@@ -264,13 +264,13 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
                 </div>
               </Zone>
               {/* coin row 1 = challenge, coin row 2 = ante, people row = players */}
-              <Zone box={{ l: cl + 2, t: 44, w: 8, h: 3 }}>
+              <Zone box={{ l: cl + 2, t: 46.5, w: 8, h: 3 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.challengePoints}</span>
               </Zone>
-              <Zone box={{ l: cl + 2, t: 47.8, w: 8, h: 3 }}>
+              <Zone box={{ l: cl + 2, t: 50.5, w: 8, h: 3.5 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{r.jackpotAnte}</span>
               </Zone>
-              <Zone box={{ l: cl + 2, t: 51.6, w: 8, h: 3 }}>
+              <Zone box={{ l: cl + 2, t: 54.5, w: 8, h: 3.5 }}>
                 <span style={{ color: "#fff", fontSize: "1.05cqw", fontFamily: "monospace" }}>{count}/3</span>
               </Zone>
               <Zone
