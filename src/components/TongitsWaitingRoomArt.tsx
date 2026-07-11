@@ -20,17 +20,17 @@ type Box = { l: number; t: number; w: number; h: number };
 
 // Base overlays (against the plain Waiting Area base).
 const C = {
-  back: { l: 1, t: 3, w: 5, h: 7.6 },
-  roomCode: { l: 12.5, t: 5.8, w: 15, h: 4.5 },
-  challenge: { l: 33, t: 5.8, w: 7.5, h: 4.5 },
-  ante: { l: 47.5, t: 5.8, w: 7.5, h: 4.5 },
-  copyTop: { l: 58, t: 3.5, w: 10, h: 6.6 },
-  leave: { l: 69.5, t: 3.5, w: 13, h: 6.6 },
-  readyBtn: { l: 15.5, t: 80.2, w: 18.5, h: 9.2 },
-  agreeBtn: { l: 36, t: 80.2, w: 25.5, h: 9.2 },
-  chatMsgs: { l: 72, t: 22.8, w: 26, h: 53 },
-  chatInput: { l: 72, t: 77.4, w: 20, h: 5.7 },
-  chatSend: { l: 93, t: 77.2, w: 5, h: 6.2 },
+  back: { l: 1.2, t: 3, w: 5, h: 7.6 },
+  roomCode: { l: 12, t: 5.8, w: 12, h: 4.5 },
+  challenge: { l: 28, t: 5.8, w: 10, h: 4.5 },
+  ante: { l: 42, t: 5.8, w: 10, h: 4.5 },
+  copyTop: { l: 54, t: 3.5, w: 13, h: 6.6 },
+  leave: { l: 70, t: 3.5, w: 14, h: 6.6 },
+  readyBtn: { l: 16, t: 79, w: 19, h: 9 },
+  agreeBtn: { l: 36, t: 79, w: 25, h: 9 },
+  chatMsgs: { l: 72, t: 23, w: 24, h: 54 },
+  chatInput: { l: 72, t: 78, w: 19, h: 5.5 },
+  chatSend: { l: 92, t: 78, w: 5, h: 6 },
 };
 
 // Placed seat components (sizes preserve each PNG's aspect). Anchors are the

@@ -28,38 +28,38 @@ type Box = { l: number; t: number; w: number; h: number };
 // Coordinates snapped to the placeholder-free base (public/tongits/table.png).
 // Percent values measured with scripts/measure-table.cjs on the 1774x887 asset.
 const S = {
-  pot: { l: 39.5, t: 6, w: 15, h: 6 } as Box,
-  trophy1: { l: 19.3, t: 6.5, w: 8.5, h: 13 } as Box,
-  trophy2: { l: 66.4, t: 6.5, w: 8.5, h: 13 } as Box,
+  pot: { l: 42, t: 5, w: 16, h: 7 } as Box,
+  trophy1: { l: 28, t: 5, w: 7, h: 14 } as Box,
+  trophy2: { l: 65, t: 5, w: 7, h: 14 } as Box,
 
-  opp1Avatar: { l: 5.5, t: 11, w: 5.5, h: 10 } as Box,
-  opp1Name: { l: 12, t: 11, w: 14, h: 4 } as Box,
-  opp1Cards: { l: 12, t: 15, w: 14, h: 3.5 } as Box,
-  opp1MeldA: { l: 5, t: 22, w: 26, h: 10 } as Box,
-  opp1MeldB: { l: 5, t: 33, w: 26, h: 10 } as Box,
+  opp1Avatar: { l: 3.5, t: 13, w: 5.5, h: 10 } as Box,
+  opp1Name: { l: 10, t: 13, w: 15, h: 4 } as Box,
+  opp1Cards: { l: 10, t: 17, w: 15, h: 3.5 } as Box,
+  opp1MeldA: { l: 3, t: 25, w: 27, h: 10 } as Box,
+  opp1MeldB: { l: 3, t: 36, w: 27, h: 10 } as Box,
 
-  opp2Avatar: { l: 88, t: 11, w: 5.5, h: 10 } as Box,
-  opp2Name: { l: 73, t: 11, w: 14, h: 4 } as Box,
-  opp2Cards: { l: 73, t: 15, w: 14, h: 3.5 } as Box,
-  opp2MeldA: { l: 69, t: 22, w: 26, h: 10 } as Box,
-  opp2MeldB: { l: 69, t: 33, w: 26, h: 10 } as Box,
+  opp2Avatar: { l: 90, t: 10, w: 5.5, h: 10 } as Box,
+  opp2Name: { l: 74, t: 10, w: 15, h: 4 } as Box,
+  opp2Cards: { l: 74, t: 14, w: 15, h: 3.5 } as Box,
+  opp2MeldA: { l: 70, t: 25, w: 27, h: 10 } as Box,
+  opp2MeldB: { l: 70, t: 36, w: 27, h: 10 } as Box,
 
-  stock: { l: 38, t: 19, w: 6, h: 18 } as Box,
-  discard: { l: 48.5, t: 19, w: 6, h: 18 } as Box,
-  turnBadge: { l: 58, t: 27, w: 10, h: 6 } as Box,
-  timer: { l: 78, t: 42, w: 12, h: 5 } as Box,
+  stock: { l: 42, t: 21, w: 6, h: 18 } as Box,
+  discard: { l: 52, t: 21, w: 6, h: 18 } as Box,
+  turnBadge: { l: 60, t: 29, w: 10, h: 6 } as Box,
+  timer: { l: 82, t: 44, w: 12, h: 5 } as Box,
 
-  yourMelds: { l: 18, t: 45, w: 58, h: 8 } as Box,
-  buttonsStrip: { l: 27, t: 51, w: 40 },
+  yourMelds: { l: 18, t: 47, w: 60, h: 8 } as Box,
+  buttonsStrip: { l: 27, t: 53, w: 42 },
 
-  youAvatar: { l: 5.5, t: 68, w: 5.5, h: 10 } as Box,
-  youName: { l: 12, t: 71, w: 14, h: 4 } as Box,
-  yourHand: { l: 13, t: 68, w: 74, h: 28 } as Box,
+  youAvatar: { l: 3, t: 63, w: 5.5, h: 10 } as Box,
+  youName: { l: 10, t: 73, w: 15, h: 4 } as Box,
+  yourHand: { l: 11, t: 70, w: 78, h: 28 } as Box,
 
-  autoSort: { l: 91, t: 42, w: 7, h: 9 } as Box,
-  sort: { l: 91, t: 53, w: 7, h: 9 } as Box,
-  chat: { l: 91, t: 64, w: 7, h: 9 } as Box,
-  emoji: { l: 91, t: 75, w: 7, h: 9 } as Box,
+  autoSort: { l: 89, t: 38, w: 7, h: 9 } as Box,
+  sort: { l: 89, t: 49, w: 7, h: 9 } as Box,
+  chat: { l: 89, t: 60, w: 7, h: 9 } as Box,
+  emoji: { l: 89, t: 71, w: 7, h: 9 } as Box,
 };
 
 // Pill hit-boxes as fractions of the buttons-strip PNG (2048x682).

@@ -22,38 +22,38 @@ type Box = { l: number; t: number; w: number; h: number };
 // Measured against the 1774×887 art (2:1 ratio).
 const CARD_LEFTS = [24.3, 35.8, 47.2, 58.7, 70.2, 81.6];
 const CARD_W = 9.9;
-const LB_ROWS_Y = [68.5, 72.8, 77.0, 81.3];
+const LB_ROWS_Y = [67, 71, 75, 79];
 
 const C = {
   // top bar
-  gamePoints: { l: 57.5, t: 5, w: 6.5, h: 3.5 },
-  rankingPoints: { l: 69.5, t: 5, w: 6.5, h: 3.5 },
-  rewards: { l: 78, t: 2.5, w: 5, h: 8.5 },
-  menu: { l: 93, t: 2.3, w: 5, h: 8.5 },
-  playerName: { l: 8, t: 3, w: 11, h: 3 },
-  playerTier: { l: 8, t: 5.8, w: 11, h: 2.2 },
-  levelValue: { l: 18, t: 7.8, w: 5, h: 2.5 },
+  gamePoints: { l: 66, t: 5, w: 6.5, h: 3.5 },
+  rankingPoints: { l: 78.5, t: 5, w: 6.5, h: 3.5 },
+  rewards: { l: 87.5, t: 2.5, w: 5, h: 8.5 },
+  menu: { l: 94, t: 2.3, w: 5, h: 8.5 },
+  playerName: { l: 9, t: 3, w: 11, h: 3 },
+  playerTier: { l: 9, t: 5.8, w: 11, h: 2.2 },
+  levelValue: { l: 19.5, t: 7.8, w: 5, h: 2.5 },
   // create room
-  chalMinus: { l: 5, t: 23, w: 3.2, h: 6 },
-  chalValue: { l: 8, t: 23, w: 9.5, h: 6 },
-  chalPlus: { l: 17.5, t: 23, w: 3.2, h: 6 },
-  anteMinus: { l: 5, t: 31.5, w: 3.2, h: 6 },
-  anteValue: { l: 8, t: 31.5, w: 9.5, h: 6 },
-  antePlus: { l: 17.5, t: 31.5, w: 3.2, h: 6 },
-  publicBtn: { l: 5.5, t: 40, w: 6.5, h: 5 },
-  privateBtn: { l: 12.5, t: 40, w: 7.5, h: 5 },
-  createBtn: { l: 5.5, t: 47, w: 14.5, h: 6 },
+  chalMinus: { l: 5.5, t: 24, w: 3.2, h: 6 },
+  chalValue: { l: 8.5, t: 24, w: 9, h: 6 },
+  chalPlus: { l: 18, t: 24, w: 3.2, h: 6 },
+  anteMinus: { l: 5.5, t: 33, w: 3.2, h: 6 },
+  anteValue: { l: 8.5, t: 33, w: 9, h: 6 },
+  antePlus: { l: 18, t: 33, w: 3.2, h: 6 },
+  publicBtn: { l: 6, t: 41, w: 6.5, h: 5 },
+  privateBtn: { l: 13, t: 41, w: 7.5, h: 5 },
+  createBtn: { l: 6, t: 48, w: 14.5, h: 6 },
   // join by code
-  joinInput: { l: 4.5, t: 66, w: 14, h: 5.5 },
-  joinBtn: { l: 4.5, t: 74, w: 16, h: 6.5 },
+  joinInput: { l: 5, t: 67, w: 14, h: 5.5 },
+  joinBtn: { l: 5, t: 75, w: 16, h: 6.5 },
   // leaderboard
-  viewAll: { l: 50, t: 61, w: 5.5, h: 3.5 },
+  viewAll: { l: 53, t: 63, w: 5.5, h: 3.5 },
   // bottom nav
-  navLobby: { l: 5, t: 89, w: 13, h: 10 },
-  navLeaderboard: { l: 20, t: 89.5, w: 12, h: 9.5 },
-  navHistory: { l: 34, t: 89.5, w: 12, h: 9.5 },
-  navHowTo: { l: 48, t: 89.5, w: 13, h: 9.5 },
-  navPlay: { l: 72, t: 89, w: 22, h: 10 },
+  navLobby: { l: 6, t: 90, w: 13, h: 10 },
+  navLeaderboard: { l: 21, t: 90.5, w: 12, h: 9.5 },
+  navHistory: { l: 35, t: 90.5, w: 12, h: 9.5 },
+  navHowTo: { l: 49, t: 90.5, w: 13, h: 9.5 },
+  navPlay: { l: 73, t: 90, w: 22, h: 10 },
 };
 
 function Zone({
@@ -290,12 +290,12 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
         <Zone box={C.viewAll} onClick={() => router.push("/tongits/leaderboard")} title="View all" />
         {board.rows.slice(0, 4).map((row, i) => (
           <div key={row.uid}>
-            <Zone box={{ l: 34.4, t: LB_ROWS_Y[i] - 1.6, w: 8.4, h: 3.2 }} className="justify-start">
+            <Zone box={{ l: 33, t: LB_ROWS_Y[i] - 1.6, w: 10, h: 3.2 }} className="justify-start">
               <span style={{ color: "#fff", fontSize: "1.05cqw" }} className="truncate">
                 {row.name}
               </span>
             </Zone>
-            <Zone box={{ l: 53.5, t: LB_ROWS_Y[i] - 1.6, w: 4.5, h: 3.2 }}>
+            <Zone box={{ l: 53, t: LB_ROWS_Y[i] - 1.6, w: 5, h: 3.2 }}>
               <span style={{ color: gold, fontSize: "1.05cqw", fontFamily: "monospace" }}>{rowPoints(row, "week")}</span>
             </Zone>
           </div>
