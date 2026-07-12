@@ -21,6 +21,7 @@ export type GameState = {
   startedAt: number;
   lastAction?: string;
   cantFight: Record<string, boolean>;
+  idleUids?: string[];
 };
 
 export type RoomData = {
@@ -51,7 +52,9 @@ export type ClientMsg =
   | { action: "sapaw"; code: string; targetUid: string; meldIndex: number; card: Card }
   | { action: "discard"; code: string; card: Card }
   | { action: "call"; code: string }
-  | { action: "enforceTimeout"; code: string };
+  | { action: "enforceTimeout"; code: string }
+  | { action: "postGameRespond"; code: string; response: "continue" | "quit" }
+  | { action: "idleAction"; code: string; idleAction: "join_next" | "quit" };
 
 // Server → Client messages
 export type ServerMsg =

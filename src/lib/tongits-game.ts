@@ -27,6 +27,7 @@ export type TongitsGameState = {
   startedAt: number;
   lastAction?: string;
   cantFight?: Record<string, boolean>;
+  idleUids?: string[];
 };
 
 export type TongitsResult = {
@@ -76,6 +77,12 @@ export const callTongits = (code: string) => call<{ ok: boolean; ended?: boolean
 export const enforceTimeout = (code: string) =>
   call<{ ok: boolean; ended?: boolean; skipped?: boolean }>("enforceTongitsTimeout", { code });
 export const playAgain = (code: string) => call<{ ok: boolean }>("tongitsPlayAgain", { code });
+export const postGameRespond = (code: string, response: "continue" | "quit") =>
+  call<{ ok: boolean; allResponded?: boolean }>("tongitsPostGameRespond", { code, response });
+export const resolvePostGame = (code: string) =>
+  call<{ ok: boolean; result?: string; needsStart?: boolean }>("tongitsResolvePostGame", { code });
+export const idleAction = (code: string, action: "join_next" | "quit") =>
+  call<{ ok: boolean }>("tongitsIdleAction", { code, action });
 export const splitJackpot = (code: string) =>
   call<{ ok: boolean; waiting?: boolean; split?: boolean }>("splitTongitsJackpot", { code });
 

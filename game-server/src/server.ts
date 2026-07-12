@@ -239,6 +239,9 @@ async function persistSettlement(input: SettleInput) {
       winStreak: newStreak,
       gamesPlayed: live.room.gamesPlayed + 1,
       updatedAt: now,
+      postGameResponses: {},
+      postGameDeadline: now + 15_000,
+      playerUids: seats.map((s) => s.uid),
       lastResult: {
         resultType,
         winnerUserId: winnerUid,
@@ -421,6 +424,9 @@ function handleAction(ws: WebSocket, msg: ClientMsg) {
       case "enforceTimeout":
         result = doEnforceTimeout(live, uid);
         break;
+      case "postGameRespond":
+      case "idleAction":
+        return;
       default:
         send(ws, { type: "error", error: "Unknown action" });
         return;

@@ -34,14 +34,15 @@ export function shuffle<T>(a: T[]): T[] {
   return a;
 }
 
-/** 3-player deal: dealer (seat 0) gets 13, others 12; the rest is the stock. */
-export function deal(): { hands: Card[][]; stock: Card[] } {
+/** Deal for 2 or 3 players: seat 0 gets 13, others get 12; the rest is stock. */
+export function deal(playerCount: 2 | 3 = 3): { hands: Card[][]; stock: Card[] } {
   const deck = shuffle(fullDeck());
-  const hands: Card[][] = [[], [], []];
+  const hands: Card[][] = Array.from({ length: playerCount }, () => []);
   let i = 0;
   for (let n = 0; n < 13; n++) hands[0].push(deck[i++]);
-  for (let n = 0; n < 12; n++) hands[1].push(deck[i++]);
-  for (let n = 0; n < 12; n++) hands[2].push(deck[i++]);
+  for (let p = 1; p < playerCount; p++) {
+    for (let n = 0; n < 12; n++) hands[p].push(deck[i++]);
+  }
   const stock = deck.slice(i);
   return { hands, stock };
 }

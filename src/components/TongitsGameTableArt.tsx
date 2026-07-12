@@ -555,7 +555,7 @@ function MeldRow({ melds, onPick, sapawCard, isSapawed }: { melds: TCard[][]; on
 }
 
 // ---- main ----
-export function TongitsGameTableArt({ code, room }: { code: string; room: Room }) {
+export function TongitsGameTableArt({ code, room, spectating }: { code: string; room: Room; spectating?: boolean }) {
   const { user } = useAuth();
   const uid_ = user?.uid ?? null;
 
@@ -1086,7 +1086,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
         </Zone>
 
         {/* action button strip — container aspect matches the PNG so pill hitboxes align */}
-        <div
+        {!spectating && <div
           style={{
             position: "absolute",
             left: `${S.buttonsStrip.l}%`,
@@ -1140,7 +1140,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
               </button>
             );
           })}
-        </div>
+        </div>}
 
         {/* YOU */}
         <Zone box={S.youAvatar}>
@@ -1174,7 +1174,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
             top: `${S.yourHand.t}%`,
             width: `${S.yourHand.w}%`,
             height: `${S.yourHand.h}%`,
-            display: "flex",
+            display: spectating ? "none" : "flex",
             alignItems: "flex-end",
             justifyContent: "center",
             gap: "1.5cqw",

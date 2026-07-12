@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { leaveRoom, seatedPlayers, type TongitsRoom } from "@/lib/tongits";
-import { playAgain, cardLabel, isRedSuit, type Card } from "@/lib/tongits-game";
+import { seatedPlayers, type TongitsRoom } from "@/lib/tongits";
+import { postGameRespond, resolvePostGame, startGame, cardLabel, isRedSuit, type Card } from "@/lib/tongits-game";
 import { useTongitsAssets } from "@/lib/tongitsAssets";
 
 const RESULT_LABEL: Record<string, string> = {
@@ -14,7 +13,7 @@ const RESULT_LABEL: Record<string, string> = {
   lowest_points_win: "Lowest hand wins",
 };
 
-const AUTO_QUIT_MS = 15_000;
+const POST_GAME_MS = 15_000;
 const SHOWDOWN_MS = 5_000;
 
 const SHOWDOWN_TYPES = new Set(["draw_win", "lowest_points_win"]);
@@ -251,8 +250,6 @@ function ShowdownOverlay({
   );
 }
 
-// Slot bounds measured from public/tongits/victory-popup.png (1672x941).
-// If the base image changes, re-run scripts/measure-victory.cjs and update these.
 const S = {
   winnerAvatar: { l: 25, t: 30, w: 10, h: 20 },
   winnerName: { l: 45, t: 32, w: 34, h: 9 },
@@ -267,6 +264,7 @@ const S = {
   timerBadge: { l: 47, t: 87, w: 6, h: 10 },
   quitBtn: { l: 56, t: 87, w: 24, h: 10 },
   resultLabel: { l: 30, t: 21, w: 40, h: 5 },
+  statusRow: { l: 20, t: 82, w: 60, h: 5 },
 };
 
 function initials(name: string) {
@@ -297,78 +295,80 @@ function Slot({ box, children, style }: { box: Box; children?: React.ReactNode; 
   );
 }
 
-/**
- * Post-game popup shown to every player. Winner sees "+points", losers see
- * their per-hand loss. 15-second countdown auto-quits to the lobby if the
- * user hasn't chosen CONTINUE or QUIT.
- */
 export function TongitsVictoryPopup({ code, room }: { code: string; room: TongitsRoom }) {
-  const router = useRouter();
   const { user } = useAuth();
   const assets = useTongitsAssets();
   const [busy, setBusy] = useState<string | null>(null);
-  const [msLeft, setMsLeft] = useState(AUTO_QUIT_MS);
+  const [msLeft, setMsLeft] = useState(POST_GAME_MS);
+  const [resolved, setResolved] = useState(false);
 
   const r = room.lastResult!;
   const hasHands = r.hands && Object.keys(r.hands).length > 0;
   const isShowdownType = SHOWDOWN_TYPES.has(r.resultType);
   const [showingShowdown, setShowingShowdown] = useState(isShowdownType && !!hasHands);
 
+  const responses = room.postGameResponses ?? {};
+  const myResponse = user ? responses[user.uid] : undefined;
+  const seats = seatedPlayers(room);
+  const allResponded = seats.every((s) => responses[s.uid]);
+
+  const doResolve = useCallback(async () => {
+    if (resolved) return;
+    setResolved(true);
+    try {
+      const res = await resolvePostGame(code);
+      if (res.needsStart) {
+        try { await startGame(code); } catch { /* another client may start it first */ }
+      }
+    } catch { /* room state will reflect the outcome */ }
+  }, [code, resolved]);
+
   useEffect(() => {
     if (showingShowdown) return;
-    const start = Date.now();
+    if (allResponded) {
+      void doResolve();
+      return;
+    }
+    const deadline = room.postGameDeadline ?? (Date.now() + POST_GAME_MS);
     const interval = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const remaining = Math.max(0, AUTO_QUIT_MS - elapsed);
+      const remaining = Math.max(0, deadline - Date.now());
       setMsLeft(remaining);
       if (remaining <= 0) {
         clearInterval(interval);
-        void doAutoQuit();
+        void doResolve();
       }
     }, 100);
     return () => clearInterval(interval);
-
-    async function doAutoQuit() {
-      try {
-        await leaveRoom(code);
-      } catch { /* room may already be cancelled */ }
-      router.push("/tongits");
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showingShowdown]);
+  }, [showingShowdown, allResponded]);
 
   if (showingShowdown) {
     return <ShowdownOverlay room={room} onDone={() => setShowingShowdown(false)} />;
   }
 
   const C = room.challengePoints;
-  const seats = seatedPlayers(room);
   const winner = seats.find((s) => s.uid === r.winnerUserId);
   const losers = seats.filter((s) => s.uid !== r.winnerUserId);
   const iAmWinner = user?.uid === r.winnerUserId;
   const winnerPayout = C * seats.length + r.jackpotWon;
 
   async function onContinue() {
-    setBusy("again");
+    setBusy("continue");
     try {
-      await playAgain(code);
-    } catch {
-      /* ignore — room state will show the truth */
-    } finally {
-      setBusy(null);
-    }
+      await postGameRespond(code, "continue");
+    } catch { /* ignore */ }
+    finally { setBusy(null); }
   }
   async function onQuit() {
     setBusy("quit");
     try {
-      await leaveRoom(code);
-    } catch {
-      /* ignore */
-    }
-    router.push("/tongits");
+      await postGameRespond(code, "quit");
+    } catch { /* ignore */ }
+    finally { setBusy(null); }
   }
 
   const secondsLeft = Math.ceil(msLeft / 1000);
+  const hasResponded = !!myResponse;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -387,7 +387,6 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
           draggable={false}
         />
 
-        {/* Result label ribbon (only for losers — winners have "TONGITS CHAMPION!" baked in) */}
         {!iAmWinner && (
           <Slot box={S.resultLabel}>
             <span
@@ -406,14 +405,12 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
           </Slot>
         )}
 
-        {/* Winner avatar — initials sit inside the crowned blue circle */}
         <Slot box={S.winnerAvatar}>
           <span style={{ color: "#F5C66B", fontWeight: 900, fontSize: "3.2cqw", fontFamily: "system-ui" }}>
             {winner ? initials(winner.name) : "?"}
           </span>
         </Slot>
 
-        {/* Winner name — big tan banner on the right of the avatar */}
         <Slot box={S.winnerName}>
           <span
             style={{
@@ -432,7 +429,6 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
           </span>
         </Slot>
 
-        {/* Points banner — blue bar below the name */}
         <Slot box={S.winnerPoints}>
           <span
             style={{
@@ -446,7 +442,6 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
           </span>
         </Slot>
 
-        {/* Runner-up rows */}
         {losers[0] && (
           <>
             <Slot box={S.ru1Avatar}>
@@ -508,60 +503,118 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
           </>
         )}
 
-        {/* Buttons and timer — hit-boxes only; the visuals are baked into the PNG */}
-        <button
-          onClick={onContinue}
-          disabled={!!busy}
-          style={{
-            position: "absolute",
-            left: `${S.continueBtn.l}%`,
-            top: `${S.continueBtn.t}%`,
-            width: `${S.continueBtn.w}%`,
-            height: `${S.continueBtn.h}%`,
-            background: "transparent",
-            border: "none",
-            cursor: busy ? "not-allowed" : "pointer",
-            fontWeight: 900,
-            color: "transparent",
-          }}
-          aria-label="Continue"
-        >
-          {busy === "again" && <Loader2 className="w-6 h-6 mx-auto animate-spin text-[#4a2f0d]" />}
-        </button>
-
-        <Slot box={S.timerBadge}>
-          <span
-            style={{
-              color: "#F5C66B",
-              fontWeight: 900,
-              fontSize: "2.4cqw",
-              fontFamily: "monospace",
-              textShadow: "0 0.15cqw 0.3cqw rgba(0,0,0,0.5)",
-            }}
-          >
-            {secondsLeft}
-          </span>
+        {/* Player response status indicators */}
+        <Slot box={S.statusRow} style={{ gap: "1.5cqw" }}>
+          {seats.map((s) => {
+            const resp = responses[s.uid];
+            return (
+              <div
+                key={s.uid}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.4cqw",
+                }}
+              >
+                <div
+                  style={{
+                    width: "1.2cqw",
+                    height: "1.2cqw",
+                    borderRadius: "50%",
+                    background: resp === "continue"
+                      ? "#4bd47a"
+                      : resp === "quit"
+                      ? "#ef4444"
+                      : "rgba(255,255,255,0.3)",
+                    border: "0.1cqw solid rgba(255,255,255,0.2)",
+                  }}
+                />
+                <span
+                  style={{
+                    color: resp ? "#fff" : "rgba(255,255,255,0.5)",
+                    fontWeight: 700,
+                    fontSize: "0.9cqw",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {s.name.split(" ")[0]}
+                </span>
+              </div>
+            );
+          })}
         </Slot>
 
-        <button
-          onClick={onQuit}
-          disabled={!!busy}
-          style={{
-            position: "absolute",
-            left: `${S.quitBtn.l}%`,
-            top: `${S.quitBtn.t}%`,
-            width: `${S.quitBtn.w}%`,
-            height: `${S.quitBtn.h}%`,
-            background: "transparent",
-            border: "none",
-            cursor: busy ? "not-allowed" : "pointer",
-            fontWeight: 900,
-            color: "transparent",
-          }}
-          aria-label="Quit"
-        >
-          {(busy === "quit" || busy === "auto") && <Loader2 className="w-6 h-6 mx-auto animate-spin text-white" />}
-        </button>
+        {/* Buttons: show action buttons if not responded, "Waiting..." if responded */}
+        {hasResponded ? (
+          <Slot box={{ l: 20, t: 87, w: 60, h: 10 }}>
+            <span
+              style={{
+                color: "#F5C66B",
+                fontWeight: 800,
+                fontSize: "1.4cqw",
+                letterSpacing: "0.06em",
+              }}
+            >
+              {myResponse === "continue" ? "Waiting for others..." : "Leaving..."}
+            </span>
+          </Slot>
+        ) : (
+          <>
+            <button
+              onClick={onContinue}
+              disabled={!!busy}
+              style={{
+                position: "absolute",
+                left: `${S.continueBtn.l}%`,
+                top: `${S.continueBtn.t}%`,
+                width: `${S.continueBtn.w}%`,
+                height: `${S.continueBtn.h}%`,
+                background: "transparent",
+                border: "none",
+                cursor: busy ? "not-allowed" : "pointer",
+                fontWeight: 900,
+                color: "transparent",
+              }}
+              aria-label="Continue"
+            >
+              {busy === "continue" && <Loader2 className="w-6 h-6 mx-auto animate-spin text-[#4a2f0d]" />}
+            </button>
+
+            <Slot box={S.timerBadge}>
+              <span
+                style={{
+                  color: "#F5C66B",
+                  fontWeight: 900,
+                  fontSize: "2.4cqw",
+                  fontFamily: "monospace",
+                  textShadow: "0 0.15cqw 0.3cqw rgba(0,0,0,0.5)",
+                }}
+              >
+                {secondsLeft}
+              </span>
+            </Slot>
+
+            <button
+              onClick={onQuit}
+              disabled={!!busy}
+              style={{
+                position: "absolute",
+                left: `${S.quitBtn.l}%`,
+                top: `${S.quitBtn.t}%`,
+                width: `${S.quitBtn.w}%`,
+                height: `${S.quitBtn.h}%`,
+                background: "transparent",
+                border: "none",
+                cursor: busy ? "not-allowed" : "pointer",
+                fontWeight: 900,
+                color: "transparent",
+              }}
+              aria-label="Quit"
+            >
+              {busy === "quit" && <Loader2 className="w-6 h-6 mx-auto animate-spin text-white" />}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

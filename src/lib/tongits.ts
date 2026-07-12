@@ -35,6 +35,8 @@ export type TongitsPlayer = {
   agreedToChallenge: boolean;
   joinedAt: number;
   jackpotContributed: number;
+  role?: "active" | "idle";
+  joinNextRound?: boolean;
 };
 
 export type TongitsRoom = {
@@ -61,6 +63,8 @@ export type TongitsRoom = {
   completedAt?: number;
   lastResult?: TongitsResult | null;
   splitConsent?: Record<string, boolean>;
+  postGameResponses?: Record<string, "continue" | "quit">;
+  postGameDeadline?: number;
 };
 
 export type TongitsChat = {

@@ -49,6 +49,7 @@ type GamePublic = {
   startedAt: number;
   lastAction?: string;
   cantFight: Record<string, boolean>;
+  idleUids?: string[];
 };
 
 /**
@@ -240,19 +241,35 @@ function settleGameStateInTx(
   const matchId = db.collection("game_matches").doc().id;
 
   const players = { ...(ctx.room.players as Record<string, Record<string, unknown>>) };
+  // Process idle spectators from this round
+  const idleUids = (ctx.gs.idleUids ?? []) as string[];
+  for (const idleUid of idleUids) {
+    if (!players[idleUid]) continue;
+    if (players[idleUid].joinNextRound) {
+      players[idleUid] = { ...players[idleUid], role: "active", joinNextRound: false, isReady: false, agreedToChallenge: false };
+    } else {
+      delete players[idleUid];
+    }
+  }
+  // Reset active players' ready state
   for (const uid of Object.keys(players)) {
-    players[uid] = { ...players[uid], isReady: false, agreedToChallenge: false };
+    if (!idleUids.includes(uid)) {
+      players[uid] = { ...players[uid], isReady: false, agreedToChallenge: false };
+    }
   }
   const winnerName = seats.find((s) => s.uid === winnerUid)?.name ?? "Winner";
 
   tx.update(roomRef(code), {
     players,
+    playerUids: Object.keys(players),
     status: "post_game",
     jackpotPoints: payoutJackpot ? 0 : ctx.gs.jackpotPoints,
     lastWinnerUid: nextLastWinnerUid,
     winStreak: nextWinStreak,
     gamesPlayed: ((ctx.room.gamesPlayed as number) ?? 0) + 1,
     updatedAt: now,
+    postGameResponses: {},
+    postGameDeadline: now + 15_000,
     lastResult: {
       matchId,
       resultType,
@@ -442,9 +459,13 @@ export const startTongitsGame = onCall({ region: GAME_REGION }, async (request) 
   if (!roomPre.players?.[uid]) throw new HttpsError("permission-denied", "You're not in this room.");
   if (roomPre.status !== "ready") throw new HttpsError("failed-precondition", "Room isn't ready to start.");
 
-  const playersPre = Object.values(roomPre.players as Record<string, { uid: string; seat: number; name: string }>);
-  if (playersPre.length !== 3) throw new HttpsError("failed-precondition", "Need exactly 3 players.");
-  const seats: Seat[] = playersPre.map((p) => ({ uid: p.uid, seat: p.seat, name: p.name })).sort((a, b) => a.seat - b.seat);
+  const allPlayers = Object.values(roomPre.players as Record<string, { uid: string; seat: number; name: string; role?: string }>);
+  const activePlayers = allPlayers.filter((p) => p.role !== "idle");
+  const idlePlayers = allPlayers.filter((p) => p.role === "idle");
+  if (activePlayers.length < 2 || activePlayers.length > 3) {
+    throw new HttpsError("failed-precondition", "Need 2 or 3 active players.");
+  }
+  const seats: Seat[] = activePlayers.map((p) => ({ uid: p.uid, seat: p.seat, name: p.name })).sort((a, b) => a.seat - b.seat);
   const ante = (roomPre.jackpotAnte as number) ?? 0;
 
   // Phase A — deduct antes on the default (us-central) db.
@@ -475,7 +496,7 @@ export const startTongitsGame = onCall({ region: GAME_REGION }, async (request) 
 
   // Phase B — create game state on gameDb. If this fails, refund the antes.
   try {
-    const { hands, stock } = deal();
+    const { hands, stock } = deal(seats.length as 2 | 3);
     const handMap: Record<string, Card[]> = {};
     seats.forEach((s, i) => (handMap[s.uid] = hands[i]));
 
@@ -503,6 +524,7 @@ export const startTongitsGame = onCall({ region: GAME_REGION }, async (request) 
         jackpotPoints: ((room.jackpotPoints as number) ?? 0) + ante * seats.length,
         startedAt: now,
         cantFight: Object.fromEntries(seats.map((s) => [s.uid, false])),
+        idleUids: idlePlayers.map((p) => p.uid),
       };
 
       const jackpotContrib: Record<string, Record<string, unknown>> = {};
@@ -752,6 +774,33 @@ export const enforceTongitsTimeout = onCall({ region: GAME_REGION }, async (requ
   return result;
 });
 
+/** Idle player chooses to join the next round or quit the room. */
+export const tongitsIdleAction = onCall({ region: GAME_REGION }, async (request) => {
+  const uid = requireUid(request);
+  const code = codeArg(request);
+  const action = (request.data as { action?: string }).action;
+  if (action !== "join_next" && action !== "quit") {
+    throw new HttpsError("invalid-argument", "Action must be 'join_next' or 'quit'.");
+  }
+  const now = Date.now();
+  return gameDb.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef(code));
+    if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
+    const room = roomSnap.data() as FirebaseFirestore.DocumentData;
+    if (!room.players?.[uid]) throw new HttpsError("permission-denied", "Not in this room.");
+    if (room.players[uid].role !== "idle") throw new HttpsError("failed-precondition", "You're not idle.");
+    const players = { ...room.players };
+    if (action === "quit") {
+      delete players[uid];
+      tx.update(roomRef(code), { players, playerUids: Object.keys(players), updatedAt: now });
+    } else {
+      players[uid] = { ...players[uid], joinNextRound: true };
+      tx.update(roomRef(code), { players, updatedAt: now });
+    }
+    return { ok: true };
+  });
+});
+
 /** Reset a finished room for another game (stakes re-lock via the ready flow). */
 export const tongitsPlayAgain = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
@@ -771,6 +820,92 @@ export const tongitsPlayAgain = onCall({ region: GAME_REGION }, async (request) 
     });
     tx.delete(gsRef(code));
     return { ok: true };
+  });
+});
+
+/** Record a player's post-game choice (continue or quit). */
+export const tongitsPostGameRespond = onCall({ region: GAME_REGION }, async (request) => {
+  const uid = requireUid(request);
+  const code = codeArg(request);
+  const response = (request.data as { response?: string }).response;
+  if (response !== "continue" && response !== "quit") {
+    throw new HttpsError("invalid-argument", "Response must be 'continue' or 'quit'.");
+  }
+  const now = Date.now();
+  return gameDb.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef(code));
+    if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
+    const room = roomSnap.data() as FirebaseFirestore.DocumentData;
+    if (!room.players?.[uid]) throw new HttpsError("permission-denied", "You're not in this room.");
+    if (room.status !== "post_game") throw new HttpsError("failed-precondition", "Not in post-game.");
+    const responses = { ...(room.postGameResponses ?? {}) } as Record<string, string>;
+    if (responses[uid]) throw new HttpsError("failed-precondition", "Already responded.");
+    responses[uid] = response;
+    tx.update(roomRef(code), { postGameResponses: responses, updatedAt: now });
+    const allResponded = Object.keys(room.players).every((u: string) => responses[u]);
+    return { ok: true, allResponded };
+  });
+});
+
+/** Resolve the post-game phase: start next round or return to waiting room. */
+export const tongitsResolvePostGame = onCall({ region: GAME_REGION }, async (request) => {
+  const uid = requireUid(request);
+  const code = codeArg(request);
+  const now = Date.now();
+  return gameDb.runTransaction(async (tx) => {
+    const roomSnap = await tx.get(roomRef(code));
+    if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
+    const room = roomSnap.data() as FirebaseFirestore.DocumentData;
+    if (!room.players?.[uid]) throw new HttpsError("permission-denied", "You're not in this room.");
+    if (room.status !== "post_game") throw new HttpsError("failed-precondition", "Not in post-game.");
+    const players = { ...(room.players as Record<string, Record<string, unknown>>) };
+    const playerUids = Object.keys(players);
+    const responses = { ...(room.postGameResponses ?? {}) } as Record<string, string>;
+    const deadline = (room.postGameDeadline as number) ?? 0;
+    const allResponded = playerUids.every((u) => responses[u]);
+    if (!allResponded && now < deadline) {
+      throw new HttpsError("failed-precondition", "Waiting for responses or deadline.");
+    }
+    // Quitters → removed; non-responders → idle; continuers → active
+    for (const u of playerUids) {
+      if (responses[u] === "quit") {
+        delete players[u];
+      } else if (!responses[u]) {
+        players[u] = { ...players[u], role: "idle", joinNextRound: false, isReady: false, agreedToChallenge: false };
+      } else {
+        players[u] = { ...players[u], role: "active", isReady: true, agreedToChallenge: true };
+      }
+    }
+    const remaining = Object.keys(players);
+    if (remaining.length === 0) {
+      tx.update(roomRef(code), { status: "cancelled", updatedAt: now, completedAt: now, postGameResponses: null, postGameDeadline: null });
+      tx.delete(gsRef(code));
+      return { ok: true, result: "cancelled" as const };
+    }
+    const activePlayers = remaining.filter((u) => players[u].role !== "idle");
+    // Pot just paid out + only 2 active → force waiting room
+    const lastJackpotWon = (room.lastResult?.jackpotWon as number) ?? 0;
+    const forceWaitingRoom = lastJackpotWon > 0 && activePlayers.length <= 2;
+    if (activePlayers.length <= 1 || forceWaitingRoom) {
+      for (const u of remaining) {
+        players[u] = { ...players[u], role: "active", isReady: false, agreedToChallenge: false };
+      }
+      tx.update(roomRef(code), {
+        players, playerUids: remaining,
+        status: remaining.length >= 3 ? "full" : "open",
+        postGameResponses: null, postGameDeadline: null, lastResult: null, updatedAt: now,
+      });
+      tx.delete(gsRef(code));
+      return { ok: true, result: "waiting_room" as const };
+    }
+    // 2+ active → auto-start next round
+    tx.update(roomRef(code), {
+      players, playerUids: remaining,
+      status: "ready",
+      postGameResponses: null, postGameDeadline: null, lastResult: null, updatedAt: now,
+    });
+    tx.delete(gsRef(code));
+    return { ok: true, result: "ready" as const, needsStart: true };
   });
 });
 
