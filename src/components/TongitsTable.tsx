@@ -121,20 +121,20 @@ export function TongitsTable({ code }: { code: string; room: Room }) {
 
   const [error, setError] = useState<string | null>(null);
   const wsHook = useTongitsWs(code, uid_, (msg) => setError(msg));
-  const useWs = wsHook.connected;
+  const wsActive = wsHook.connected && wsHook.gs?.status === "in_game";
 
-  const gs = (useWs && wsHook.gs) || fsGs;
-  const myHand = useWs ? wsHook.hand : fsHand;
+  const gs = (wsActive ? wsHook.gs : null) || fsGs;
+  const myHand = wsActive ? wsHook.hand : fsHand;
 
-  const draw = useWs ? wsHook.draw : (async () => { await cfDraw(code); });
-  const takeDiscard = useWs ? wsHook.takeDiscard : (async (mc: TCard[]) => { await cfTakeDiscard(code, mc); });
-  const meld = useWs ? wsHook.meld : (async (cs: TCard[]) => { await cfMeld(code, cs); });
-  const sapawCard = useWs
+  const draw = wsActive ? wsHook.draw : (async () => { await cfDraw(code); });
+  const takeDiscard = wsActive ? wsHook.takeDiscard : (async (mc: TCard[]) => { await cfTakeDiscard(code, mc); });
+  const meld = wsActive ? wsHook.meld : (async (cs: TCard[]) => { await cfMeld(code, cs); });
+  const sapawCard = wsActive
     ? (async (tu: string, mi: number, c: TCard) => { await wsHook.sapaw(tu, mi, c); })
     : (async (tu: string, mi: number, c: TCard) => { await cfSapawCard(code, tu, mi, c); });
-  const discard_ = useWs ? wsHook.discard : (async (c: TCard) => { await cfDiscard(code, c); });
-  const callTongits = useWs ? wsHook.call : (async () => { await cfCallTongits(code); });
-  const enforceTimeout = useWs ? wsHook.enforceTimeout : (async () => { await cfEnforceTimeout(code); });
+  const discard_ = wsActive ? wsHook.discard : (async (c: TCard) => { await cfDiscard(code, c); });
+  const callTongits = wsActive ? wsHook.call : (async () => { await cfCallTongits(code); });
+  const enforceTimeout = wsActive ? wsHook.enforceTimeout : (async () => { await cfEnforceTimeout(code); });
 
   const [selected, setSelected] = useState<TCard[]>([]);
   const [busy, setBusy] = useState<string | null>(null);

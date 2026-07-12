@@ -563,24 +563,24 @@ export function TongitsGameTableArt({ code, room, spectating }: { code: string; 
   const fsGs = useGameState(code);
   const fsHand = useMyHand(code, uid_);
 
-  // WebSocket (primary when connected)
+  // WebSocket (primary when connected AND has an active game)
   const ws = useTongitsWs(code, uid_, (msg) => setError(msg));
-  const useWs = ws.connected;
+  const wsActive = ws.connected && ws.gs?.status === "in_game";
 
-  // Prefer WS state when connected; fall back to Firestore
-  const gs = (useWs && ws.gs) || fsGs;
-  const myHand = useWs ? ws.hand : fsHand;
+  // Prefer WS state when active; fall back to Firestore
+  const gs = (wsActive ? ws.gs : null) || fsGs;
+  const myHand = wsActive ? ws.hand : fsHand;
 
-  // Action dispatchers: WS when connected, Cloud Functions otherwise
-  const draw = useWs ? ws.draw : (async () => { await cfDraw(code); });
-  const takeDiscard = useWs ? ws.takeDiscard : (async (mc: TCard[]) => { await cfTakeDiscard(code, mc); });
-  const meld_ = useWs ? ws.meld : (async (cs: TCard[]) => { await cfMeld(code, cs); });
-  const sapawCard_ = useWs
+  // Action dispatchers: WS when active, Cloud Functions otherwise
+  const draw = wsActive ? ws.draw : (async () => { await cfDraw(code); });
+  const takeDiscard = wsActive ? ws.takeDiscard : (async (mc: TCard[]) => { await cfTakeDiscard(code, mc); });
+  const meld_ = wsActive ? ws.meld : (async (cs: TCard[]) => { await cfMeld(code, cs); });
+  const sapawCard_ = wsActive
     ? (async (tu: string, mi: number, c: TCard) => { await ws.sapaw(tu, mi, c); })
     : (async (tu: string, mi: number, c: TCard) => { await cfSapawCard(code, tu, mi, c); });
-  const discard_ = useWs ? ws.discard : (async (c: TCard) => { await cfDiscard(code, c); });
-  const callTongits_ = useWs ? ws.call : (async () => { await cfCallTongits(code); });
-  const enforceTimeout_ = useWs ? ws.enforceTimeout : (async () => { await cfEnforceTimeout(code); });
+  const discard_ = wsActive ? ws.discard : (async (c: TCard) => { await cfDiscard(code, c); });
+  const callTongits_ = wsActive ? ws.call : (async () => { await cfCallTongits(code); });
+  const enforceTimeout_ = wsActive ? ws.enforceTimeout : (async () => { await cfEnforceTimeout(code); });
 
   const assets = useTongitsAssets();
 

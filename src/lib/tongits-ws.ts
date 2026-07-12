@@ -76,7 +76,7 @@ export function useTongitsWs(
             setHand(msg.cards);
             break;
           case "ended":
-            setGs(msg.gs);
+            setGs(null);
             break;
           case "error":
             onErrorRef.current?.(msg.error);
