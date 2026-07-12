@@ -20,6 +20,7 @@ import {
 import { useTongitsWs } from "@/lib/tongits-ws";
 import type { TongitsRoom as Room } from "@/lib/tongits";
 import { useTongitsAssets } from "@/lib/tongitsAssets";
+import { TongitsEmoteSystem } from "./TongitsEmotes";
 
 type Box = { l: number; t: number; w: number; h: number };
 
@@ -840,6 +841,14 @@ export function TongitsGameTableArt({ code, room, spectating }: { code: string; 
             50% { transform: translateY(0.2cqw); }
           }
         `}</style>
+
+        {gs && uid && !spectating && (
+          <TongitsEmoteSystem
+            code={code}
+            myUid={uid}
+            seats={gs.seats.map((s) => ({ uid: s.uid, name: s.name }))}
+          />
+        )}
 
         {error && (
           <div
