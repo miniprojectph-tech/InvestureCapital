@@ -189,6 +189,7 @@ export function doSapaw(
 
   target[meldIndex] = next;
   hands[uid].splice(hands[uid].indexOf(card), 1);
+  if (targetUid !== uid) gs.cantFight[targetUid] = true;
 
   const settle = checkTongits(room, uid);
   if (settle) return { ok: true, settle };
@@ -213,6 +214,7 @@ export function doDiscard(
 
   hands[uid].splice(hands[uid].indexOf(card), 1);
   gs.discard.push(card);
+  gs.cantFight[uid] = false;
 
   const settle = checkTongits(room, uid);
   if (settle) return { ok: true, settle };
@@ -230,6 +232,8 @@ export function doCall(room: LiveRoom, uid: string): ActionResult {
   if (gs.phase !== "discard") throw new Error("You must act now.");
   if ((gs.melds[uid]?.length ?? 0) === 0)
     throw new Error("You need at least one exposed meld to call.");
+  if (gs.cantFight[uid])
+    throw new Error("You can't fight this turn — your meld was sapawed.");
 
   const entries = gs.seats.map((s) => ({
     uid: s.uid,

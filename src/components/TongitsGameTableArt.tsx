@@ -312,6 +312,16 @@ function canSapawAny(card: TCard, allMelds: TCard[][]) {
   return false;
 }
 
+function canSapawMeld(card: TCard, meld: TCard[]) {
+  if (meld.every((c) => c[0] === meld[0][0]) && card[0] === meld[0][0]) return true;
+  if (meld.length >= 3 && meld.every((c) => c[1] === meld[0][1]) && card[1] === meld[0][1]) {
+    const idxs = meld.map((c) => RANK_ORDER.indexOf(c[0])).sort((a, b) => a - b);
+    const cIdx = RANK_ORDER.indexOf(card[0]);
+    if (cIdx === idxs[0] - 1 || cIdx === idxs[idxs.length - 1] + 1) return true;
+  }
+  return false;
+}
+
 // ---- primitives ----
 function Zone({
   box,
@@ -484,31 +494,62 @@ function BigCard({ card, faceDown, selected, onClick }: { card?: TCard; faceDown
   );
 }
 
-function MeldRow({ melds, onPick }: { melds: TCard[][]; onPick?: (i: number) => void }) {
+function MeldRow({ melds, onPick, sapawCard, isSapawed }: { melds: TCard[][]; onPick?: (i: number) => void; sapawCard?: TCard; isSapawed?: boolean }) {
   if (!melds || melds.length === 0)
     return <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.9cqw" }}>—</span>;
   return (
     <div style={{ display: "flex", gap: "0.6cqw", flexWrap: "wrap", justifyContent: "center", alignItems: "center", height: "100%" }}>
-      {melds.map((m, i) => (
-        <button
-          key={i}
-          onClick={onPick ? () => onPick(i) : undefined}
-          disabled={!onPick}
-          style={{
-            display: "flex",
-            gap: "0.15cqw",
-            padding: "0.2cqw",
-            borderRadius: "0.4cqw",
-            background: onPick ? "rgba(61,213,152,0.18)" : "transparent",
-            border: onPick ? "0.12cqw solid rgba(61,213,152,0.75)" : "none",
-            cursor: onPick ? "pointer" : "default",
-          }}
-        >
-          {m.map((c) => (
-            <SmallCard key={c} card={c} />
-          ))}
-        </button>
-      ))}
+      {melds.map((m, i) => {
+        const isTarget = !!(onPick && sapawCard && canSapawMeld(sapawCard, m));
+        return (
+          <div key={i} style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center" }}>
+            {isTarget && (
+              <div style={{
+                color: "#F5C66B",
+                fontSize: "1.2cqw",
+                lineHeight: 1,
+                marginBottom: "-0.15cqw",
+                textShadow: "0 0 0.4cqw rgba(245,198,107,0.8)",
+                animation: "sapawArrowBounce 0.8s ease-in-out infinite",
+                pointerEvents: "none",
+              }}>▼</div>
+            )}
+            <button
+              onClick={isTarget ? () => onPick!(i) : undefined}
+              disabled={!isTarget}
+              style={{
+                display: "flex",
+                gap: "0.15cqw",
+                padding: "0.2cqw",
+                borderRadius: "0.4cqw",
+                background: isTarget ? "rgba(245,198,107,0.18)" : "transparent",
+                border: isTarget ? "0.12cqw solid rgba(245,198,107,0.75)" : "none",
+                cursor: isTarget ? "pointer" : "default",
+              }}
+            >
+              {m.map((c) => (
+                <SmallCard key={c} card={c} />
+              ))}
+            </button>
+            {isSapawed && (
+              <div style={{
+                position: "absolute",
+                bottom: "-1cqw",
+                left: "50%",
+                transform: "translateX(-50%)",
+                background: "rgba(220,50,50,0.85)",
+                color: "#fff",
+                fontSize: "0.55cqw",
+                fontWeight: 800,
+                padding: "0.1cqw 0.35cqw",
+                borderRadius: "0.25cqw",
+                whiteSpace: "nowrap",
+                pointerEvents: "none",
+              }}>🚫</div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -631,7 +672,7 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
 
   // legal-state flags
   const canDrop = isMyTurn && gs.phase === "discard" && selected.length >= 3 && isValidMeld(selected);
-  const canFight = isMyTurn && gs.phase === "discard" && iHaveMeld;
+  const canFight = isMyTurn && gs.phase === "discard" && iHaveMeld && !gs.cantFight?.[uid];
   const canUngroup = selected.length > 0;
   const canDump = isMyTurn && gs.phase === "discard" && selected.length === 1;
   const sapawEligible =
@@ -744,7 +785,9 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
           ? "You can only fight during the discard phase."
           : !iHaveMeld
             ? "You need an exposed meld before you can fight."
-            : undefined,
+            : gs.cantFight?.[uid]
+              ? "You can't fight — your meld was sapawed this turn."
+              : undefined,
     },
     {
       label: "UNGROUP",
@@ -791,6 +834,12 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
       >
         {/* base */}
         <img src={assets.table} alt="Tongits table" className="absolute inset-0 w-full h-full object-contain" />
+        <style>{`
+          @keyframes sapawArrowBounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(0.2cqw); }
+          }
+        `}</style>
 
         {error && (
           <div
@@ -873,12 +922,16 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
               <MeldRow
                 melds={(gs.melds[opp1.uid] ?? []).slice(0, 2)}
                 onPick={sapawEligible ? (i) => onSapawPick(opp1.uid, i) : undefined}
+                sapawCard={sapawEligible ? selected[0] : undefined}
+                isSapawed={!!gs.cantFight?.[opp1.uid]}
               />
             </Zone>
             <Zone box={S.opp1MeldB}>
               <MeldRow
                 melds={(gs.melds[opp1.uid] ?? []).slice(2)}
                 onPick={sapawEligible ? (i) => onSapawPick(opp1.uid, i + 2) : undefined}
+                sapawCard={sapawEligible ? selected[0] : undefined}
+                isSapawed={!!gs.cantFight?.[opp1.uid]}
               />
             </Zone>
           </>
@@ -920,12 +973,16 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
               <MeldRow
                 melds={(gs.melds[opp2.uid] ?? []).slice(0, 2)}
                 onPick={sapawEligible ? (i) => onSapawPick(opp2.uid, i) : undefined}
+                sapawCard={sapawEligible ? selected[0] : undefined}
+                isSapawed={!!gs.cantFight?.[opp2.uid]}
               />
             </Zone>
             <Zone box={S.opp2MeldB}>
               <MeldRow
                 melds={(gs.melds[opp2.uid] ?? []).slice(2)}
                 onPick={sapawEligible ? (i) => onSapawPick(opp2.uid, i + 2) : undefined}
+                sapawCard={sapawEligible ? selected[0] : undefined}
+                isSapawed={!!gs.cantFight?.[opp2.uid]}
               />
             </Zone>
           </>
@@ -1023,6 +1080,8 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
           <MeldRow
             melds={gs.melds[uid] ?? []}
             onPick={sapawEligible ? (i) => onSapawPick(uid, i) : undefined}
+            sapawCard={sapawEligible ? selected[0] : undefined}
+            isSapawed={!!gs.cantFight?.[uid]}
           />
         </Zone>
 
@@ -1075,6 +1134,9 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
                 }}
               >
                 {isBusy ? <Loader2 className="animate-spin" style={{ width: "1.3cqw", height: "1.3cqw" }} /> : a.label}
+                {a.label === "FIGHT" && gs.cantFight?.[uid] && (
+                  <span style={{ position: "absolute", top: "-0.3cqw", right: "0", fontSize: "1.5cqw", filter: "drop-shadow(0 0.1cqw 0.2cqw rgba(0,0,0,0.6))" }}>🚫</span>
+                )}
               </button>
             );
           })}
@@ -1142,17 +1204,35 @@ export function TongitsGameTableArt({ code, room }: { code: string; room: Room }
                     gap: 0,
                   }}
                 >
-                  {group.cards.map((c, ci) => (
-                    <div
-                      key={c}
-                      style={{
-                        marginLeft: ci !== 0 ? "-2.9cqw" : 0,
-                        zIndex: ci,
-                      }}
-                    >
-                      <BigCard card={c} selected={selected.includes(c)} onClick={() => isMeld ? toggleGroup(group.cards) : toggle(c)} />
-                    </div>
-                  ))}
+                  {group.cards.map((c, ci) => {
+                    const showSapawHint = !isMeld && isMyTurn && gs.phase === "discard" && !selected.includes(c) && canSapawAny(c, allExposedMelds);
+                    return (
+                      <div
+                        key={c}
+                        style={{
+                          marginLeft: ci !== 0 ? "-2.9cqw" : 0,
+                          zIndex: ci,
+                          position: "relative",
+                        }}
+                      >
+                        <BigCard card={c} selected={selected.includes(c)} onClick={() => isMeld ? toggleGroup(group.cards) : toggle(c)} />
+                        {showSapawHint && (
+                          <div style={{
+                            position: "absolute",
+                            top: "-0.7cqw",
+                            left: "0.4cqw",
+                            color: "#F5C66B",
+                            fontSize: "0.8cqw",
+                            lineHeight: 1,
+                            textShadow: "0 0 0.4cqw rgba(245,198,107,0.8)",
+                            animation: "sapawArrowBounce 0.8s ease-in-out infinite",
+                            pointerEvents: "none",
+                            zIndex: 1,
+                          }}>▲</div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
                 {/* green shelf only for complete valid melds */}
                 {isMeld && (

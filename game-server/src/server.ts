@@ -66,6 +66,9 @@ async function loadRoomFromFirestore(code: string): Promise<LiveRoom | null> {
   if (!gsSnap.exists) return null;
   const gs = gsSnap.data() as GameState;
   gs.melds = decodeMelds(gs.melds);
+  if (!gs.cantFight) {
+    gs.cantFight = Object.fromEntries(gs.seats.map((s) => [s.uid, false]));
+  }
 
   const deckSnap = await gameDb.doc(`game_rooms/${code}/secret/deck`).get();
   const deck: Card[] = deckSnap.exists

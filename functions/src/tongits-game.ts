@@ -48,6 +48,7 @@ type GamePublic = {
   jackpotPoints: number;
   startedAt: number;
   lastAction?: string;
+  cantFight: Record<string, boolean>;
 };
 
 /**
@@ -501,6 +502,7 @@ export const startTongitsGame = onCall({ region: GAME_REGION }, async (request) 
         consecutiveTimeouts: Object.fromEntries(seats.map((s) => [s.uid, 0])),
         jackpotPoints: ((room.jackpotPoints as number) ?? 0) + ante * seats.length,
         startedAt: now,
+        cantFight: Object.fromEntries(seats.map((s) => [s.uid, false])),
       };
 
       const jackpotContrib: Record<string, Record<string, unknown>> = {};
@@ -649,6 +651,7 @@ export const tongitsSapaw = onCall({ region: GAME_REGION, minInstances: 1 }, asy
     if (!next) throw new HttpsError("invalid-argument", "That card can't be added to that meld.");
     target[meldIndex] = next;
     ctx.hands[uid].splice(ctx.hands[uid].indexOf(card), 1);
+    if (targetUid !== uid) ctx.gs.cantFight[targetUid] = true;
     eco = checkTongits(tx, code, ctx, uid);
     if (!eco) commitProgress(tx, code, ctx, "sapaw", [uid]);
   });
@@ -671,6 +674,7 @@ export const tongitsDiscard = onCall({ region: GAME_REGION, minInstances: 1 }, a
     if (!ctx.hands[uid].includes(card)) throw new HttpsError("invalid-argument", "You don't hold that card.");
     ctx.hands[uid].splice(ctx.hands[uid].indexOf(card), 1);
     ctx.gs.discard.push(card);
+    if (ctx.gs.cantFight) ctx.gs.cantFight[uid] = false;
     // Discarding your last card is a Tongits.
     eco = checkTongits(tx, code, ctx, uid);
     if (eco) return;
@@ -693,6 +697,9 @@ export const tongitsCall = onCall({ region: GAME_REGION, minInstances: 1 }, asyn
     requireTurn(ctx, uid, "discard");
     if ((ctx.gs.melds[uid]?.length ?? 0) === 0) {
       throw new HttpsError("failed-precondition", "You need at least one exposed meld to call.");
+    }
+    if (ctx.gs.cantFight?.[uid]) {
+      throw new HttpsError("failed-precondition", "You can't fight this turn — your meld was sapawed.");
     }
     const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
     const winner = resolveShowdown(entries, uid); // caller wins ties

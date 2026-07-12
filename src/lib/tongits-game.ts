@@ -26,6 +26,7 @@ export type TongitsGameState = {
   jackpotPoints: number;
   startedAt: number;
   lastAction?: string;
+  cantFight?: Record<string, boolean>;
 };
 
 export type TongitsResult = {

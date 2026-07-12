@@ -20,6 +20,7 @@ export type GameState = {
   jackpotPoints: number;
   startedAt: number;
   lastAction?: string;
+  cantFight: Record<string, boolean>;
 };
 
 export type RoomData = {
