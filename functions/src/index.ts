@@ -38,6 +38,9 @@ export {
   enforceTongitsTimeout,
   tongitsPlayAgain,
   splitTongitsJackpot,
+  tongitsPostGameRespond,
+  tongitsResolvePostGame,
+  tongitsIdleAction,
 } from "./tongits-game";
 
 const DAY_MS = 86_400_000;
