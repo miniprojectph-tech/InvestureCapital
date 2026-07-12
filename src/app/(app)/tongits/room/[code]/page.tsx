@@ -431,7 +431,7 @@ function ChatPanel({ room }: { room: TongitsRoom }) {
   }, [messages]);
 
   async function send() {
-    const { db } = getFirebase();
+    const { gameDb: db } = getFirebase();
     if (!db || !user) return;
     const now = Date.now();
     if (now - lastSent.current < 800) return; // basic spam guard
@@ -450,7 +450,7 @@ function ChatPanel({ room }: { room: TongitsRoom }) {
   }
 
   async function report(messageId: string) {
-    const { db } = getFirebase();
+    const { gameDb: db } = getFirebase();
     if (!db || !user) return;
     try {
       await reportChat(db, {

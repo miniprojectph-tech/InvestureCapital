@@ -128,7 +128,7 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
     navigator.clipboard.writeText(room.roomCode).catch(() => {});
   }
   async function send() {
-    const { db } = getFirebase();
+    const { gameDb: db } = getFirebase();
     if (!db || !user) return;
     const now = Date.now();
     if (now - lastSent.current < 800) return;
