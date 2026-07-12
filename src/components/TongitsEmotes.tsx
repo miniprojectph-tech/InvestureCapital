@@ -20,50 +20,126 @@ const EMOTES: EmoteDef[] = [
     id: "rocket",
     label: "Rocket",
     projectile: true,
-    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><ellipse cx="32" cy="52" rx="8" ry="5" fill="#ff6b35" opacity="0.7"/><ellipse cx="32" cy="54" rx="5" ry="4" fill="#ffd700" opacity="0.8"/><path d="M32 4c-8 12-12 24-12 36h24c0-12-4-24-12-36z" fill="#e8e8e8" stroke="#bbb" stroke-width="1"/><path d="M32 4c-6 10-9 20-10 30h20c-1-10-4-20-10-30z" fill="#f44336"/><circle cx="32" cy="28" r="4" fill="#64b5f6"/><path d="M20 36c-6 2-8 8-8 12l8-4z" fill="#e8e8e8" stroke="#bbb" stroke-width="0.5"/><path d="M44 36c6 2 8 8 8 12l-8-4z" fill="#e8e8e8" stroke="#bbb" stroke-width="0.5"/><ellipse cx="32" cy="56" rx="3" ry="3" fill="#ff9800"/></svg>`,
-    impactSvg: `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><circle cx="40" cy="40" r="30" fill="#ff6b35" opacity="0.6"/><circle cx="40" cy="40" r="20" fill="#ffd700" opacity="0.7"/><circle cx="40" cy="40" r="10" fill="#fff" opacity="0.9"/><path d="M40 5L44 25h-8z" fill="#ff6b35" opacity="0.5"/><path d="M40 75L36 55h8z" fill="#ff6b35" opacity="0.5"/><path d="M5 40L25 36v8z" fill="#ff6b35" opacity="0.5"/><path d="M75 40L55 44v-8z" fill="#ff6b35" opacity="0.5"/></svg>`,
+    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="rk1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f5f5f5"/><stop offset="100%" stop-color="#ccc"/></linearGradient>
+      <linearGradient id="rk2" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ff4444"/><stop offset="100%" stop-color="#cc0000"/></linearGradient>
+      <radialGradient id="rk3" cx="50%" cy="20%"><stop offset="0%" stop-color="#ffe082"/><stop offset="100%" stop-color="#ff6d00"/></radialGradient></defs>
+      <ellipse cx="32" cy="55" rx="6" ry="6" fill="url(#rk3)" opacity="0.9"/>
+      <ellipse cx="32" cy="57" rx="4" ry="4" fill="#ffd600" opacity="0.8"/>
+      <path d="M32 6c-7 10-11 22-11 34h22c0-12-4-24-11-34z" fill="url(#rk1)" stroke="#999" stroke-width="0.6"/>
+      <path d="M32 6c-5 9-8 18-9 28h18c-1-10-4-19-9-28z" fill="url(#rk2)"/>
+      <circle cx="32" cy="28" r="3.5" fill="#42a5f5" stroke="#1e88e5" stroke-width="0.5"/>
+      <circle cx="32" cy="28" r="1.5" fill="#90caf9"/>
+      <path d="M21 36c-5 2-7 7-7 11l7-3z" fill="url(#rk1)" stroke="#999" stroke-width="0.4"/>
+      <path d="M43 36c5 2 7 7 7 11l-7-3z" fill="url(#rk1)" stroke="#999" stroke-width="0.4"/>
+    </svg>`,
+    impactSvg: `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <defs><radialGradient id="ri1"><stop offset="0%" stop-color="#fff" stop-opacity="1"/><stop offset="40%" stop-color="#ffd600" stop-opacity="0.8"/><stop offset="100%" stop-color="#ff6d00" stop-opacity="0"/></radialGradient></defs>
+      <circle cx="40" cy="40" r="35" fill="url(#ri1)"/>
+      <circle cx="40" cy="40" r="8" fill="#fff" opacity="0.9"/>
+    </svg>`,
     shake: true,
   },
   {
     id: "tomato",
     label: "Tomato",
     projectile: true,
-    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><ellipse cx="32" cy="36" rx="22" ry="20" fill="#e53935"/><ellipse cx="32" cy="36" rx="22" ry="20" fill="url(#tg)" opacity="0.4"/><defs><radialGradient id="tg" cx="40%" cy="35%"><stop offset="0%" stop-color="#fff"/><stop offset="100%" stop-color="transparent"/></radialGradient></defs><path d="M26 18c2-6 6-8 6-8s4 2 6 8" stroke="#4caf50" stroke-width="2.5" fill="none" stroke-linecap="round"/><ellipse cx="30" cy="18" rx="4" ry="2.5" fill="#66bb6a" transform="rotate(-20 30 18)"/><ellipse cx="35" cy="17" rx="4" ry="2.5" fill="#4caf50" transform="rotate(15 35 17)"/></svg>`,
-    impactSvg: `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><ellipse cx="40" cy="45" rx="28" ry="12" fill="#e53935" opacity="0.5"/><circle cx="25" cy="30" r="5" fill="#e53935" opacity="0.6"/><circle cx="55" cy="35" r="4" fill="#e53935" opacity="0.5"/><circle cx="40" cy="25" r="6" fill="#e53935" opacity="0.7"/><circle cx="30" cy="45" r="3" fill="#c62828" opacity="0.4"/><circle cx="50" cy="42" r="3.5" fill="#c62828" opacity="0.4"/></svg>`,
+    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <defs><radialGradient id="tm1" cx="40%" cy="35%"><stop offset="0%" stop-color="#ff6659"/><stop offset="60%" stop-color="#e53935"/><stop offset="100%" stop-color="#b71c1c"/></radialGradient></defs>
+      <ellipse cx="32" cy="37" rx="21" ry="19" fill="url(#tm1)"/>
+      <ellipse cx="26" cy="30" rx="6" ry="4" fill="#ff8a80" opacity="0.4" transform="rotate(-15 26 30)"/>
+      <path d="M28 19c1-5 4-7 4-7s3 2 4 7" stroke="#2e7d32" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M27 19c-3-1-5 0-6 2" stroke="#388e3c" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <path d="M37 19c3-1 5 0 6 2" stroke="#388e3c" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      <ellipse cx="30" cy="18" rx="3.5" ry="2" fill="#43a047" transform="rotate(-25 30 18)"/>
+      <ellipse cx="35" cy="17.5" rx="3.5" ry="2" fill="#2e7d32" transform="rotate(20 35 17.5)"/>
+    </svg>`,
+    impactSvg: `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="40" cy="48" rx="30" ry="10" fill="#e53935" opacity="0.4"/>
+      <circle cx="22" cy="28" r="5" fill="#e53935" opacity="0.6"/><circle cx="30" cy="22" r="4" fill="#ff5252" opacity="0.5"/>
+      <circle cx="52" cy="32" r="4.5" fill="#e53935" opacity="0.5"/><circle cx="58" cy="26" r="3" fill="#ff5252" opacity="0.4"/>
+      <circle cx="40" cy="20" r="6" fill="#c62828" opacity="0.6"/><circle cx="38" cy="40" r="3" fill="#ff8a80" opacity="0.3"/>
+    </svg>`,
   },
   {
     id: "bomb",
     label: "Bomb",
     projectile: true,
-    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><circle cx="30" cy="38" r="18" fill="#37474f"/><circle cx="30" cy="38" r="18" fill="url(#bg)" opacity="0.3"/><defs><radialGradient id="bg" cx="35%" cy="30%"><stop offset="0%" stop-color="#fff"/><stop offset="100%" stop-color="transparent"/></radialGradient></defs><rect x="28" y="16" width="4" height="10" rx="2" fill="#795548"/><circle cx="30" cy="14" r="3" fill="#ff9800"/><circle cx="30" cy="13" r="2" fill="#ffd700"/><path d="M33 12c2-3 5-4 8-3" stroke="#ff9800" stroke-width="1.5" fill="none" stroke-linecap="round"/><circle cx="42" cy="8" r="2" fill="#ff5722"/><circle cx="44" cy="6" r="1.5" fill="#ffd700"/></svg>`,
-    impactSvg: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><polygon points="50,5 58,35 90,25 65,50 95,60 60,65 70,95 50,70 30,95 40,65 5,60 35,50 10,25 42,35" fill="#ff9800" opacity="0.8"/><polygon points="50,20 55,40 75,35 60,50 78,56 58,60 64,78 50,64 36,78 42,60 22,56 40,50 25,35 45,40" fill="#ffd700" opacity="0.9"/><circle cx="50" cy="50" r="12" fill="#fff" opacity="0.8"/></svg>`,
+    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <defs><radialGradient id="bm1" cx="38%" cy="32%"><stop offset="0%" stop-color="#607d8b"/><stop offset="100%" stop-color="#263238"/></radialGradient></defs>
+      <circle cx="30" cy="38" r="17" fill="url(#bm1)" stroke="#37474f" stroke-width="0.8"/>
+      <ellipse cx="24" cy="32" rx="5" ry="4" fill="#78909c" opacity="0.3" transform="rotate(-20 24 32)"/>
+      <rect x="28" y="17" width="4" height="9" rx="2" fill="#5d4037"/>
+      <path d="M32 17c2-4 5-6 8-5" stroke="#ff9800" stroke-width="1.8" fill="none" stroke-linecap="round"/>
+      <circle cx="41" cy="10" r="3" fill="#ff6d00" opacity="0.9"/>
+      <circle cx="41" cy="10" r="1.8" fill="#ffd600"/>
+      <circle cx="43" cy="8" r="1.2" fill="#fff8e1" opacity="0.7"/>
+    </svg>`,
+    impactSvg: `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <defs><radialGradient id="bi1"><stop offset="0%" stop-color="#fff" stop-opacity="0.9"/><stop offset="30%" stop-color="#ffd600" stop-opacity="0.8"/><stop offset="60%" stop-color="#ff6d00" stop-opacity="0.5"/><stop offset="100%" stop-color="#ff3d00" stop-opacity="0"/></radialGradient></defs>
+      <circle cx="50" cy="50" r="45" fill="url(#bi1)"/>
+      <polygon points="50,8 54,35 78,20 62,45 92,50 62,55 78,80 54,65 50,92 46,65 22,80 38,55 8,50 38,45 22,20 46,35" fill="#ff9800" opacity="0.5"/>
+    </svg>`,
     shake: true,
   },
   {
     id: "lightning",
     label: "Lightning",
     projectile: true,
-    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><polygon points="38,2 18,30 28,30 22,62 48,26 36,26" fill="#ffd600"/><polygon points="38,2 18,30 28,30 22,62 48,26 36,26" fill="url(#lg)" opacity="0.4"/><defs><linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fff"/><stop offset="100%" stop-color="transparent"/></linearGradient></defs></svg>`,
-    impactSvg: `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><circle cx="40" cy="40" r="25" fill="#ffd600" opacity="0.3"/><circle cx="40" cy="40" r="15" fill="#fff" opacity="0.5"/><path d="M40 10v10M40 60v10M10 40h10M60 40h10M18 18l7 7M55 55l7 7M55 18l-7 7M18 55l7 7" stroke="#ffd600" stroke-width="2.5" stroke-linecap="round" opacity="0.7"/></svg>`,
+    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="lt1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#fff9c4"/><stop offset="50%" stop-color="#ffd600"/><stop offset="100%" stop-color="#f9a825"/></linearGradient></defs>
+      <polygon points="37,3 17,29 27,29 21,61 47,25 35,25" fill="url(#lt1)" stroke="#f57f17" stroke-width="0.8" stroke-linejoin="round"/>
+      <polygon points="34,12 24,29 29,29 25,46 40,25 34,25" fill="#fff8e1" opacity="0.5"/>
+    </svg>`,
+    impactSvg: `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <defs><radialGradient id="li1"><stop offset="0%" stop-color="#fff" stop-opacity="0.9"/><stop offset="50%" stop-color="#ffd600" stop-opacity="0.4"/><stop offset="100%" stop-color="#ffd600" stop-opacity="0"/></radialGradient></defs>
+      <circle cx="40" cy="40" r="30" fill="url(#li1)"/>
+      <path d="M40 12v8M40 60v8M12 40h8M60 40h8M19 19l6 6M55 55l6 6M55 19l-6 6M19 55l6 6" stroke="#ffd600" stroke-width="2.5" stroke-linecap="round" opacity="0.8"/>
+    </svg>`,
   },
   {
     id: "slap",
     label: "Slap",
     projectile: true,
-    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M32 58c-12 0-18-6-18-14v-8l6-2v-8c0-2 2-4 4-4s4 2 4 4v6h2v-14c0-2 2-4 4-4s4 2 4 4v14h2v-12c0-2 2-4 4-4s4 2 4 4v12h2v-8c0-2 2-4 4-4s4 2 4 4v14c0 14-8 22-20 22z" fill="#ffcc80"/><path d="M32 58c-12 0-18-6-18-14v-8l6-2v-8c0-2 2-4 4-4s4 2 4 4v6h2v-14c0-2 2-4 4-4s4 2 4 4v14h2v-12c0-2 2-4 4-4s4 2 4 4v12h2v-8c0-2 2-4 4-4s4 2 4 4v14c0 14-8 22-20 22z" fill="url(#sg)" opacity="0.2"/><defs><radialGradient id="sg" cx="40%" cy="30%"><stop offset="0%" stop-color="#fff"/><stop offset="100%" stop-color="transparent"/></radialGradient></defs></svg>`,
-    impactSvg: `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg"><text x="40" y="48" text-anchor="middle" font-size="30" font-weight="900" fill="#ff5722" opacity="0.9">💥</text><path d="M20 20L30 30M60 20L50 30M20 60L30 50M60 60L50 50" stroke="#ff5722" stroke-width="3" stroke-linecap="round" opacity="0.5"/></svg>`,
+    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="sl1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ffe0b2"/><stop offset="100%" stop-color="#ffab40"/></linearGradient></defs>
+      <path d="M30 56c-10 0-15-5-15-12v-6l5-2v-7c0-2 1.5-3.5 3.5-3.5s3.5 1.5 3.5 3.5v5h2v-12c0-2 1.5-3.5 3.5-3.5S36 18 36 20v12h2v-10c0-2 1.5-3.5 3.5-3.5S45 20 45 22v10h2v-7c0-2 1.5-3.5 3.5-3.5S54 20 54 22v12c0 12-7 22-24 22z" fill="url(#sl1)" stroke="#e65100" stroke-width="0.6"/>
+      <path d="M23 38c0-1 1-2 2-2h4" stroke="#ffcc80" stroke-width="0.8" opacity="0.6" fill="none"/>
+      <path d="M8 22l6 4M8 34l6-2M10 28h6" stroke="#ff5722" stroke-width="2" stroke-linecap="round" opacity="0.7"/>
+    </svg>`,
+    impactSvg: `<svg viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+      <defs><radialGradient id="si1"><stop offset="0%" stop-color="#ff5722" stop-opacity="0.8"/><stop offset="100%" stop-color="#ff5722" stop-opacity="0"/></radialGradient></defs>
+      <circle cx="40" cy="40" r="25" fill="url(#si1)"/>
+      <path d="M20 20L30 30M60 20L50 30M20 60L30 50M60 60L50 50" stroke="#ff5722" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+      <text x="40" y="46" text-anchor="middle" font-size="20" font-weight="900" fill="#ff3d00" opacity="0.9">POW</text>
+    </svg>`,
   },
   {
     id: "heart",
     label: "Heart",
     projectile: false,
-    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M32 56S8 40 8 24c0-8 6-14 14-14a14 14 0 0110 4 14 14 0 0110-4c8 0 14 6 14 14 0 16-24 32-24 32z" fill="#e91e63"/><path d="M32 56S8 40 8 24c0-8 6-14 14-14a14 14 0 0110 4 14 14 0 0110-4c8 0 14 6 14 14 0 16-24 32-24 32z" fill="url(#hg)" opacity="0.4"/><defs><radialGradient id="hg" cx="35%" cy="30%"><stop offset="0%" stop-color="#fff"/><stop offset="100%" stop-color="transparent"/></radialGradient></defs></svg>`,
+    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <defs><radialGradient id="ht1" cx="35%" cy="30%"><stop offset="0%" stop-color="#f48fb1"/><stop offset="100%" stop-color="#c2185b"/></radialGradient></defs>
+      <path d="M32 54S10 40 10 26c0-7 5-12 12-12a12 12 0 0110 5 12 12 0 0110-5c7 0 12 5 12 12 0 14-22 28-22 28z" fill="url(#ht1)" stroke="#880e4f" stroke-width="0.5"/>
+      <path d="M22 22c-3 0-6 2-6 6 0 2 1 5 4 8" stroke="#f8bbd0" stroke-width="1.5" fill="none" stroke-linecap="round" opacity="0.7"/>
+    </svg>`,
   },
   {
     id: "confetti",
     label: "Confetti",
     projectile: false,
-    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><path d="M14 58L22 20l6 4z" fill="#ff9800"/><path d="M14 58L28 24l-2 6z" fill="#f57c00"/><circle cx="26" cy="18" r="2.5" fill="#e91e63"/><circle cx="34" cy="14" r="2" fill="#4caf50"/><circle cx="20" cy="12" r="1.8" fill="#2196f3"/><rect x="30" y="18" width="4" height="4" rx="0.5" fill="#ffd600" transform="rotate(20 32 20)"/><rect x="38" y="22" width="3" height="3" rx="0.5" fill="#e91e63" transform="rotate(-15 39 23)"/><circle cx="42" cy="16" r="2" fill="#9c27b0"/><rect x="22" y="8" width="3.5" height="3.5" rx="0.5" fill="#ff5722" transform="rotate(35 24 10)"/><path d="M36 10c2-2 4-1 4 1s-2 3-4 3-2-2 0-4z" fill="#4caf50"/><circle cx="46" cy="24" r="1.5" fill="#2196f3"/></svg>`,
+    svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+      <defs><linearGradient id="cf1" x1="0" y1="0" x2="0.5" y2="1"><stop offset="0%" stop-color="#ffb300"/><stop offset="100%" stop-color="#ff6f00"/></linearGradient></defs>
+      <path d="M16 56L24 20l5 3z" fill="url(#cf1)"/>
+      <path d="M16 56L29 23l-1 5z" fill="#e65100" opacity="0.5"/>
+      <circle cx="28" cy="16" r="2.5" fill="#e91e63"/><circle cx="36" cy="12" r="2" fill="#4caf50"/><circle cx="22" cy="10" r="2" fill="#2196f3"/>
+      <rect x="32" y="17" width="3.5" height="3.5" rx="0.8" fill="#ffd600" transform="rotate(25 34 19)"/>
+      <rect x="40" y="20" width="3" height="3" rx="0.8" fill="#e91e63" transform="rotate(-10 41 21)"/>
+      <circle cx="44" cy="14" r="2" fill="#7c4dff"/><circle cx="18" cy="6" r="1.8" fill="#ff5722"/>
+      <rect x="38" y="8" width="3" height="3" rx="0.8" fill="#00bcd4" transform="rotate(40 39 9)"/>
+      <circle cx="48" cy="22" r="1.5" fill="#4caf50"/>
+      <path d="M26 8c1-2 3-2 4 0" stroke="#e91e63" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+    </svg>`,
   },
 ];
 
@@ -335,12 +411,12 @@ function EmotePicker({
         right: "2%",
         bottom: "22%",
         zIndex: 55,
-        background: "linear-gradient(135deg, rgba(10,28,48,0.97), rgba(14,40,72,0.97))",
-        border: "0.12cqw solid rgba(245,198,107,0.4)",
-        borderRadius: "1cqw",
-        padding: "0.8cqw",
-        backdropFilter: "blur(8px)",
-        boxShadow: "0 0.3cqw 1.5cqw rgba(0,0,0,0.5)",
+        background: "linear-gradient(160deg, rgba(12,32,56,0.97), rgba(8,20,40,0.97))",
+        border: "0.12cqw solid rgba(245,198,107,0.35)",
+        borderRadius: "1.2cqw",
+        padding: "1cqw",
+        backdropFilter: "blur(10px)",
+        boxShadow: "0 0.4cqw 2cqw rgba(0,0,0,0.6), inset 0 0.1cqw 0 rgba(255,255,255,0.05)",
       }}
       onClick={(e) => e.stopPropagation()}
     >
@@ -348,7 +424,7 @@ function EmotePicker({
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(4, 1fr)",
-          gap: "0.5cqw",
+          gap: "0.6cqw",
         }}
       >
         {EMOTES.map((e) => (
@@ -357,39 +433,36 @@ function EmotePicker({
             onClick={() => onPick(e)}
             title={e.label}
             style={{
-              width: "5cqw",
-              height: "5cqw",
-              background: "rgba(255,255,255,0.08)",
-              border: "0.08cqw solid rgba(255,255,255,0.15)",
-              borderRadius: "0.6cqw",
+              width: "5.5cqw",
+              height: "5.5cqw",
+              background: "rgba(255,255,255,0.06)",
+              border: "0.08cqw solid rgba(255,255,255,0.1)",
+              borderRadius: "0.8cqw",
               cursor: "pointer",
-              padding: "0.5cqw",
-              transition: "background 150ms",
+              padding: "0.6cqw",
+              transition: "all 150ms",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
             }}
-            onMouseEnter={(ev) => (ev.currentTarget.style.background = "rgba(245,198,107,0.2)")}
-            onMouseLeave={(ev) => (ev.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+            onMouseEnter={(ev) => {
+              ev.currentTarget.style.background = "rgba(245,198,107,0.2)";
+              ev.currentTarget.style.borderColor = "rgba(245,198,107,0.4)";
+              ev.currentTarget.style.transform = "scale(1.1)";
+            }}
+            onMouseLeave={(ev) => {
+              ev.currentTarget.style.background = "rgba(255,255,255,0.06)";
+              ev.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+              ev.currentTarget.style.transform = "scale(1)";
+            }}
           >
             <div dangerouslySetInnerHTML={{ __html: e.svg }} style={{ width: "100%", height: "100%" }} />
           </button>
         ))}
       </div>
-      <button
-        onClick={onClose}
-        style={{
-          marginTop: "0.4cqw",
-          width: "100%",
-          background: "rgba(255,255,255,0.1)",
-          border: "none",
-          borderRadius: "0.5cqw",
-          color: "rgba(255,255,255,0.6)",
-          fontSize: "0.9cqw",
-          fontWeight: 600,
-          padding: "0.3cqw",
-          cursor: "pointer",
-        }}
-      >
-        Close
-      </button>
+      <div style={{ marginTop: "0.5cqw", textAlign: "center" }}>
+        <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.75cqw" }}>Tap to send</span>
+      </div>
     </div>
   );
 }
@@ -523,13 +596,13 @@ function ChatPanel({
         width: "24cqw",
         height: "35cqw",
         zIndex: 55,
-        background: "linear-gradient(135deg, rgba(10,28,48,0.97), rgba(14,40,72,0.97))",
-        border: "0.12cqw solid rgba(245,198,107,0.4)",
-        borderRadius: "1cqw",
+        background: "linear-gradient(160deg, rgba(12,32,56,0.97), rgba(8,20,40,0.97))",
+        border: "0.12cqw solid rgba(245,198,107,0.35)",
+        borderRadius: "1.2cqw",
         display: "flex",
         flexDirection: "column",
-        backdropFilter: "blur(8px)",
-        boxShadow: "0 0.3cqw 1.5cqw rgba(0,0,0,0.5)",
+        backdropFilter: "blur(10px)",
+        boxShadow: "0 0.4cqw 2cqw rgba(0,0,0,0.6), inset 0 0.1cqw 0 rgba(255,255,255,0.05)",
         overflow: "hidden",
       }}
       onClick={(e) => e.stopPropagation()}
@@ -650,7 +723,6 @@ export function TongitsEmoteSystem({
   const slotToAvatarPos = (slot: "you" | "opp1" | "opp2"): AvatarPos =>
     avatarCenter(AVATAR_BOXES[slot]);
 
-  // Process incoming messages for animations
   useEffect(() => {
     const now = Date.now();
     for (const msg of messages) {
@@ -746,7 +818,7 @@ export function TongitsEmoteSystem({
     <>
       <EmoteLayer anims={anims} bubbles={bubbles} broadcasts={broadcasts} shaking={shaking} />
 
-      {/* Chat button */}
+      {/* Chat button — transparent hit zone over painted art */}
       <div
         onClick={() => { setPanel(panel === "chat" ? "none" : "chat"); setPendingEmote(null); }}
         style={{
@@ -756,33 +828,23 @@ export function TongitsEmoteSystem({
           width: "7%",
           height: "9%",
           zIndex: 40,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
           cursor: "pointer",
         }}
         title="Chat"
       >
-        <div
-          style={{
-            width: "3.5cqw",
-            height: "3.5cqw",
-            borderRadius: "0.7cqw",
-            background: panel === "chat" ? "rgba(245,198,107,0.3)" : "rgba(255,255,255,0.08)",
-            border: panel === "chat" ? "0.12cqw solid rgba(245,198,107,0.5)" : "0.08cqw solid rgba(255,255,255,0.15)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "background 150ms",
-          }}
-        >
-          <svg viewBox="0 0 24 24" style={{ width: "2cqw", height: "2cqw" }} fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round">
-            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-          </svg>
-        </div>
+        {panel === "chat" && (
+          <div style={{
+            position: "absolute",
+            inset: "8%",
+            borderRadius: "50%",
+            background: "rgba(245,198,107,0.15)",
+            boxShadow: "0 0 1cqw rgba(245,198,107,0.3)",
+            pointerEvents: "none",
+          }} />
+        )}
       </div>
 
-      {/* Emoji button */}
+      {/* Emoji button — transparent hit zone over painted art */}
       <div
         onClick={() => { setPanel(panel === "emote" ? "none" : "emote"); setPendingEmote(null); }}
         style={{
@@ -792,33 +854,20 @@ export function TongitsEmoteSystem({
           width: "7%",
           height: "9%",
           zIndex: 40,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
           cursor: "pointer",
         }}
         title="Emotes"
       >
-        <div
-          style={{
-            width: "3.5cqw",
-            height: "3.5cqw",
-            borderRadius: "0.7cqw",
-            background: panel === "emote" ? "rgba(245,198,107,0.3)" : "rgba(255,255,255,0.08)",
-            border: panel === "emote" ? "0.12cqw solid rgba(245,198,107,0.5)" : "0.08cqw solid rgba(255,255,255,0.15)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            transition: "background 150ms",
-          }}
-        >
-          <svg viewBox="0 0 24 24" style={{ width: "2cqw", height: "2cqw" }} fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth="2" strokeLinecap="round">
-            <circle cx="12" cy="12" r="10" />
-            <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-            <line x1="9" y1="9" x2="9.01" y2="9" />
-            <line x1="15" y1="9" x2="15.01" y2="9" />
-          </svg>
-        </div>
+        {panel === "emote" && (
+          <div style={{
+            position: "absolute",
+            inset: "8%",
+            borderRadius: "50%",
+            background: "rgba(245,198,107,0.15)",
+            boxShadow: "0 0 1cqw rgba(245,198,107,0.3)",
+            pointerEvents: "none",
+          }} />
+        )}
       </div>
 
       {/* Panels */}
