@@ -264,20 +264,16 @@ function ShowdownOverlay({
 }
 
 const S = {
-  winnerAvatar: { l: 25, t: 30, w: 10, h: 20 },
-  winnerName: { l: 45, t: 32, w: 34, h: 9 },
-  winnerPoints: { l: 47, t: 50, w: 21, h: 6 },
-  ru1Avatar: { l: 27, t: 65, w: 4, h: 7 },
-  ru1Text: { l: 33, t: 65, w: 45, h: 7 },
-  ru1Points: { l: 79, t: 65, w: 13, h: 7 },
-  ru2Avatar: { l: 27, t: 76, w: 4, h: 7 },
-  ru2Text: { l: 33, t: 76, w: 45, h: 7 },
-  ru2Points: { l: 79, t: 76, w: 13, h: 7 },
+  winnerAvatar: { l: 22, t: 30, w: 14, h: 22 },
+  winnerName: { l: 42, t: 30, w: 28, h: 9 },
+  winnerPoints: { l: 42, t: 46, w: 28, h: 8 },
+  ru1Row: { l: 22, t: 59, w: 44, h: 9 },
+  ru2Row: { l: 22, t: 70, w: 44, h: 9 },
   continueBtn: { l: 20, t: 87, w: 24, h: 10 },
   timerBadge: { l: 47, t: 87, w: 6, h: 10 },
   quitBtn: { l: 56, t: 87, w: 24, h: 10 },
   resultLabel: { l: 30, t: 21, w: 40, h: 5 },
-  statusRow: { l: 20, t: 82, w: 60, h: 5 },
+  statusRow: { l: 20, t: 80, w: 60, h: 5 },
 };
 
 function initials(name: string) {
@@ -421,23 +417,23 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
         )}
 
         <Slot box={S.winnerAvatar}>
-          <span style={{ color: "#F5C66B", fontWeight: 900, fontSize: "3.2cqw", fontFamily: "system-ui" }}>
+          <span style={{ color: "#F5C66B", fontWeight: 900, fontSize: "2.8cqw", textShadow: "0 0.1cqw 0.3cqw rgba(0,0,0,0.3)" }}>
             {winner ? initials(winner.name) : "?"}
           </span>
         </Slot>
 
-        <Slot box={S.winnerName}>
+        <Slot box={S.winnerName} style={{ justifyContent: "flex-start" }}>
           <span
             style={{
-              color: "#4a2f0d",
+              color: "#3d2a0a",
               fontWeight: 900,
-              fontSize: "2.6cqw",
-              letterSpacing: "0.02em",
-              padding: "0 1cqw",
+              fontSize: "2.4cqw",
+              letterSpacing: "0.03em",
               maxWidth: "100%",
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
+              textShadow: "0 0.05cqw 0 rgba(255,255,255,0.4)",
             }}
           >
             {winner?.name ?? "Winner"}
@@ -449,80 +445,58 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
             style={{
               color: "#F5C66B",
               fontWeight: 900,
-              fontSize: "2.4cqw",
-              fontFamily: "monospace",
+              fontSize: "2.2cqw",
+              letterSpacing: "0.06em",
+              textShadow: "0 0.1cqw 0.2cqw rgba(0,0,0,0.5)",
             }}
           >
             +{winnerPayout.toLocaleString()} GP
           </span>
         </Slot>
 
-        {losers[0] && (
-          <>
-            <Slot box={S.ru1Avatar}>
-              <span style={{ color: "#fff", fontWeight: 800, fontSize: "1.4cqw", fontFamily: "system-ui" }}>
-                {initials(losers[0].name)}
-              </span>
-            </Slot>
-            <Slot box={S.ru1Text} style={{ justifyContent: "flex-start" }}>
-              <span
-                style={{
+        {losers.slice(0, 2).map((loser, idx) => {
+          const rowBox = idx === 0 ? S.ru1Row : S.ru2Row;
+          const resp = fr?.[loser.uid];
+          const isMe = user?.uid === loser.uid;
+          return (
+            <Slot key={loser.uid} box={rowBox} style={{ justifyContent: "flex-start", gap: "1cqw" }}>
+              <div style={{
+                width: "3.5cqw", height: "3.5cqw", borderRadius: "50%",
+                background: idx === 0 ? "linear-gradient(135deg, #8f1d2a, #c0392b)" : "linear-gradient(135deg, #27774a, #2ea655)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexShrink: 0,
+                border: "0.15cqw solid rgba(255,255,255,0.3)",
+              }}>
+                <span style={{ color: "#fff", fontWeight: 800, fontSize: "1.2cqw" }}>
+                  {initials(loser.name)}
+                </span>
+              </div>
+              <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{
                   color: "#4a2f0d",
                   fontWeight: 800,
-                  fontSize: "1.6cqw",
-                  paddingLeft: "0.6cqw",
+                  fontSize: "1.5cqw",
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
-                }}
-              >
-                {losers[0].name}
-                {user?.uid === losers[0].uid && <span style={{ color: "#8f1d2a" }}> · you</span>}
-              </span>
+                }}>
+                  {loser.name}
+                  {isMe && <span style={{ color: "#8f1d2a", fontWeight: 700 }}> · you</span>}
+                </span>
+                <span style={{
+                  flexShrink: 0,
+                  fontWeight: 900,
+                  fontSize: resp === "fold" || resp === "burned" ? "1.3cqw" : "1.5cqw",
+                  color: resp === "fold" ? "#777" : resp === "burned" ? "#d35400" : "#8f1d2a",
+                  letterSpacing: "0.04em",
+                  paddingLeft: "0.5cqw",
+                }}>
+                  {resp === "fold" ? "FOLDED" : resp === "burned" ? "BURNED" : `−${C} GP`}
+                </span>
+              </div>
             </Slot>
-            <Slot box={S.ru1Points}>
-              {(() => {
-                const resp = fr?.[losers[0].uid];
-                if (resp === "fold") return <span style={{ color: "#666", fontWeight: 800, fontSize: "1.4cqw" }}>FOLDED</span>;
-                if (resp === "burned") return <span style={{ color: "#ff6f00", fontWeight: 800, fontSize: "1.4cqw" }}>BURNED</span>;
-                return <span style={{ color: "#8f1d2a", fontWeight: 900, fontSize: "1.7cqw", fontFamily: "monospace" }}>−{C} GP</span>;
-              })()}
-            </Slot>
-          </>
-        )}
-        {losers[1] && (
-          <>
-            <Slot box={S.ru2Avatar}>
-              <span style={{ color: "#fff", fontWeight: 800, fontSize: "1.4cqw", fontFamily: "system-ui" }}>
-                {initials(losers[1].name)}
-              </span>
-            </Slot>
-            <Slot box={S.ru2Text} style={{ justifyContent: "flex-start" }}>
-              <span
-                style={{
-                  color: "#4a2f0d",
-                  fontWeight: 800,
-                  fontSize: "1.6cqw",
-                  paddingLeft: "0.6cqw",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {losers[1].name}
-                {user?.uid === losers[1].uid && <span style={{ color: "#8f1d2a" }}> · you</span>}
-              </span>
-            </Slot>
-            <Slot box={S.ru2Points}>
-              {(() => {
-                const resp = fr?.[losers[1].uid];
-                if (resp === "fold") return <span style={{ color: "#666", fontWeight: 800, fontSize: "1.4cqw" }}>FOLDED</span>;
-                if (resp === "burned") return <span style={{ color: "#ff6f00", fontWeight: 800, fontSize: "1.4cqw" }}>BURNED</span>;
-                return <span style={{ color: "#8f1d2a", fontWeight: 900, fontSize: "1.7cqw", fontFamily: "monospace" }}>−{C} GP</span>;
-              })()}
-            </Slot>
-          </>
-        )}
+          );
+        })}
 
         {/* Player response status indicators */}
         <Slot box={S.statusRow} style={{ gap: "1.5cqw" }}>
