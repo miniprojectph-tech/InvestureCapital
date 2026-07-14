@@ -127,6 +127,10 @@ export function useTongitsWs(
     async () => { sendAction({ action: "call" }); },
     [sendAction]
   );
+  const wsFightRespond = useCallback(
+    async (response: "fight" | "fold") => { sendAction({ action: "fightRespond", response }); },
+    [sendAction]
+  );
   const wsEnforceTimeout = useCallback(
     async () => { sendAction({ action: "enforceTimeout" }); },
     [sendAction]
@@ -144,6 +148,7 @@ export function useTongitsWs(
     sapaw: wsSapaw,
     discard: wsDiscard,
     call: wsCall,
+    fightRespond: wsFightRespond,
     enforceTimeout: wsEnforceTimeout,
   };
 }

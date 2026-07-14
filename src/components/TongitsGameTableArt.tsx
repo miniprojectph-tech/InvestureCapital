@@ -12,6 +12,7 @@ import {
   sapawCard as cfSapawCard,
   discard as cfDiscard,
   callTongits as cfCallTongits,
+  fightRespond as cfFightRespond,
   enforceTimeout as cfEnforceTimeout,
   cardLabel,
   isRedSuit,
@@ -21,6 +22,7 @@ import { useTongitsWs } from "@/lib/tongits-ws";
 import type { TongitsRoom as Room } from "@/lib/tongits";
 import { useTongitsAssets } from "@/lib/tongitsAssets";
 import { TongitsEmoteSystem } from "./TongitsEmotes";
+import { TongitsFightPopup } from "./TongitsFightPopup";
 
 type Box = { l: number; t: number; w: number; h: number };
 
@@ -847,6 +849,15 @@ export function TongitsGameTableArt({ code, room, spectating }: { code: string; 
             code={code}
             myUid={uid}
             seats={gs.seats.map((s) => ({ uid: s.uid, name: s.name }))}
+          />
+        )}
+
+        {gs && uid && gs.phase === "fight" && gs.fightState && (
+          <TongitsFightPopup
+            code={code}
+            gs={gs}
+            wsFightRespond={wsActive ? ws.fightRespond : undefined}
+            wsActive={wsActive}
           />
         )}
 

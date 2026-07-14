@@ -35,6 +35,7 @@ export {
   tongitsSapaw,
   tongitsDiscard,
   tongitsCall,
+  tongitsFightRespond,
   enforceTongitsTimeout,
   tongitsPlayAgain,
   splitTongitsJackpot,

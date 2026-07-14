@@ -35,7 +35,7 @@ type GamePublic = {
   round: number;
   turnSeat: number;
   turnUid: string;
-  phase: "draw" | "discard";
+  phase: "draw" | "discard" | "fight";
   stockCount: number;
   discard: Card[];
   melds: Record<string, Card[][]>;
@@ -50,6 +50,11 @@ type GamePublic = {
   lastAction?: string;
   cantFight: Record<string, boolean>;
   idleUids?: string[];
+  fightState?: {
+    callerUid: string;
+    responses: Record<string, "fight" | "fold" | "burned">;
+    deadline: number;
+  };
 };
 
 /**
@@ -191,6 +196,7 @@ function advanceTurn(ctx: Ctx, now: number) {
  * gameDb transaction so we can settle the economy after that transaction
  * commits.
  */
+type FightResponse = "fight" | "fold" | "burned";
 type SettleEcoInputs = {
   code: string;
   now: number;
@@ -202,6 +208,7 @@ type SettleEcoInputs = {
   payoutJackpot: boolean;
   C: number;
   secret: boolean;
+  fightResponses?: Record<string, FightResponse>;
   matchId: string;
   matchDurationSeconds: number;
 };
@@ -217,7 +224,7 @@ function settleGameStateInTx(
   ctx: Ctx,
   resultType: ResultType,
   winnerUid: string,
-  opts: { secret: boolean }
+  opts: { secret: boolean; fightResponses?: Record<string, FightResponse> }
 ): SettleEcoInputs {
   const now = Date.now();
   const seats = ctx.gs.seats;
@@ -280,6 +287,7 @@ function settleGameStateInTx(
       melds: encodeMelds(ctx.gs.melds),
       hands: Object.fromEntries(seats.map((s) => [s.uid, ctx.hands[s.uid]])),
       completedAt: now,
+      ...(opts.fightResponses ? { fightResponses: opts.fightResponses } : {}),
     },
   });
 
@@ -299,6 +307,7 @@ function settleGameStateInTx(
     payoutJackpot,
     C,
     secret: opts.secret,
+    fightResponses: opts.fightResponses,
     matchId,
     matchDurationSeconds: Math.round((now - (ctx.gs.startedAt ?? now)) / 1000),
   };
@@ -314,7 +323,10 @@ function settleGameStateInTx(
  * ops function later.
  */
 async function settleEconomy(input: SettleEcoInputs) {
-  const { code, now, seats, values, winnerUid, resultType, jackpot, payoutJackpot, C, secret, matchId, matchDurationSeconds } = input;
+  const { code, now, seats, values, winnerUid, resultType, jackpot, payoutJackpot, C, secret, matchId, matchDurationSeconds, fightResponses } = input;
+  const hasFight = resultType === "lowest_points_win" && fightResponses;
+  const fighterCount = hasFight ? seats.filter((s) => fightResponses[s.uid] === "fight").length : seats.length;
+
   await db.runTransaction(async (tx) => {
     const stateSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
     const lbSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
@@ -347,10 +359,13 @@ async function settleEconomy(input: SettleEcoInputs) {
       const wins = (cur.tongitsWins as number) ?? 0;
       const losses = (cur.tongitsLosses as number) ?? 0;
 
+      const isFighter = !hasFight || fightResponses[s.uid] === "fight";
+      const didFold = hasFight && !isFighter;
+
       const rankingEarned = isWinner
         ? (resultType === "tongits_win" ? RP_TONGITS : RP_SHOWDOWN) + (secret ? RP_SECRET : 0)
         : RP_LOSS;
-      const winnings = isWinner ? C * seats.length + jackpot : 0;
+      const winnings = isWinner ? C * fighterCount + jackpot : didFold ? C : 0;
 
       tx.set(
         userStateRef(s.uid),
@@ -365,26 +380,31 @@ async function settleEconomy(input: SettleEcoInputs) {
         { merge: true }
       );
 
+      const pointsLost = isWinner ? 0 : didFold ? 0 : C;
       tx.set(db.collection("game_match_results").doc(), {
         matchId,
         userId: s.uid,
         finalPosition: isWinner ? 1 : i + 1,
         finalHandValue: values[s.uid],
         pointsEarned: winnings,
-        pointsLost: isWinner ? 0 : C,
+        pointsLost,
         rankingPointsEarned: rankingEarned,
         createdAt: now,
       });
 
+      const txnType = isWinner ? "challenge_points_won" : didFold ? "challenge_points_refunded" : "challenge_points_lost";
+      const txnAmount = isWinner ? winnings : didFold ? C : C;
       tx.set(txnCol().doc(), {
         userId: s.uid,
-        type: isWinner ? "challenge_points_won" : "challenge_points_lost",
-        amount: isWinner ? winnings : C,
+        type: txnType,
+        amount: txnAmount,
         roomCode: code,
         matchId,
         description: isWinner
           ? `Won ${winnings} in Tongits room ${code}`
-          : `Lost ${C} in Tongits room ${code}`,
+          : didFold
+            ? `Folded — ${C} refunded in room ${code}`
+            : `Lost ${C} in Tongits room ${code}`,
         createdAt: now,
       });
 
@@ -714,6 +734,7 @@ export const tongitsCall = onCall({ region: GAME_REGION, minInstances: 1 }, asyn
   const uid = requireUid(request);
   const code = codeArg(request);
   let eco: SettleEcoInputs | null = null;
+  let fightStarted = false;
   await gameDb.runTransaction(async (tx) => {
     const ctx = await loadCtx(tx, code);
     requireTurn(ctx, uid, "discard");
@@ -723,15 +744,73 @@ export const tongitsCall = onCall({ region: GAME_REGION, minInstances: 1 }, asyn
     if (ctx.gs.cantFight?.[uid]) {
       throw new HttpsError("failed-precondition", "You can't fight this turn — your meld was sapawed.");
     }
-    const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
-    const winner = resolveShowdown(entries, uid); // caller wins ties
-    eco = settleGameStateInTx(tx, code, ctx, "lowest_points_win", winner, { secret: false });
+    const now = Date.now();
+    const responses: Record<string, FightResponse> = { [uid]: "fight" };
+    for (const s of ctx.gs.seats) {
+      if (s.uid === uid) continue;
+      if ((ctx.gs.melds[s.uid]?.length ?? 0) === 0) responses[s.uid] = "burned";
+    }
+    const allResolved = ctx.gs.seats.every((s) => responses[s.uid] !== undefined);
+    if (allResolved) {
+      eco = resolveFightInTx(tx, code, ctx, uid, responses);
+    } else {
+      ctx.gs.phase = "fight";
+      ctx.gs.fightState = { callerUid: uid, responses, deadline: now + 10_000 };
+      commitProgress(tx, code, ctx, "fight_called", []);
+      fightStarted = true;
+    }
   });
   if (eco) await settleEconomy(eco);
+  if (eco) return { ok: true, ended: true };
+  if (fightStarted) return { ok: true, fight: true };
   return { ok: true, ended: true };
 });
 
-/** Any player may enforce the turn timer once the deadline passes. */
+function resolveFightInTx(
+  tx: Transaction, code: string, ctx: Ctx,
+  callerUid: string, responses: Record<string, FightResponse>
+): SettleEcoInputs {
+  const fighters = ctx.gs.seats.filter((s) => responses[s.uid] === "fight");
+  let winner: string;
+  if (fighters.length <= 1) {
+    winner = callerUid;
+  } else {
+    const entries = fighters.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
+    winner = resolveShowdown(entries, callerUid);
+  }
+  return settleGameStateInTx(tx, code, ctx, "lowest_points_win", winner, { secret: false, fightResponses: responses });
+}
+
+export const tongitsFightRespond = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
+  const uid = requireUid(request);
+  const code = codeArg(request);
+  const response = (request.data as { response?: string }).response;
+  if (response !== "fight" && response !== "fold") {
+    throw new HttpsError("invalid-argument", "Response must be 'fight' or 'fold'.");
+  }
+  let eco: SettleEcoInputs | null = null;
+  await gameDb.runTransaction(async (tx) => {
+    const ctx = await loadCtx(tx, code);
+    if (ctx.gs.status !== "in_game") throw new HttpsError("failed-precondition", "Game isn't running.");
+    if (ctx.gs.phase !== "fight") throw new HttpsError("failed-precondition", "Not in fight phase.");
+    if (!ctx.gs.fightState) throw new HttpsError("failed-precondition", "No fight state.");
+    if (!ctx.gs.seats.some((s) => s.uid === uid)) throw new HttpsError("permission-denied", "Not in this game.");
+    if (ctx.gs.fightState.responses[uid] !== undefined) {
+      throw new HttpsError("failed-precondition", "You already responded.");
+    }
+    ctx.gs.fightState.responses[uid] = response;
+    const allResolved = ctx.gs.seats.every((s) => ctx.gs.fightState!.responses[s.uid] !== undefined);
+    if (allResolved) {
+      eco = resolveFightInTx(tx, code, ctx, ctx.gs.fightState.callerUid, ctx.gs.fightState.responses);
+    } else {
+      commitProgress(tx, code, ctx, "fight_responded", []);
+    }
+  });
+  if (eco) await settleEconomy(eco);
+  return { ok: true, ended: !!eco };
+});
+
+/** Any player may enforce the turn timer or fight deadline once it passes. */
 export const enforceTongitsTimeout = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
@@ -741,6 +820,16 @@ export const enforceTongitsTimeout = onCall({ region: GAME_REGION }, async (requ
     const ctx = await loadCtx(tx, code);
     if (ctx.gs.status !== "in_game") return { ok: true, ended: true };
     if (!ctx.gs.seats.some((s) => s.uid === uid)) throw new HttpsError("permission-denied", "Not your room.");
+
+    if (ctx.gs.phase === "fight" && ctx.gs.fightState) {
+      if (now <= ctx.gs.fightState.deadline) return { ok: true, skipped: true };
+      for (const s of ctx.gs.seats) {
+        if (ctx.gs.fightState.responses[s.uid] === undefined) ctx.gs.fightState.responses[s.uid] = "fold";
+      }
+      eco = resolveFightInTx(tx, code, ctx, ctx.gs.fightState.callerUid, ctx.gs.fightState.responses);
+      return { ok: true, ended: true };
+    }
+
     if (now <= ctx.gs.turnDeadline) return { ok: true, skipped: true };
 
     const cur = ctx.gs.turnUid;

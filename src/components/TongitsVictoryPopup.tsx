@@ -62,6 +62,7 @@ function ShowdownOverlay({
     return () => { clearTimeout(timer); clearInterval(tick); };
   }, [onDone]);
 
+  const fr = r.fightResponses;
   const sorted = [...seats].sort(
     (a, b) => (r.values[a.uid] ?? 999) - (r.values[b.uid] ?? 999)
   );
@@ -134,6 +135,8 @@ function ShowdownOverlay({
           const hand = hands[s.uid] ?? [];
           const points = r.values[s.uid] ?? 0;
           const y = 18 + idx * 28;
+          const fightResp = fr?.[s.uid];
+          const didFold = fightResp === "fold" || fightResp === "burned";
 
           return (
             <div
@@ -206,9 +209,19 @@ function ShowdownOverlay({
                   gap: "0.3cqw",
                   justifyContent: "center",
                   overflow: "hidden",
+                  opacity: didFold ? 0.35 : 1,
                 }}
               >
-                {hand.map((c) => (
+                {didFold ? (
+                  <span style={{
+                    color: fightResp === "burned" ? "#ff6f00" : "#888",
+                    fontWeight: 800,
+                    fontSize: "1.8cqw",
+                    letterSpacing: "0.1em",
+                  }}>
+                    {fightResp === "burned" ? "BURNED" : "FOLDED"}
+                  </span>
+                ) : hand.map((c) => (
                   <ShowdownCard key={c} card={c} />
                 ))}
               </div>
@@ -222,14 +235,14 @@ function ShowdownOverlay({
               >
                 <div
                   style={{
-                    color: isWinner ? "#4bd47a" : "#ef4444",
+                    color: didFold ? "#888" : isWinner ? "#4bd47a" : "#ef4444",
                     fontWeight: 900,
                     fontSize: "2.8cqw",
                     fontFamily: "monospace",
                     lineHeight: 1,
                   }}
                 >
-                  {points}
+                  {didFold ? "—" : points}
                 </div>
                 <div
                   style={{
@@ -239,7 +252,7 @@ function ShowdownOverlay({
                     marginTop: "0.2cqw",
                   }}
                 >
-                  POINTS
+                  {didFold ? (fightResp === "burned" ? "NO MELDS" : "SAFE") : "POINTS"}
                 </div>
               </div>
             </div>
@@ -350,7 +363,9 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
   const winner = seats.find((s) => s.uid === r.winnerUserId);
   const losers = seats.filter((s) => s.uid !== r.winnerUserId);
   const iAmWinner = user?.uid === r.winnerUserId;
-  const winnerPayout = C * seats.length + r.jackpotWon;
+  const fr = r.fightResponses;
+  const fighterCount = fr ? seats.filter((s) => fr[s.uid] === "fight").length : seats.length;
+  const winnerPayout = C * fighterCount + r.jackpotWon;
 
   async function onContinue() {
     setBusy("continue");
@@ -466,9 +481,12 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
               </span>
             </Slot>
             <Slot box={S.ru1Points}>
-              <span style={{ color: "#8f1d2a", fontWeight: 900, fontSize: "1.7cqw", fontFamily: "monospace" }}>
-                −{C} GP
-              </span>
+              {(() => {
+                const resp = fr?.[losers[0].uid];
+                if (resp === "fold") return <span style={{ color: "#666", fontWeight: 800, fontSize: "1.4cqw" }}>FOLDED</span>;
+                if (resp === "burned") return <span style={{ color: "#ff6f00", fontWeight: 800, fontSize: "1.4cqw" }}>BURNED</span>;
+                return <span style={{ color: "#8f1d2a", fontWeight: 900, fontSize: "1.7cqw", fontFamily: "monospace" }}>−{C} GP</span>;
+              })()}
             </Slot>
           </>
         )}
@@ -496,9 +514,12 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
               </span>
             </Slot>
             <Slot box={S.ru2Points}>
-              <span style={{ color: "#8f1d2a", fontWeight: 900, fontSize: "1.7cqw", fontFamily: "monospace" }}>
-                −{C} GP
-              </span>
+              {(() => {
+                const resp = fr?.[losers[1].uid];
+                if (resp === "fold") return <span style={{ color: "#666", fontWeight: 800, fontSize: "1.4cqw" }}>FOLDED</span>;
+                if (resp === "burned") return <span style={{ color: "#ff6f00", fontWeight: 800, fontSize: "1.4cqw" }}>BURNED</span>;
+                return <span style={{ color: "#8f1d2a", fontWeight: 900, fontSize: "1.7cqw", fontFamily: "monospace" }}>−{C} GP</span>;
+              })()}
             </Slot>
           </>
         )}

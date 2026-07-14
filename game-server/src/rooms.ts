@@ -7,7 +7,7 @@ import {
   autoDiscardCard,
   type Card,
 } from "./engine.js";
-import type { LiveRoom, GameState, SettleInput, ResultType } from "./types.js";
+import type { LiveRoom, GameState, SettleInput, ResultType, FightResponse } from "./types.js";
 
 const TURN_MS = 25_000;
 
@@ -40,7 +40,7 @@ function settleGame(
   room: LiveRoom,
   resultType: ResultType,
   winnerUid: string,
-  opts: { secret: boolean }
+  opts: { secret: boolean; fightResponses?: Record<string, FightResponse> }
 ): SettleInput {
   const now = Date.now();
   const seats = room.gs.seats;
@@ -75,6 +75,7 @@ function settleGame(
     challengePoints: C,
     secret: opts.secret,
     matchDurationSeconds: Math.round((now - (room.gs.startedAt ?? now)) / 1000),
+    fightResponses: opts.fightResponses,
   };
 }
 
@@ -226,7 +227,7 @@ export function doDiscard(
 }
 
 export function doCall(room: LiveRoom, uid: string): ActionResult {
-  const { gs, hands } = room;
+  const { gs } = room;
   if (gs.status !== "in_game") throw new Error("Game isn't running.");
   if (gs.turnUid !== uid) throw new Error("It's not your turn.");
   if (gs.phase !== "discard") throw new Error("You must act now.");
@@ -235,16 +236,58 @@ export function doCall(room: LiveRoom, uid: string): ActionResult {
   if (gs.cantFight[uid])
     throw new Error("You can't fight this turn — your meld was sapawed.");
 
-  const entries = gs.seats.map((s) => ({
-    uid: s.uid,
-    seat: s.seat,
-    value: handValue(hands[s.uid]),
-  }));
-  const winner = resolveShowdown(entries, uid);
-  const settle = settleGame(room, "lowest_points_win", winner, {
-    secret: false,
-  });
-  return { ok: true, settle };
+  const responses: Record<string, FightResponse> = { [uid]: "fight" };
+  for (const s of gs.seats) {
+    if (s.uid === uid) continue;
+    if ((gs.melds[s.uid]?.length ?? 0) === 0) responses[s.uid] = "burned";
+  }
+  const allResolved = gs.seats.every((s) => responses[s.uid] !== undefined);
+  if (allResolved) {
+    const settle = resolveFight(room, uid, responses);
+    return { ok: true, settle };
+  }
+  gs.phase = "fight";
+  gs.fightState = { callerUid: uid, responses, deadline: Date.now() + 10_000 };
+  gs.lastAction = "fight_called";
+  refreshCounts(room);
+  return { ok: true };
+}
+
+function resolveFight(
+  room: LiveRoom,
+  callerUid: string,
+  responses: Record<string, FightResponse>
+): SettleInput {
+  const fighters = room.gs.seats.filter((s) => responses[s.uid] === "fight");
+  let winner: string;
+  if (fighters.length <= 1) {
+    winner = callerUid;
+  } else {
+    const entries = fighters.map((s) => ({
+      uid: s.uid, seat: s.seat, value: handValue(room.hands[s.uid]),
+    }));
+    winner = resolveShowdown(entries, callerUid);
+  }
+  return settleGame(room, "lowest_points_win", winner, { secret: false, fightResponses: responses });
+}
+
+export function doFightRespond(room: LiveRoom, uid: string, response: "fight" | "fold"): ActionResult {
+  const { gs } = room;
+  if (gs.status !== "in_game") throw new Error("Game isn't running.");
+  if (gs.phase !== "fight") throw new Error("Not in fight phase.");
+  if (!gs.fightState) throw new Error("No fight state.");
+  if (!gs.seats.some((s) => s.uid === uid)) throw new Error("Not in this game.");
+  if (gs.fightState.responses[uid] !== undefined) throw new Error("You already responded.");
+
+  gs.fightState.responses[uid] = response;
+  const allResolved = gs.seats.every((s) => gs.fightState!.responses[s.uid] !== undefined);
+  if (allResolved) {
+    const settle = resolveFight(room, gs.fightState.callerUid, gs.fightState.responses);
+    return { ok: true, settle };
+  }
+  gs.lastAction = "fight_responded";
+  refreshCounts(room);
+  return { ok: true };
 }
 
 export function doEnforceTimeout(room: LiveRoom, uid: string): ActionResult {
@@ -253,6 +296,16 @@ export function doEnforceTimeout(room: LiveRoom, uid: string): ActionResult {
   if (gs.status !== "in_game") return { ok: true };
   if (!gs.seats.some((s) => s.uid === uid))
     throw new Error("Not your room.");
+
+  if (gs.phase === "fight" && gs.fightState) {
+    if (now <= gs.fightState.deadline) return { ok: true };
+    for (const s of gs.seats) {
+      if (gs.fightState.responses[s.uid] === undefined) gs.fightState.responses[s.uid] = "fold";
+    }
+    const settle = resolveFight(room, gs.fightState.callerUid, gs.fightState.responses);
+    return { ok: true, settle };
+  }
+
   if (now <= gs.turnDeadline) return { ok: true };
 
   const cur = gs.turnUid;

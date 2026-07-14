@@ -7,7 +7,7 @@ export type GameState = {
   round: number;
   turnSeat: number;
   turnUid: string;
-  phase: "draw" | "discard";
+  phase: "draw" | "discard" | "fight";
   stockCount: number;
   discard: Card[];
   melds: Record<string, Card[][]>;
@@ -22,6 +22,11 @@ export type GameState = {
   lastAction?: string;
   cantFight: Record<string, boolean>;
   idleUids?: string[];
+  fightState?: {
+    callerUid: string;
+    responses: Record<string, "fight" | "fold" | "burned">;
+    deadline: number;
+  };
 };
 
 export type RoomData = {
@@ -52,6 +57,7 @@ export type ClientMsg =
   | { action: "sapaw"; code: string; targetUid: string; meldIndex: number; card: Card }
   | { action: "discard"; code: string; card: Card }
   | { action: "call"; code: string }
+  | { action: "fightRespond"; code: string; response: "fight" | "fold" }
   | { action: "enforceTimeout"; code: string }
   | { action: "postGameRespond"; code: string; response: "continue" | "quit" }
   | { action: "idleAction"; code: string; idleAction: "join_next" | "quit" };
@@ -67,6 +73,7 @@ export type ServerMsg =
 
 export type ResultType = "tongits_win" | "draw_win" | "lowest_points_win";
 
+export type FightResponse = "fight" | "fold" | "burned";
 export type SettleInput = {
   code: string;
   now: number;
@@ -79,4 +86,5 @@ export type SettleInput = {
   challengePoints: number;
   secret: boolean;
   matchDurationSeconds: number;
+  fightResponses?: Record<string, FightResponse>;
 };

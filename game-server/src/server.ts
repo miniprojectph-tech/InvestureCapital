@@ -11,6 +11,7 @@ import {
   doSapaw,
   doDiscard,
   doCall,
+  doFightRespond,
   doEnforceTimeout,
 } from "./rooms.js";
 import type {
@@ -122,6 +123,25 @@ function startTurnTimer(live: LiveRoom) {
   }, delay);
 }
 
+function startFightTimer(live: LiveRoom) {
+  if (live.timer) clearTimeout(live.timer);
+  if (!live.gs.fightState) return;
+  const delay = Math.max(0, live.gs.fightState.deadline - Date.now()) + 500;
+  live.timer = setTimeout(() => {
+    try {
+      const result = doEnforceTimeout(live, live.gs.fightState?.callerUid ?? live.gs.turnUid);
+      if (result.settle) {
+        broadcastEnded(live.code, live.gs);
+        persistSettlement(result.settle).catch(console.error);
+      } else {
+        broadcastState(live.code);
+      }
+    } catch (e) {
+      console.error("Fight timer error:", e);
+    }
+  }, delay);
+}
+
 function send(ws: WebSocket, msg: ServerMsg) {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify(msg));
@@ -217,7 +237,10 @@ async function persistSettlement(input: SettleInput) {
     challengePoints: C,
     secret,
     matchDurationSeconds,
+    fightResponses,
   } = input;
+  const hasFight = resultType === "lowest_points_win" && fightResponses;
+  const fighterCount = hasFight ? seats.filter((s) => fightResponses[s.uid] === "fight").length : seats.length;
 
   const live = liveRooms.get(code);
 
@@ -251,6 +274,7 @@ async function persistSettlement(input: SettleInput) {
         melds: encodeMelds(live.gs.melds),
         hands: Object.fromEntries(seats.map((s) => [s.uid, live.hands[s.uid]])),
         completedAt: now,
+        ...(fightResponses ? { fightResponses } : {}),
       },
     });
     batch.set(gameDb.doc(`game_rooms/${code}/game/state`), {
@@ -303,11 +327,14 @@ async function persistSettlement(input: SettleInput) {
       const wins = (cur.tongitsWins as number) ?? 0;
       const losses = (cur.tongitsLosses as number) ?? 0;
 
+      const isFighter = !hasFight || fightResponses[s.uid] === "fight";
+      const didFold = hasFight && !isFighter;
+
       const rankingEarned = isWinner
         ? (resultType === "tongits_win" ? RP_TONGITS : RP_SHOWDOWN) +
           (secret ? RP_SECRET : 0)
         : RP_LOSS;
-      const winnings = isWinner ? C * seats.length + jackpot : 0;
+      const winnings = isWinner ? C * fighterCount + jackpot : didFold ? C : 0;
 
       tx.set(
         defaultDb.doc(`users/${s.uid}/game/state`),
@@ -322,26 +349,31 @@ async function persistSettlement(input: SettleInput) {
         { merge: true }
       );
 
+      const pointsLost = isWinner ? 0 : didFold ? 0 : C;
       tx.set(defaultDb.collection("game_match_results").doc(), {
         matchId,
         userId: s.uid,
         finalPosition: isWinner ? 1 : i + 1,
         finalHandValue: values[s.uid],
         pointsEarned: winnings,
-        pointsLost: isWinner ? 0 : C,
+        pointsLost,
         rankingPointsEarned: rankingEarned,
         createdAt: now,
       });
 
+      const txnType = isWinner ? "challenge_points_won" : didFold ? "challenge_points_refunded" : "challenge_points_lost";
+      const txnAmount = isWinner ? winnings : didFold ? C : C;
       tx.set(defaultDb.collection("game_point_transactions").doc(), {
         userId: s.uid,
-        type: isWinner ? "challenge_points_won" : "challenge_points_lost",
-        amount: isWinner ? winnings : C,
+        type: txnType,
+        amount: txnAmount,
         roomCode: code,
         matchId,
         description: isWinner
           ? `Won ${winnings} in Tongits room ${code}`
-          : `Lost ${C} in Tongits room ${code}`,
+          : didFold
+            ? `Folded — ${C} refunded in room ${code}`
+            : `Lost ${C} in Tongits room ${code}`,
         createdAt: now,
       });
 
@@ -421,6 +453,9 @@ function handleAction(ws: WebSocket, msg: ClientMsg) {
       case "call":
         result = doCall(live, uid);
         break;
+      case "fightRespond":
+        result = doFightRespond(live, uid, msg.response);
+        break;
       case "enforceTimeout":
         result = doEnforceTimeout(live, uid);
         break;
@@ -435,11 +470,14 @@ function handleAction(ws: WebSocket, msg: ClientMsg) {
     if (result.settle) {
       broadcastEnded(code, live.gs);
       persistSettlement(result.settle).catch(console.error);
+    } else if (live.gs.phase === "fight") {
+      broadcastState(code);
+      startFightTimer(live);
+      persistGameState(live).catch(console.error);
     } else {
       broadcastState(code);
       broadcastHands(code);
       startTurnTimer(live);
-      // Async persist — don't block the response
       persistGameState(live).catch(console.error);
     }
   } catch (e: unknown) {

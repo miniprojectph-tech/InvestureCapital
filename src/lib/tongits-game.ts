@@ -14,7 +14,7 @@ export type TongitsGameState = {
   round: number;
   turnSeat: number;
   turnUid: string;
-  phase: "draw" | "discard";
+  phase: "draw" | "discard" | "fight";
   stockCount: number;
   discard: Card[];
   melds: Record<string, Card[][]>;
@@ -28,6 +28,11 @@ export type TongitsGameState = {
   lastAction?: string;
   cantFight?: Record<string, boolean>;
   idleUids?: string[];
+  fightState?: {
+    callerUid: string;
+    responses: Record<string, "fight" | "fold" | "burned">;
+    deadline: number;
+  };
 };
 
 export type TongitsResult = {
@@ -40,6 +45,7 @@ export type TongitsResult = {
   melds: Record<string, Card[][]>;
   hands?: Record<string, Card[]>;
   completedAt: number;
+  fightResponses?: Record<string, "fight" | "fold" | "burned">;
 };
 
 // ===== card helpers =====
@@ -73,7 +79,9 @@ export const sapawCard = (code: string, targetUid: string, meldIndex: number, ca
   call<{ ok: boolean; ended?: boolean }>("tongitsSapaw", { code, targetUid, meldIndex, card });
 export const discard = (code: string, card: Card) =>
   call<{ ok: boolean; ended?: boolean }>("tongitsDiscard", { code, card });
-export const callTongits = (code: string) => call<{ ok: boolean; ended?: boolean }>("tongitsCall", { code });
+export const callTongits = (code: string) => call<{ ok: boolean; ended?: boolean; fight?: boolean }>("tongitsCall", { code });
+export const fightRespond = (code: string, response: "fight" | "fold") =>
+  call<{ ok: boolean; ended?: boolean }>("tongitsFightRespond", { code, response });
 export const enforceTimeout = (code: string) =>
   call<{ ok: boolean; ended?: boolean; skipped?: boolean }>("enforceTongitsTimeout", { code });
 export const playAgain = (code: string) => call<{ ok: boolean }>("tongitsPlayAgain", { code });
