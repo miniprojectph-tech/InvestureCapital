@@ -240,7 +240,7 @@ function settleGameStateInTx(
   const newStreak = prevWinnerUid === winnerUid ? prevStreak + 1 : 1;
   const payoutJackpot = newStreak >= 2;
   const nextWinStreak = payoutJackpot ? 0 : newStreak;
-  const nextLastWinnerUid = payoutJackpot ? null : winnerUid;
+  const nextLastWinnerUid = winnerUid;
   const jackpot = payoutJackpot ? ctx.gs.jackpotPoints : 0;
 
   // Pre-generate matchId (default-db collection id) so lastResult can point at
@@ -486,6 +486,14 @@ export const startTongitsGame = onCall({ region: GAME_REGION }, async (request) 
     throw new HttpsError("failed-precondition", "Need 2 or 3 active players.");
   }
   const seats: Seat[] = activePlayers.map((p) => ({ uid: p.uid, seat: p.seat, name: p.name })).sort((a, b) => a.seat - b.seat);
+  const lastWinnerUid = roomPre.lastWinnerUid as string | null;
+  if (lastWinnerUid) {
+    const wi = seats.findIndex((s) => s.uid === lastWinnerUid);
+    if (wi > 0) {
+      const tail = seats.splice(0, wi);
+      seats.push(...tail);
+    }
+  }
   const ante = (roomPre.jackpotAnte as number) ?? 0;
 
   // Phase A — deduct antes on the default (us-central) db.

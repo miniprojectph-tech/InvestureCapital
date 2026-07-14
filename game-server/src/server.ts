@@ -258,7 +258,7 @@ async function persistSettlement(input: SettleInput) {
       players,
       status: "post_game",
       jackpotPoints: payoutJackpot ? 0 : live.gs.jackpotPoints,
-      lastWinnerUid: payoutJackpot ? null : winnerUid,
+      lastWinnerUid: winnerUid,
       winStreak: newStreak,
       gamesPlayed: live.room.gamesPlayed + 1,
       updatedAt: now,
