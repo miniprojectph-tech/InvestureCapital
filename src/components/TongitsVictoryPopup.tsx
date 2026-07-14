@@ -264,16 +264,18 @@ function ShowdownOverlay({
 }
 
 const S = {
-  winnerAvatar: { l: 22, t: 30, w: 14, h: 22 },
-  winnerName: { l: 42, t: 30, w: 28, h: 9 },
-  winnerPoints: { l: 42, t: 46, w: 28, h: 8 },
-  ru1Row: { l: 22, t: 59, w: 44, h: 9 },
-  ru2Row: { l: 22, t: 70, w: 44, h: 9 },
-  continueBtn: { l: 20, t: 87, w: 24, h: 10 },
-  timerBadge: { l: 47, t: 87, w: 6, h: 10 },
-  quitBtn: { l: 56, t: 87, w: 24, h: 10 },
-  resultLabel: { l: 30, t: 21, w: 40, h: 5 },
-  statusRow: { l: 20, t: 80, w: 60, h: 5 },
+  winnerAvatar: { l: 28, t: 34, w: 8, h: 12 },
+  winnerName: { l: 39, t: 33, w: 26, h: 6 },
+  winnerPoints: { l: 38, t: 44, w: 27, h: 5 },
+  ru1Initials: { l: 27.5, t: 59, w: 5.5, h: 8 },
+  ru1Row: { l: 34, t: 59, w: 31, h: 8 },
+  ru2Initials: { l: 27.5, t: 70, w: 5.5, h: 8 },
+  ru2Row: { l: 34, t: 70, w: 31, h: 8 },
+  continueBtn: { l: 22, t: 82, w: 21, h: 7 },
+  timerBadge: { l: 44, t: 82, w: 6, h: 7 },
+  quitBtn: { l: 51, t: 82, w: 18, h: 7 },
+  resultLabel: { l: 30, t: 24, w: 40, h: 4 },
+  statusRow: { l: 22, t: 79, w: 56, h: 3 },
 };
 
 function initials(name: string) {
@@ -455,23 +457,23 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
         </Slot>
 
         {losers.slice(0, 2).map((loser, idx) => {
+          const initialsBox = idx === 0 ? S.ru1Initials : S.ru2Initials;
           const rowBox = idx === 0 ? S.ru1Row : S.ru2Row;
           const resp = fr?.[loser.uid];
           const isMe = user?.uid === loser.uid;
           return (
-            <Slot key={loser.uid} box={rowBox} style={{ justifyContent: "flex-start", gap: "1cqw" }}>
-              <div style={{
-                width: "3.5cqw", height: "3.5cqw", borderRadius: "50%",
-                background: idx === 0 ? "linear-gradient(135deg, #8f1d2a, #c0392b)" : "linear-gradient(135deg, #27774a, #2ea655)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                flexShrink: 0,
-                border: "0.15cqw solid rgba(255,255,255,0.3)",
-              }}>
-                <span style={{ color: "#fff", fontWeight: 800, fontSize: "1.2cqw" }}>
+            <div key={loser.uid}>
+              <Slot box={initialsBox}>
+                <span style={{
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: "1.3cqw",
+                  textShadow: "0 0.1cqw 0.2cqw rgba(0,0,0,0.4)",
+                }}>
                   {initials(loser.name)}
                 </span>
-              </div>
-              <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              </Slot>
+              <Slot box={rowBox} style={{ justifyContent: "space-between" }}>
                 <span style={{
                   color: "#4a2f0d",
                   fontWeight: 800,
@@ -479,6 +481,8 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
                   whiteSpace: "nowrap",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
+                  flex: 1,
+                  minWidth: 0,
                 }}>
                   {loser.name}
                   {isMe && <span style={{ color: "#8f1d2a", fontWeight: 700 }}> · you</span>}
@@ -493,8 +497,8 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
                 }}>
                   {resp === "fold" ? "FOLDED" : resp === "burned" ? "BURNED" : `−${C} GP`}
                 </span>
-              </div>
-            </Slot>
+              </Slot>
+            </div>
           );
         })}
 
