@@ -21,6 +21,9 @@ export function TongitsFightPopup({ code, gs, wsFightRespond, wsActive }: Props)
   const fs = gs.fightState;
   const [busy, setBusy] = useState(false);
   const [msLeft, setMsLeft] = useState(10_000);
+  const [entered, setEntered] = useState(false);
+
+  useEffect(() => { requestAnimationFrame(() => setEntered(true)); }, []);
 
   useEffect(() => {
     if (!fs) return;
@@ -45,8 +48,10 @@ export function TongitsFightPopup({ code, gs, wsFightRespond, wsActive }: Props)
 
   const myResponse = fs.responses[uid];
   const isCaller = fs.callerUid === uid;
-  const callerName = gs.seats.find((s) => s.uid === fs.callerUid)?.name ?? "Player";
+  const callerSeat = gs.seats.find((s) => s.uid === fs.callerUid);
+  const callerName = callerSeat?.name ?? "Player";
   const secondsLeft = Math.ceil(msLeft / 1000);
+  const timerFrac = msLeft / 10000;
 
   async function respond(r: "fight" | "fold") {
     if (busy) return;
@@ -58,155 +63,378 @@ export function TongitsFightPopup({ code, gs, wsFightRespond, wsActive }: Props)
     finally { setBusy(false); }
   }
 
+  const opponents = gs.seats.filter((s) => s.uid !== fs.callerUid);
+  const isBurned = myResponse === "burned";
+  const hasResponded = myResponse !== undefined;
+  const showButtons = !isCaller && !hasResponded && !isBurned;
+
   return (
     <div
       style={{
         position: "absolute",
         inset: 0,
         zIndex: 60,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "rgba(0,0,0,0.7)",
-        backdropFilter: "blur(4px)",
+        overflow: "hidden",
+        opacity: entered ? 1 : 0,
+        transition: "opacity 0.3s ease-out",
       }}
     >
-      <div
-        style={{
-          width: "50cqw",
-          background: "linear-gradient(180deg, #0f1d35 0%, #162a4a 100%)",
-          border: "0.2cqw solid rgba(245,198,107,0.5)",
-          borderRadius: "2cqw",
-          padding: "2cqw 3cqw",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          gap: "1.5cqw",
-          containerType: "inline-size",
-        }}
-      >
-        {/* Title */}
-        <div style={{ fontSize: "2.2cqw", fontWeight: 900, color: "#F5C66B", letterSpacing: "0.1em", textAlign: "center" }}>
-          {isCaller ? "YOU CALLED FIGHT!" : `${callerName} CALLED FIGHT!`}
-        </div>
+      {/* Darkened backdrop */}
+      <div style={{
+        position: "absolute", inset: 0,
+        background: "rgba(0,0,0,0.75)",
+        backdropFilter: "blur(6px)",
+      }} />
 
-        {/* Timer */}
+      {/* Split screen container */}
+      <div style={{
+        position: "absolute", inset: 0,
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+      }}>
+
+        {/* "FIGHT!!" banner at top */}
         <div style={{
-          width: "6cqw", height: "6cqw", borderRadius: "50%",
-          background: `conic-gradient(${secondsLeft <= 3 ? "#e53935" : "#F5C66B"} ${(msLeft / 10000) * 360}deg, rgba(255,255,255,0.1) 0deg)`,
-          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: "5cqw",
+          fontWeight: 900,
+          fontStyle: "italic",
+          color: "#fff",
+          textShadow: "0 0 2cqw rgba(229,57,53,0.8), 0 0 4cqw rgba(229,57,53,0.4), 0 0.3cqw 0 #000",
+          letterSpacing: "0.15em",
+          animation: "fightTitleSlam 0.5s cubic-bezier(0.34,1.56,0.64,1) both",
+          zIndex: 2,
+          marginBottom: "-1cqw",
         }}>
-          <div style={{
-            width: "4.5cqw", height: "4.5cqw", borderRadius: "50%",
-            background: "#0f1d35",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "2cqw", fontWeight: 900, color: secondsLeft <= 3 ? "#e53935" : "#fff",
-          }}>
-            {secondsLeft}
-          </div>
+          FIGHT!!
         </div>
 
-        {/* Player statuses */}
-        <div style={{ display: "flex", gap: "2cqw", justifyContent: "center", flexWrap: "wrap" }}>
-          {gs.seats.filter((s) => s.uid !== fs.callerUid).map((s) => {
-            const resp = fs.responses[s.uid];
-            const label = resp === "fight" ? "FIGHT" : resp === "fold" ? "FOLD" : resp === "burned" ? "BURNED" : "...";
-            const color = resp === "fight" ? "#e53935" : resp === "fold" ? "#888" : resp === "burned" ? "#ff6f00" : "rgba(255,255,255,0.4)";
-            return (
-              <div key={s.uid} style={{
-                display: "flex", flexDirection: "column", alignItems: "center", gap: "0.4cqw",
+        {/* Caller info badge */}
+        <div style={{
+          fontSize: "1.4cqw",
+          fontWeight: 700,
+          color: "#F5C66B",
+          textShadow: "0 0.1cqw 0.3cqw rgba(0,0,0,0.8)",
+          zIndex: 2,
+          marginBottom: "1.5cqw",
+          animation: "fightFadeUp 0.6s 0.3s ease-out both",
+        }}>
+          {isCaller ? "You called the fight!" : `${callerName} called the fight!`}
+        </div>
+
+        {/* Main split panel */}
+        <div style={{
+          width: "70cqw",
+          height: "32cqw",
+          position: "relative",
+          borderRadius: "2cqw",
+          overflow: "hidden",
+          boxShadow: "0 0.5cqw 3cqw rgba(0,0,0,0.6), 0 0 2cqw rgba(229,57,53,0.3)",
+          animation: "fightPanelPop 0.4s 0.15s cubic-bezier(0.34,1.56,0.64,1) both",
+        }}>
+
+          {/* Diagonal split - FIGHT side (left/red) */}
+          <div style={{
+            position: "absolute", inset: 0,
+            clipPath: "polygon(0 0, 65% 0, 35% 100%, 0 100%)",
+            background: "linear-gradient(135deg, #c62828 0%, #e53935 40%, #ff5252 100%)",
+          }}>
+            <div style={{
+              position: "absolute", inset: 0,
+              background: "repeating-linear-gradient(45deg, transparent, transparent 2cqw, rgba(255,255,255,0.03) 2cqw, rgba(255,255,255,0.03) 4cqw)",
+            }} />
+            {/* Lightning bolts decorative */}
+            <svg viewBox="0 0 100 100" style={{
+              position: "absolute", left: "2%", top: "10%",
+              width: "20cqw", height: "20cqw", opacity: 0.15,
+            }}>
+              <polygon points="45,0 25,45 40,45 20,100 80,40 55,40 75,0" fill="#fff" />
+            </svg>
+
+            {showButtons ? (
+              <button
+                onClick={() => respond("fight")}
+                disabled={busy}
+                style={{
+                  position: "absolute",
+                  left: "3cqw", top: "50%", transform: "translateY(-50%)",
+                  width: "25cqw", height: "100%",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center",
+                  gap: "1cqw",
+                }}
+              >
+                {/* Boxing glove emoji */}
+                <div style={{ fontSize: "5cqw", filter: "drop-shadow(0 0.2cqw 0.5cqw rgba(0,0,0,0.5))" }}>
+                  &#x1F94A;
+                </div>
+                <div style={{
+                  fontSize: "3.5cqw", fontWeight: 900, fontStyle: "italic",
+                  color: "#fff",
+                  textShadow: "0 0.2cqw 0 rgba(0,0,0,0.5), 0 0 1cqw rgba(255,255,255,0.3)",
+                  letterSpacing: "0.1em",
+                  animation: "fightTextPulse 1.5s ease-in-out infinite",
+                }}>
+                  CHALLENGE
+                </div>
+              </button>
+            ) : (
+              <div style={{
+                position: "absolute",
+                left: "3cqw", top: "50%", transform: "translateY(-50%)",
+                width: "25cqw",
+                display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center",
+                gap: "1cqw",
+              }}>
+                <div style={{ fontSize: "5cqw", filter: "drop-shadow(0 0.2cqw 0.5cqw rgba(0,0,0,0.5))" }}>
+                  &#x1F94A;
+                </div>
+                <div style={{
+                  fontSize: "3.5cqw", fontWeight: 900, fontStyle: "italic",
+                  color: "#fff",
+                  textShadow: "0 0.2cqw 0 rgba(0,0,0,0.5)",
+                  letterSpacing: "0.1em",
+                  opacity: hasResponded && myResponse === "fight" ? 1 : 0.4,
+                }}>
+                  CHALLENGE
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Diagonal split - FOLD side (right/dark) */}
+          <div style={{
+            position: "absolute", inset: 0,
+            clipPath: "polygon(65% 0, 100% 0, 100% 100%, 35% 100%)",
+            background: "linear-gradient(135deg, #37474f 0%, #455a64 40%, #546e7a 100%)",
+          }}>
+            <div style={{
+              position: "absolute", inset: 0,
+              background: "repeating-linear-gradient(-45deg, transparent, transparent 2cqw, rgba(0,0,0,0.05) 2cqw, rgba(0,0,0,0.05) 4cqw)",
+            }} />
+            {/* White flag decorative */}
+            <svg viewBox="0 0 100 100" style={{
+              position: "absolute", right: "5%", top: "15%",
+              width: "14cqw", height: "14cqw", opacity: 0.12,
+            }}>
+              <rect x="15" y="10" width="5" height="80" rx="2" fill="#fff" />
+              <path d="M20,10 Q60,5 55,30 Q50,55 20,45 Z" fill="#fff" />
+            </svg>
+
+            {showButtons ? (
+              <button
+                onClick={() => respond("fold")}
+                disabled={busy}
+                style={{
+                  position: "absolute",
+                  right: "3cqw", top: "50%", transform: "translateY(-50%)",
+                  width: "25cqw", height: "100%",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex", flexDirection: "column",
+                  alignItems: "center", justifyContent: "center",
+                  gap: "1cqw",
+                }}
+              >
+                <div style={{ fontSize: "5cqw", filter: "drop-shadow(0 0.2cqw 0.5cqw rgba(0,0,0,0.5))" }}>
+                  &#x1F3F3;&#xFE0F;
+                </div>
+                <div style={{
+                  fontSize: "3.5cqw", fontWeight: 900, fontStyle: "italic",
+                  color: "rgba(255,255,255,0.85)",
+                  textShadow: "0 0.2cqw 0 rgba(0,0,0,0.5)",
+                  letterSpacing: "0.1em",
+                }}>
+                  FOLD
+                </div>
+              </button>
+            ) : (
+              <div style={{
+                position: "absolute",
+                right: "3cqw", top: "50%", transform: "translateY(-50%)",
+                width: "25cqw",
+                display: "flex", flexDirection: "column",
+                alignItems: "center", justifyContent: "center",
+                gap: "1cqw",
+              }}>
+                <div style={{ fontSize: "5cqw", filter: "drop-shadow(0 0.2cqw 0.5cqw rgba(0,0,0,0.5))" }}>
+                  &#x1F3F3;&#xFE0F;
+                </div>
+                <div style={{
+                  fontSize: "3.5cqw", fontWeight: 900, fontStyle: "italic",
+                  color: "rgba(255,255,255,0.85)",
+                  textShadow: "0 0.2cqw 0 rgba(0,0,0,0.5)",
+                  letterSpacing: "0.1em",
+                  opacity: hasResponded && myResponse === "fold" ? 1 : 0.4,
+                }}>
+                  FOLD
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Center diagonal divider line */}
+          <div style={{
+            position: "absolute", inset: 0,
+            background: "linear-gradient(to bottom right, transparent calc(50% - 0.15cqw), #F5C66B calc(50% - 0.15cqw), #F5C66B calc(50% + 0.15cqw), transparent calc(50% + 0.15cqw))",
+            pointerEvents: "none",
+            zIndex: 1,
+          }} />
+
+          {/* Center timer circle */}
+          <div style={{
+            position: "absolute",
+            left: "50%", top: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 2,
+          }}>
+            <div style={{
+              width: "8cqw", height: "8cqw",
+              borderRadius: "50%",
+              background: `conic-gradient(${secondsLeft <= 3 ? "#e53935" : "#F5C66B"} ${timerFrac * 360}deg, rgba(0,0,0,0.6) 0deg)`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 0 1.5cqw rgba(0,0,0,0.8), 0 0 3cqw rgba(245,198,107,0.3)",
+            }}>
+              <div style={{
+                width: "6cqw", height: "6cqw",
+                borderRadius: "50%",
+                background: "radial-gradient(circle, #1a2a44 0%, #0d1929 100%)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                flexDirection: "column",
               }}>
                 <div style={{
-                  width: "5cqw", height: "5cqw", borderRadius: "50%",
-                  background: resp ? "rgba(255,255,255,0.08)" : "rgba(255,255,255,0.04)",
-                  border: `0.2cqw solid ${color}`,
+                  fontSize: "2.8cqw", fontWeight: 900,
+                  color: secondsLeft <= 3 ? "#e53935" : "#fff",
+                  lineHeight: 1,
+                }}>
+                  {secondsLeft}
+                </div>
+                <div style={{ fontSize: "0.7cqw", color: "rgba(255,255,255,0.5)", fontWeight: 600, letterSpacing: "0.1em" }}>
+                  SEC
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* VS badge */}
+          {showButtons && (
+            <div style={{
+              position: "absolute",
+              left: "50%", top: "15%",
+              transform: "translateX(-50%)",
+              fontSize: "2cqw", fontWeight: 900,
+              color: "#F5C66B",
+              textShadow: "0 0 0.8cqw rgba(245,198,107,0.6), 0 0.15cqw 0 #000",
+              letterSpacing: "0.2em",
+              zIndex: 2,
+            }}>
+              VS
+            </div>
+          )}
+        </div>
+
+        {/* Player response statuses below the panel */}
+        <div style={{
+          display: "flex",
+          gap: "3cqw",
+          marginTop: "2cqw",
+          animation: "fightFadeUp 0.5s 0.5s ease-out both",
+        }}>
+          {opponents.map((s) => {
+            const resp = fs.responses[s.uid];
+            const label = resp === "fight" ? "CHALLENGE!" : resp === "fold" ? "FOLDED" : resp === "burned" ? "BURNED" : "Deciding...";
+            const bg = resp === "fight"
+              ? "rgba(229,57,53,0.25)" : resp === "fold"
+              ? "rgba(255,255,255,0.08)" : resp === "burned"
+              ? "rgba(255,111,0,0.2)" : "rgba(255,255,255,0.05)";
+            const borderColor = resp === "fight"
+              ? "#e53935" : resp === "fold"
+              ? "rgba(255,255,255,0.2)" : resp === "burned"
+              ? "#ff6f00" : "rgba(255,255,255,0.15)";
+            const textColor = resp === "fight"
+              ? "#ff5252" : resp === "fold"
+              ? "rgba(255,255,255,0.5)" : resp === "burned"
+              ? "#ff9800" : "rgba(255,255,255,0.4)";
+
+            return (
+              <div key={s.uid} style={{
+                display: "flex", alignItems: "center", gap: "1cqw",
+                background: bg,
+                border: `0.15cqw solid ${borderColor}`,
+                borderRadius: "1cqw",
+                padding: "0.6cqw 1.5cqw",
+              }}>
+                <div style={{
+                  width: "3cqw", height: "3cqw", borderRadius: "50%",
+                  background: "rgba(255,255,255,0.1)",
+                  border: `0.15cqw solid ${borderColor}`,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: "1.8cqw", fontWeight: 800, color: "#F5C66B",
+                  fontSize: "1.2cqw", fontWeight: 800, color: "#F5C66B",
                 }}>
                   {s.name.slice(0, 2).toUpperCase()}
                 </div>
-                <span style={{ fontSize: "1cqw", fontWeight: 700, color, letterSpacing: "0.05em" }}>
-                  {label}
-                </span>
-                <span style={{ fontSize: "0.8cqw", color: "rgba(255,255,255,0.5)" }}>{s.name}</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: "0.1cqw" }}>
+                  <div style={{ fontSize: "0.9cqw", color: "rgba(255,255,255,0.7)", fontWeight: 600 }}>
+                    {s.name}
+                  </div>
+                  <div style={{
+                    fontSize: "1cqw", fontWeight: 800, color: textColor,
+                    letterSpacing: "0.05em",
+                    animation: !resp ? "fightDotPulse 1.5s ease-in-out infinite" : undefined,
+                  }}>
+                    {label}
+                  </div>
+                </div>
               </div>
             );
           })}
         </div>
 
-        {/* Action area */}
-        {isCaller ? (
-          <div style={{ fontSize: "1.2cqw", color: "rgba(255,255,255,0.6)", fontWeight: 600 }}>
-            Waiting for responses...
-          </div>
-        ) : myResponse === "burned" ? (
+        {/* Status text for caller / burned / already responded */}
+        {(isCaller || isBurned || hasResponded) && (
           <div style={{
-            display: "flex", flexDirection: "column", alignItems: "center", gap: "0.5cqw",
+            marginTop: "1cqw",
+            fontSize: "1.2cqw",
+            fontWeight: 700,
+            color: isBurned ? "#ff9800" : "rgba(255,255,255,0.5)",
+            textAlign: "center",
+            animation: "fightFadeUp 0.5s 0.6s ease-out both",
           }}>
-            <div style={{
-              fontSize: "3cqw", fontWeight: 900, color: "#ff6f00",
-              textShadow: "0 0 1.5cqw rgba(255,111,0,0.6)",
-              animation: "fightBurnPulse 1s ease-in-out infinite alternate",
-            }}>
-              BURNED
-            </div>
-            <div style={{ fontSize: "1cqw", color: "rgba(255,255,255,0.5)" }}>
-              No exposed melds — you can't fight
-            </div>
-          </div>
-        ) : myResponse !== undefined ? (
-          <div style={{
-            fontSize: "1.4cqw", fontWeight: 700,
-            color: myResponse === "fight" ? "#e53935" : "#888",
-          }}>
-            You chose {myResponse === "fight" ? "FIGHT" : "FOLD"} — waiting...
-          </div>
-        ) : (
-          <div style={{ display: "flex", gap: "2cqw" }}>
-            <button
-              onClick={() => respond("fight")}
-              disabled={busy}
-              style={{
-                width: "14cqw", height: "5cqw",
-                background: "linear-gradient(180deg, #e53935 0%, #b71c1c 100%)",
-                border: "0.15cqw solid rgba(255,255,255,0.3)",
-                borderRadius: "1cqw",
-                color: "#fff", fontWeight: 900, fontSize: "1.6cqw",
-                cursor: "pointer",
-                boxShadow: "0 0.4cqw 1.5cqw rgba(229,57,53,0.5)",
-                animation: "fightBtnPulse 1.5s ease-in-out infinite",
-                letterSpacing: "0.1em",
-              }}
-            >
-              FIGHT
-            </button>
-            <button
-              onClick={() => respond("fold")}
-              disabled={busy}
-              style={{
-                width: "14cqw", height: "5cqw",
-                background: "linear-gradient(180deg, #555 0%, #333 100%)",
-                border: "0.15cqw solid rgba(255,255,255,0.2)",
-                borderRadius: "1cqw",
-                color: "#ccc", fontWeight: 900, fontSize: "1.6cqw",
-                cursor: "pointer",
-                letterSpacing: "0.1em",
-              }}
-            >
-              FOLD
-            </button>
+            {isCaller
+              ? "Waiting for opponents to respond..."
+              : isBurned
+              ? "You have no exposed melds — BURNED!"
+              : myResponse === "fight"
+              ? "You accepted the challenge!"
+              : "You folded — your stake is safe."}
           </div>
         )}
       </div>
 
       <style>{`
-        @keyframes fightBtnPulse {
-          0%, 100% { transform: scale(1); box-shadow: 0 0.4cqw 1.5cqw rgba(229,57,53,0.5); }
-          50% { transform: scale(1.04); box-shadow: 0 0.4cqw 2.5cqw rgba(229,57,53,0.7); }
+        @keyframes fightTitleSlam {
+          0% { transform: scale(3) rotate(-5deg); opacity: 0; }
+          100% { transform: scale(1) rotate(0deg); opacity: 1; }
         }
-        @keyframes fightBurnPulse {
-          0% { opacity: 0.7; transform: scale(0.95); }
-          100% { opacity: 1; transform: scale(1.05); }
+        @keyframes fightPanelPop {
+          0% { transform: scale(0.7); opacity: 0; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes fightFadeUp {
+          0% { transform: translateY(1cqw); opacity: 0; }
+          100% { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes fightTextPulse {
+          0%, 100% { transform: scale(1); text-shadow: 0 0.2cqw 0 rgba(0,0,0,0.5), 0 0 1cqw rgba(255,255,255,0.3); }
+          50% { transform: scale(1.06); text-shadow: 0 0.2cqw 0 rgba(0,0,0,0.5), 0 0 2cqw rgba(255,255,255,0.5); }
+        }
+        @keyframes fightDotPulse {
+          0%, 100% { opacity: 0.4; }
+          50% { opacity: 1; }
         }
       `}</style>
     </div>
