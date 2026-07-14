@@ -824,9 +824,9 @@ export function TongitsEmoteSystem({
         style={{
           position: "absolute",
           left: "89%",
-          top: "60%",
+          top: "66%",
           width: "7%",
-          height: "9%",
+          height: "10%",
           zIndex: 40,
           cursor: "pointer",
         }}
@@ -850,9 +850,9 @@ export function TongitsEmoteSystem({
         style={{
           position: "absolute",
           left: "89%",
-          top: "71%",
+          top: "78%",
           width: "7%",
-          height: "9%",
+          height: "10%",
           zIndex: 40,
           cursor: "pointer",
         }}

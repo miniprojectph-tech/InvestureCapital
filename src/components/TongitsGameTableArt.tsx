@@ -30,8 +30,8 @@ type Box = { l: number; t: number; w: number; h: number };
 // Percent values measured with scripts/measure-table.cjs on the 1774x887 asset.
 const S = {
   pot: { l: 42, t: 5, w: 16, h: 7 } as Box,
-  trophy1: { l: 28, t: 5, w: 7, h: 14 } as Box,
-  trophy2: { l: 65, t: 5, w: 7, h: 14 } as Box,
+  trophy1: { l: 24, t: 5, w: 14, h: 16 } as Box,
+  trophy2: { l: 62, t: 5, w: 12, h: 16 } as Box,
 
   opp1Avatar: { l: 7, t: 12, w: 5, h: 10 } as Box,
   opp1Name: { l: 13, t: 13, w: 14, h: 4 } as Box,
@@ -57,10 +57,10 @@ const S = {
   youName: { l: 12, t: 77, w: 12, h: 4 } as Box,
   yourHand: { l: 11, t: 70, w: 78, h: 28 } as Box,
 
-  autoSort: { l: 89, t: 38, w: 7, h: 9 } as Box,
-  sort: { l: 89, t: 49, w: 7, h: 9 } as Box,
-  chat: { l: 89, t: 60, w: 7, h: 9 } as Box,
-  emoji: { l: 89, t: 71, w: 7, h: 9 } as Box,
+  autoSort: { l: 89, t: 48, w: 7, h: 10 } as Box,
+  sort: { l: 89, t: 55, w: 7, h: 10 } as Box,
+  chat: { l: 89, t: 66, w: 7, h: 10 } as Box,
+  emoji: { l: 89, t: 78, w: 7, h: 10 } as Box,
 };
 
 // Pill hit-boxes as fractions of the buttons-strip PNG (2048x682).

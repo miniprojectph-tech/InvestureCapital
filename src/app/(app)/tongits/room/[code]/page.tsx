@@ -472,7 +472,7 @@ function ChatPanel({ room }: { room: TongitsRoom }) {
         {messages.length === 0 ? (
           <p className="text-[11px] text-text-subtle text-center my-auto">Say hi to your table 👋</p>
         ) : (
-          messages.map((m) => {
+          messages.filter((m) => !m.message.startsWith("emote:")).map((m) => {
             const mine = m.uid === user?.uid;
             return (
               <div key={m.id} className={cn("group flex flex-col", mine ? "items-end" : "items-start")}>

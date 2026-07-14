@@ -286,7 +286,7 @@ export function TongitsWaitingRoomArt({ code, room }: { code: string; room: Tong
           style={{ left: `${C.chatMsgs.l}%`, top: `${C.chatMsgs.t}%`, width: `${C.chatMsgs.w}%`, height: `${C.chatMsgs.h}%` }}
         >
           <div className="flex flex-col gap-1.5 p-1">
-            {messages.map((m) => {
+            {messages.filter((m) => !m.message.startsWith("emote:")).map((m) => {
               const mine = m.uid === user?.uid;
               return (
                 <div key={m.id} className={mine ? "self-end" : "self-start"} style={{ maxWidth: "88%" }}>
