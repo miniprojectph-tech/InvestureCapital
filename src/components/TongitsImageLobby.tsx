@@ -91,7 +91,7 @@ function Zone({
   );
 }
 
-export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }) {
+export function TongitsImageLobby() {
   const router = useRouter();
   const { user, demoMode } = useAuth();
   const { state } = useGameState();
@@ -161,12 +161,6 @@ export function TongitsImageLobby({ topBanner }: { topBanner?: React.ReactNode }
       >
         {/* Baked art */}
         <img src={assets.lobbyFull} alt="Tongits lobby" className="absolute inset-0 w-full h-full object-contain" />
-
-        {topBanner && (
-          <div className="absolute left-1/2 -translate-x-1/2 z-30" style={{ top: "2%", width: "56%" }}>
-            {topBanner}
-          </div>
-        )}
 
         {error && (
           <div

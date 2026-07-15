@@ -13,6 +13,74 @@ import { TongitsShell, ArcadePanel, T } from "@/components/TongitsShell";
 import { TongitsImageLobby } from "@/components/TongitsImageLobby";
 import { useTongitsAssets } from "@/lib/tongitsAssets";
 
+function ActiveRoomPopup({ roomCode, status, onReturn }: { roomCode: string; status: string; onReturn: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+      <div
+        className="relative w-full max-w-sm rounded-2xl overflow-hidden"
+        style={{
+          background: "linear-gradient(180deg, #0d1f42 0%, #0a1628 100%)",
+          border: "2px solid rgba(245,198,107,0.5)",
+          boxShadow: "0 0 60px rgba(245,198,107,0.15), 0 20px 60px rgba(0,0,0,0.5)",
+        }}
+      >
+        <div
+          className="text-center py-4"
+          style={{ background: "linear-gradient(180deg, rgba(245,198,107,0.15), transparent)" }}
+        >
+          <div className="text-[40px] mb-1">🃏</div>
+          <h2
+            className="text-[18px] font-black uppercase tracking-wider m-0"
+            style={{ color: "#F5C66B" }}
+          >
+            Active Room Found
+          </h2>
+        </div>
+
+        <div className="px-6 pb-2 text-center">
+          <p className="text-white/80 text-[14px] m-0 mb-4">
+            You are still in an active game room. Return to continue playing!
+          </p>
+          <div
+            className="rounded-xl px-4 py-3 mb-5 flex items-center justify-between"
+            style={{ background: "rgba(245,198,107,0.08)", border: "1px solid rgba(245,198,107,0.25)" }}
+          >
+            <div className="text-left">
+              <p className="text-[10px] text-white/50 uppercase tracking-wider m-0">Room Code</p>
+              <p className="text-[22px] font-mono font-bold m-0 tracking-widest" style={{ color: "#F5C66B" }}>
+                {roomCode}
+              </p>
+            </div>
+            <div
+              className="px-3 py-1 rounded-full text-[11px] font-bold uppercase"
+              style={{
+                background: status === "in_game" ? "rgba(52,208,122,0.15)" : "rgba(245,198,107,0.15)",
+                color: status === "in_game" ? "#4bd47a" : "#F5C66B",
+                border: `1px solid ${status === "in_game" ? "rgba(52,208,122,0.4)" : "rgba(245,198,107,0.4)"}`,
+              }}
+            >
+              {status.replace("_", " ")}
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 pb-6 flex flex-col gap-2.5">
+          <button
+            onClick={onReturn}
+            className="w-full py-3 rounded-xl text-[15px] font-bold text-[#0a1740] flex items-center justify-center gap-2 hover:brightness-110 transition"
+            style={{
+              background: `linear-gradient(180deg, #F5C66B, #d4a03a)`,
+              boxShadow: "0 4px 20px rgba(245,198,107,0.4)",
+            }}
+          >
+            Return to Room <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function TongitsLobbyPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -20,26 +88,21 @@ export default function TongitsLobbyPage() {
   const hasArt = useImageAvailable(assets.lobbyFull);
   const wide = useIsWide();
   const activeRoom = useMyActiveRoom(user?.uid ?? null);
-  // Any lobby variant (fancy or CSS) — if the user is still a member of a
-  // non-terminated room, offer to route them back in so they don't get stuck.
-  const banner = activeRoom ? (
-    <button
-      onClick={() => router.push(`/tongits/room/${activeRoom.roomCode}`)}
-      className="w-full mb-3 px-3 py-2.5 rounded-lg bg-gold/15 border border-gold/50 text-[12px] text-gold text-left flex items-center justify-between hover:bg-gold/25 transition group"
-    >
-      <span className="flex flex-col">
-        <span className="font-bold uppercase tracking-wider text-[11px]">You have an active room</span>
-        <span className="text-white/80 text-[12px] font-normal">
-          Room {activeRoom.roomCode} · {activeRoom.status.replace("_", " ")}
-        </span>
-      </span>
-      <span className="text-gold font-semibold whitespace-nowrap flex items-center gap-1">
-        Return <ChevronRight className="w-4 h-4 -mr-1 group-hover:translate-x-0.5 transition" />
-      </span>
-    </button>
-  ) : null;
-  if (hasArt && wide) return <TongitsImageLobby topBanner={banner} />;
-  return <CssLobby topBanner={banner} />;
+
+  const lobby = hasArt && wide ? <TongitsImageLobby /> : <CssLobby />;
+
+  return (
+    <>
+      {lobby}
+      {activeRoom && (
+        <ActiveRoomPopup
+          roomCode={activeRoom.roomCode}
+          status={activeRoom.status}
+          onReturn={() => router.push(`/tongits/room/${activeRoom.roomCode}`)}
+        />
+      )}
+    </>
+  );
 }
 
 const SUITS = ["♠", "♣", "♥", "♦"];
@@ -52,7 +115,7 @@ const ACCENTS = [
   { from: "#2a63c9", to: "#123f8a", ring: "#5fa8f5" },
 ];
 
-function CssLobby({ topBanner }: { topBanner?: React.ReactNode }) {
+function CssLobby() {
   const router = useRouter();
   const { demoMode } = useAuth();
   const { state } = useGameState();
@@ -109,7 +172,6 @@ function CssLobby({ topBanner }: { topBanner?: React.ReactNode }) {
 
   return (
     <TongitsShell>
-      {topBanner}
       {error && (
         <div className="mb-3 px-3 py-2 bg-red-500/20 border border-red-400/40 rounded-lg text-[12px] text-red-200">
           {error}
