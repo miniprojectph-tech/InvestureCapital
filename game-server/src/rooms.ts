@@ -220,6 +220,13 @@ export function doDiscard(
   const settle = checkTongits(room, uid);
   if (settle) return { ok: true, settle };
 
+  if (room.deck.length === 0) {
+    const entries = gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(hands[s.uid]) }));
+    const winner = resolveShowdown(entries);
+    const drawSettle = settleGame(room, "draw_win", winner, { secret: false });
+    return { ok: true, settle: drawSettle };
+  }
+
   advanceTurn(gs, now);
   gs.lastAction = "discarded";
   refreshCounts(room);
@@ -333,6 +340,13 @@ export function doEnforceTimeout(room: LiveRoom, uid: string): ActionResult {
   if (hands[cur].length === 0) {
     const secret = !gs.turnStartExposed;
     const settle = settleGame(room, "tongits_win", cur, { secret });
+    return { ok: true, settle };
+  }
+
+  if (deck.length === 0) {
+    const entries = gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(hands[s.uid]) }));
+    const winner = resolveShowdown(entries);
+    const settle = settleGame(room, "draw_win", winner, { secret: false });
     return { ok: true, settle };
   }
 

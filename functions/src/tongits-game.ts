@@ -728,6 +728,12 @@ export const tongitsDiscard = onCall({ region: GAME_REGION, minInstances: 1 }, a
     // Discarding your last card is a Tongits.
     eco = checkTongits(tx, code, ctx, uid);
     if (eco) return;
+    if (ctx.deck.length === 0) {
+      const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
+      const winner = resolveShowdown(entries);
+      eco = settleGameStateInTx(tx, code, ctx, "draw_win", winner, { secret: false });
+      return;
+    }
     advanceTurn(ctx, now);
     commitProgress(tx, code, ctx, "discarded", [uid]);
   });
@@ -861,6 +867,12 @@ export const enforceTongitsTimeout = onCall({ region: GAME_REGION }, async (requ
       // Auto-play emptied the hand — count it as a Tongits for that player.
       const secret = !ctx.gs.turnStartExposed;
       eco = settleGameStateInTx(tx, code, ctx, "tongits_win", cur, { secret });
+      return { ok: true, ended: true };
+    }
+    if (ctx.deck.length === 0) {
+      const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
+      const winner = resolveShowdown(entries);
+      eco = settleGameStateInTx(tx, code, ctx, "draw_win", winner, { secret: false });
       return { ok: true, ended: true };
     }
     advanceTurn(ctx, now);

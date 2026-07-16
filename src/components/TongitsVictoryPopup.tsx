@@ -265,8 +265,8 @@ function ShowdownOverlay({
 
 const S = {
   winnerAvatar: { l: 28, t: 34, w: 8, h: 12 },
-  winnerName: { l: 39, t: 33, w: 26, h: 6 },
-  winnerPoints: { l: 38, t: 44, w: 27, h: 5 },
+  winnerName: { l: 39, t: 35, w: 26, h: 6 },
+  winnerPoints: { l: 38, t: 45, w: 27, h: 5 },
   ru1Initials: { l: 27.5, t: 59, w: 5.5, h: 8 },
   ru1Row: { l: 34, t: 59, w: 31, h: 8 },
   ru2Initials: { l: 27.5, t: 70, w: 5.5, h: 8 },
@@ -275,7 +275,6 @@ const S = {
   timerBadge: { l: 44, t: 82, w: 6, h: 7 },
   quitBtn: { l: 51, t: 82, w: 18, h: 7 },
   resultLabel: { l: 30, t: 24, w: 40, h: 4 },
-  statusRow: { l: 22, t: 79, w: 56, h: 3 },
 };
 
 function initials(name: string) {
@@ -501,47 +500,6 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
             </div>
           );
         })}
-
-        {/* Player response status indicators */}
-        <Slot box={S.statusRow} style={{ gap: "1.5cqw" }}>
-          {seats.map((s) => {
-            const resp = responses[s.uid];
-            return (
-              <div
-                key={s.uid}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "0.4cqw",
-                }}
-              >
-                <div
-                  style={{
-                    width: "1.2cqw",
-                    height: "1.2cqw",
-                    borderRadius: "50%",
-                    background: resp === "continue"
-                      ? "#4bd47a"
-                      : resp === "quit"
-                      ? "#ef4444"
-                      : "rgba(255,255,255,0.3)",
-                    border: "0.1cqw solid rgba(255,255,255,0.2)",
-                  }}
-                />
-                <span
-                  style={{
-                    color: resp ? "#fff" : "rgba(255,255,255,0.5)",
-                    fontWeight: 700,
-                    fontSize: "0.9cqw",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {s.name.split(" ")[0]}
-                </span>
-              </div>
-            );
-          })}
-        </Slot>
 
         {/* Buttons: show action buttons if not responded, "Waiting..." if responded */}
         {hasResponded ? (
