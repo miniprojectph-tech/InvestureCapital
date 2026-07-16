@@ -369,11 +369,11 @@ function SmallCard({ card, faceDown }: { card?: TCard; faceDown?: boolean }) {
     return (
       <div
         style={{
-          width: "2.4cqw",
-          height: "3.4cqw",
-          borderRadius: "0.4cqw",
+          width: "1.8cqw",
+          height: "2.5cqw",
+          borderRadius: "0.3cqw",
           background: "linear-gradient(135deg,#1c3568,#0e1e42)",
-          border: "0.15cqw solid rgba(245,198,107,0.65)",
+          border: "0.12cqw solid rgba(245,198,107,0.65)",
         }}
       />
     );
@@ -383,9 +383,9 @@ function SmallCard({ card, faceDown }: { card?: TCard; faceDown?: boolean }) {
   return (
     <div
       style={{
-        width: "2.4cqw",
-        height: "3.4cqw",
-        borderRadius: "0.4cqw",
+        width: "1.8cqw",
+        height: "2.5cqw",
+        borderRadius: "0.3cqw",
         background: "#fff",
         color: red ? "#d33" : "#111",
         border: "0.1cqw solid #d9d9d9",
@@ -393,9 +393,9 @@ function SmallCard({ card, faceDown }: { card?: TCard; faceDown?: boolean }) {
         alignItems: "center",
         justifyContent: "center",
         fontWeight: 800,
-        fontSize: "1.05cqw",
+        fontSize: "0.8cqw",
         fontFamily: "system-ui",
-        boxShadow: "0 0.1cqw 0.25cqw rgba(0,0,0,0.35)",
+        boxShadow: "0 0.1cqw 0.2cqw rgba(0,0,0,0.35)",
       }}
     >
       {cardLabel(card)}
@@ -501,7 +501,7 @@ function MeldRow({ melds, onPick, sapawCard, isSapawed }: { melds: TCard[][]; on
   if (!melds || melds.length === 0)
     return <span style={{ color: "rgba(255,255,255,0.35)", fontSize: "0.9cqw" }}>—</span>;
   return (
-    <div style={{ display: "flex", gap: "0.6cqw", flexWrap: "wrap", justifyContent: "center", alignItems: "center", height: "100%" }}>
+    <div style={{ display: "flex", gap: "0.4cqw", flexWrap: "wrap", justifyContent: "center", alignItems: "flex-start", height: "100%", overflow: "hidden" }}>
       {melds.map((m, i) => {
         const isTarget = !!(onPick && sapawCard && canSapawMeld(sapawCard, m));
         return (
@@ -509,10 +509,10 @@ function MeldRow({ melds, onPick, sapawCard, isSapawed }: { melds: TCard[][]; on
             {isTarget && (
               <div style={{
                 color: "#F5C66B",
-                fontSize: "1.2cqw",
+                fontSize: "0.9cqw",
                 lineHeight: 1,
-                marginBottom: "-0.15cqw",
-                textShadow: "0 0 0.4cqw rgba(245,198,107,0.8)",
+                marginBottom: "-0.1cqw",
+                textShadow: "0 0 0.3cqw rgba(245,198,107,0.8)",
                 animation: "sapawArrowBounce 0.8s ease-in-out infinite",
                 pointerEvents: "none",
               }}>▼</div>
@@ -522,9 +522,9 @@ function MeldRow({ melds, onPick, sapawCard, isSapawed }: { melds: TCard[][]; on
               disabled={!isTarget}
               style={{
                 display: "flex",
-                gap: "0.15cqw",
-                padding: "0.2cqw",
-                borderRadius: "0.4cqw",
+                gap: "0.1cqw",
+                padding: "0.15cqw",
+                borderRadius: "0.3cqw",
                 background: isTarget ? "rgba(245,198,107,0.18)" : "transparent",
                 border: isTarget ? "0.12cqw solid rgba(245,198,107,0.75)" : "none",
                 cursor: isTarget ? "pointer" : "default",

@@ -265,8 +265,8 @@ function ShowdownOverlay({
 
 const S = {
   winnerAvatar: { l: 28, t: 34, w: 8, h: 12 },
-  winnerName: { l: 39, t: 35, w: 26, h: 6 },
-  winnerPoints: { l: 38, t: 45, w: 27, h: 5 },
+  winnerName: { l: 43, t: 30, w: 33, h: 8 },
+  winnerPoints: { l: 45, t: 40, w: 31, h: 7 },
   ru1Initials: { l: 27.5, t: 59, w: 5.5, h: 8 },
   ru1Row: { l: 34, t: 59, w: 31, h: 8 },
   ru2Initials: { l: 27.5, t: 70, w: 5.5, h: 8 },
@@ -444,11 +444,11 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
         <Slot box={S.winnerPoints}>
           <span
             style={{
-              color: "#F5C66B",
+              color: "#3d2a0a",
               fontWeight: 900,
               fontSize: "2.2cqw",
               letterSpacing: "0.06em",
-              textShadow: "0 0.1cqw 0.2cqw rgba(0,0,0,0.5)",
+              textShadow: "0 0.05cqw 0 rgba(255,255,255,0.4)",
             }}
           >
             +{winnerPayout.toLocaleString()} GP
