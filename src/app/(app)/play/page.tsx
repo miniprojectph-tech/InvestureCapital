@@ -387,7 +387,7 @@ export default function PlayPage() {
   function startCharge() {
     if (phase !== "idle") return;
     if (demoMode) {
-      setError("Casting isn't available in demo mode — sign in to play.");
+      setError("Sign in to start fishing!");
       return;
     }
     if (energy <= 0) {
@@ -416,7 +416,7 @@ export default function PlayPage() {
   // the manual charge release and AUTO FISH (which drives it hands-free).
   async function runCast(power: number) {
     if (demoMode) {
-      setError("Casting isn't available in demo mode — sign in to play.");
+      setError("Sign in to start fishing!");
       setAutoFish(false);
       return;
     }
@@ -435,7 +435,8 @@ export default function PlayPage() {
       setPhase("waiting"); // lure settles, suspense
       res = await castPromise;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Cast failed");
+      const msg = e instanceof Error ? e.message : "Cast failed";
+      setError(msg.toLowerCase().includes("sign in") ? "Session expired — please refresh the page." : msg);
       setPhase("idle");
       setAutoFish(false);
       return;
@@ -446,7 +447,7 @@ export default function PlayPage() {
 
   function toggleAutoFish() {
     if (demoMode) {
-      setError("Casting isn't available in demo mode — sign in to play.");
+      setError("Sign in to start fishing!");
       return;
     }
     if (autoFish) {
