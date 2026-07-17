@@ -212,6 +212,11 @@ export default function PlayPage() {
   const [reveal, setReveal] = useState<CastResult | null>(null);
   const [isNewCatch, setIsNewCatch] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(null), 4000);
+    return () => clearTimeout(t);
+  }, [error]);
   const [busyQuest, setBusyQuest] = useState<string | null>(null);
   const [clock, setClock] = useState(Date.now());
 
@@ -854,9 +859,14 @@ export default function PlayPage() {
       </button>
 
       {error && (
-        <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[45] flex items-start gap-2 px-3 py-2 bg-red/90 border border-red/30 rounded-lg text-[11px] text-white shadow-lg max-w-[90vw]">
-          <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          <span>{error}</span>
+        <div
+          className={cn(
+            "fixed top-3 left-1/2 -translate-x-1/2 z-[45] flex items-start gap-2 px-3 py-2 rounded-lg text-[11px] text-white shadow-lg max-w-[90vw] border",
+            demoMode ? "bg-[#1a1a2e]/90 border-gold/30" : "bg-red/90 border-red/30"
+          )}
+        >
+          <AlertCircle className={cn("w-3.5 h-3.5 shrink-0 mt-0.5", demoMode ? "text-gold" : "")} />
+          <span>{demoMode ? "Sign in to start fishing!" : error}</span>
         </div>
       )}
 
