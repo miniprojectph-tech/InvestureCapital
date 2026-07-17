@@ -137,6 +137,15 @@ export type Fish = {
   image?: string;
   active?: boolean;
 };
+export type DailyCatch = {
+  fishId: string;
+  name: string;
+  rarity: string;
+  image?: string;
+  gained: number;
+  weight: number;
+  at: number;
+};
 export type GameState = {
   points: number;
   weeklyScore: number;
@@ -149,6 +158,7 @@ export type GameState = {
   quests: { day: string; progress: Record<string, number>; claimed: Record<string, boolean> };
   dailyBudget?: number;
   dailyPointsEarned?: number;
+  dailyCatches?: DailyCatch[];
   // Shared economy fields used by Community Tongits (Function-written).
   lockedPoints?: number; // points escrowed in an active/ready Tongits challenge
   rankingPoints?: number; // competitive ranking score (leaderboards)

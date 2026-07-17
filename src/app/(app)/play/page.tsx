@@ -13,11 +13,11 @@ import {
   useGamesSettings,
   useFish,
   useFishOfHour,
-  useLeaderboard,
   castLine,
   claimQuest,
   effectiveDailyCredits,
   type CastResult,
+  type DailyCatch,
 } from "@/lib/game";
 import { useRewards, redeemReward, type Reward } from "@/lib/rewards";
 
@@ -63,7 +63,7 @@ const HOT = {
 const TOP_ICON_LABELS = [
   { key: "quests", left: "63.4%", text: "Quests" },
   { key: "collection", left: "67.8%", text: "Collection" },
-  { key: "ranking", left: "72.2%", text: "Ranking" },
+  { key: "ranking", left: "72.2%", text: "Catch log" },
   { key: "shop", left: "76.6%", text: "Shop" },
 ];
 const TOP_ICON_LABEL_TOP = "7.6%";
@@ -156,7 +156,6 @@ export default function PlayPage() {
   const { settings: gamesSettings } = useGamesSettings();
   const { fish } = useFish();
   const foth = useFishOfHour();
-  const { rows: leaderboard } = useLeaderboard();
 
   const [view] = useState<View>("cast");
   const [questsOpen, setQuestsOpen] = useState(false);
@@ -1440,34 +1439,11 @@ export default function PlayPage() {
         )}
       </AnimatePresence>
 
-      {/* Ranking popup */}
+      {/* Daily catch log */}
       <AnimatePresence>
         {rankingOpen && (
-          <ModalShell key="ranking" title="Weekly ranking" subtitle="Top anglers · resets Monday" onClose={() => setRankingOpen(false)}>
-            {leaderboard.length === 0 ? (
-              <p className="text-[11px] text-text-subtle text-center py-8 m-0">
-                No scores yet this week. Be the first to cast!
-              </p>
-            ) : (
-              <div className="flex flex-col">
-                {leaderboard.map((r, i) => (
-                  <div
-                    key={r.uid}
-                    className={cn(
-                      "flex items-center gap-3 py-2",
-                      i < leaderboard.length - 1 && "border-b border-border",
-                      r.uid === user?.uid && "bg-gold/5 -mx-2 px-2 rounded"
-                    )}
-                  >
-                    <span className="w-6 text-center text-[13px]">
-                      {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
-                    </span>
-                    <span className="flex-1 text-[12px] truncate">{r.name}</span>
-                    <span className="text-[12px] font-mono text-vault">{r.weeklyScore.toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+          <ModalShell key="catchlog" title="Daily catch log" subtitle="Resets at midnight" onClose={() => setRankingOpen(false)}>
+            <DailyCatchLog catches={state?.dailyCatches ?? []} rarities={config.rarities} energy={state?.energy ?? dailyCredits} maxEnergy={dailyCredits} />
           </ModalShell>
         )}
       </AnimatePresence>
@@ -1987,6 +1963,113 @@ function CollectionBook({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function DailyCatchLog({
+  catches,
+  rarities,
+  energy,
+  maxEnergy,
+}: {
+  catches: DailyCatch[];
+  rarities: { id: string; label: string; color: string }[];
+  energy: number;
+  maxEnergy: number;
+}) {
+  const rarityMap = useMemo(() => Object.fromEntries(rarities.map((r) => [r.id, r])), [rarities]);
+  const totalGP = catches.reduce((s, c) => s + c.gained, 0);
+  const bestCatch = catches.length
+    ? catches.reduce((best, c) => {
+        const bi = rarities.findIndex((r) => r.id === best.rarity);
+        const ci = rarities.findIndex((r) => r.id === c.rarity);
+        return ci > bi ? c : best;
+      })
+    : null;
+  const bestRarity = bestCatch ? rarityMap[bestCatch.rarity] : null;
+  const castsUsed = maxEnergy - energy;
+  const pct = maxEnergy > 0 ? Math.round((castsUsed / maxEnergy) * 100) : 0;
+  const reversed = [...catches].reverse();
+
+  return (
+    <div>
+      {/* Summary row */}
+      <div className="flex gap-2 mb-3">
+        <div className="flex-1 bg-canvas rounded-lg p-2 text-center">
+          <div className="text-[16px] font-mono font-medium" style={{ color: "#5CE0D2" }}>{catches.length}</div>
+          <div className="text-[9px] text-text-subtle uppercase tracking-wide">Catches</div>
+        </div>
+        <div className="flex-1 bg-canvas rounded-lg p-2 text-center">
+          <div className="text-[16px] font-mono font-medium text-gold">{totalGP.toLocaleString()}</div>
+          <div className="text-[9px] text-text-subtle uppercase tracking-wide">GP earned</div>
+        </div>
+        <div className="flex-1 bg-canvas rounded-lg p-2 text-center">
+          <div className="text-[16px] font-mono font-medium" style={{ color: bestRarity?.color ?? "#9CA3AF" }}>
+            {bestRarity?.label ?? "—"}
+          </div>
+          <div className="text-[9px] text-text-subtle uppercase tracking-wide">Best</div>
+        </div>
+      </div>
+
+      {/* Catch list */}
+      {reversed.length === 0 ? (
+        <p className="text-[11px] text-text-subtle text-center py-8 m-0">
+          No catches yet today. Cast your line!
+        </p>
+      ) : (
+        <div className="flex flex-col gap-1.5 mb-3">
+          {reversed.map((c, i) => {
+            const r = rarityMap[c.rarity];
+            const color = r?.color ?? "#9CA3AF";
+            const time = new Date(c.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            return (
+              <div
+                key={i}
+                className="flex items-center gap-2.5 py-2 px-2.5 rounded-lg bg-canvas"
+                style={{ borderLeft: `3px solid ${color}` }}
+              >
+                {c.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={c.image} alt={c.name} className="w-9 h-9 rounded-lg object-cover bg-card-elev" />
+                ) : (
+                  <div className="w-9 h-9 rounded-lg bg-card-elev flex items-center justify-center text-[18px]">🐟</div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[12px] font-medium truncate">{c.name}</span>
+                    <span
+                      className="text-[9px] px-1.5 py-0.5 rounded shrink-0"
+                      style={{ color, background: `${color}1a`, border: `1px solid ${color}33` }}
+                    >
+                      {r?.label ?? c.rarity}
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-text-subtle mt-0.5">
+                    {c.weight} kg · Cast #{catches.length - i}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[13px] font-mono text-gold">+{c.gained}</div>
+                  <div className="text-[9px] text-text-subtle">{time}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Remaining casts */}
+      <div className="bg-canvas rounded-lg p-2.5 text-center">
+        <span style={{ color: "#5CE0D2" }} className="text-[13px] font-medium">{energy}</span>
+        <span className="text-[11px] text-text-subtle"> casts remaining today</span>
+        <div className="mt-2 h-1 bg-border/30 rounded-full overflow-hidden">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${pct}%`, background: "linear-gradient(90deg, #5CE0D2, #c9a44c)" }}
+          />
+        </div>
       </div>
     </div>
   );

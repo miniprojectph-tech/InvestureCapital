@@ -33,6 +33,15 @@ type GameConfig = {
 };
 type FishDoc = { id: string; name: string; rarity: string; image?: string };
 type Quests = { day: string; progress: Record<string, number>; claimed: Record<string, boolean> };
+type DailyCatch = {
+  fishId: string;
+  name: string;
+  rarity: string;
+  image?: string;
+  gained: number;
+  weight: number;
+  at: number;
+};
 type GameState = {
   points: number;
   weeklyScore: number;
@@ -45,6 +54,7 @@ type GameState = {
   quests: Quests;
   dailyBudget?: number;
   dailyPointsEarned?: number;
+  dailyCatches?: DailyCatch[];
 };
 
 // Defaults used when settings/game is missing or partial. Keep in sync with the
@@ -228,6 +238,7 @@ export const castLine = onCall(async (request) => {
     let totalCasts = cur.totalCasts ?? 0;
     const collection = { ...(cur.collection ?? {}) };
     let streakBonus = 0;
+    let dailyCatches: DailyCatch[] = cur.lastDay === today ? [...(cur.dailyCatches ?? [])] : [];
 
     if (cur.lastDay !== today) {
       energy = dailyEnergy;
@@ -320,9 +331,22 @@ export const castLine = onCall(async (request) => {
 
     const quests = bumpQuests(cur.quests, config, { casts: 1, catches: 1, rarity: caught.rarity }, today);
 
+    const rarityIdx = config.rarities.findIndex((r) => r.id === caught.rarity);
+    const baseKg = [1.5, 3, 6, 10, 18, 30, 50][Math.min(Math.max(rarityIdx, 0), 6)];
+    const cosmeticWeight = Math.round(baseKg * (0.6 + Math.random() * 0.9) * 10) / 10;
+    dailyCatches.push({
+      fishId: caught.id,
+      name: caught.name,
+      rarity: caught.rarity,
+      image: caught.image,
+      gained,
+      weight: cosmeticWeight,
+      at: now,
+    });
+
     tx.set(
       stateRef,
-      { points, weeklyScore, energy, streak, totalCasts, collection, completedRarities, quests, lastDay: today, dailyBudget, dailyPointsEarned },
+      { points, weeklyScore, energy, streak, totalCasts, collection, completedRarities, quests, lastDay: today, dailyBudget, dailyPointsEarned, dailyCatches },
       { merge: true }
     );
     tx.set(lbRef, { uid, name, weeklyScore, updatedAt: now }, { merge: true });
