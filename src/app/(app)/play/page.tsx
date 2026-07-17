@@ -211,6 +211,7 @@ export default function PlayPage() {
   const [reveal, setReveal] = useState<CastResult | null>(null);
   const [isNewCatch, setIsNewCatch] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showNoEnergy, setShowNoEnergy] = useState(false);
   useEffect(() => {
     if (!error) return;
     const t = setTimeout(() => setError(null), 4000);
@@ -391,7 +392,7 @@ export default function PlayPage() {
       return;
     }
     if (energy <= 0) {
-      setError("Out of energy — new casts tomorrow!");
+      setShowNoEnergy(true);
       return;
     }
     setError(null);
@@ -455,7 +456,7 @@ export default function PlayPage() {
       return;
     }
     if (energy <= 0) {
-      setError("Out of energy — new casts tomorrow!");
+      setShowNoEnergy(true);
       return;
     }
     setAutoFish(true);
@@ -869,6 +870,72 @@ export default function PlayPage() {
           <span>{demoMode ? "Sign in to start fishing!" : error}</span>
         </div>
       )}
+
+      {/* Out-of-energy popup */}
+      <AnimatePresence>
+        {showNoEnergy && (
+          <motion.div
+            key="no-energy"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setShowNoEnergy(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.8, opacity: 0 }}
+              transition={{ type: "spring", damping: 20, stiffness: 300 }}
+              className="relative w-full max-w-sm rounded-2xl overflow-hidden"
+              style={{ background: "linear-gradient(180deg, #0e1a2e 0%, #0a1220 100%)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Decorative top glow */}
+              <div className="absolute top-0 inset-x-0 h-24" style={{ background: "radial-gradient(ellipse at center top, rgba(245,198,107,0.2), transparent 70%)" }} />
+
+              <div className="relative px-6 pt-8 pb-6 text-center">
+                {/* Lightning icon */}
+                <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-4" style={{ background: "linear-gradient(135deg, #1a2540, #0e1a2e)", border: "2px solid rgba(245,198,107,0.3)" }}>
+                  <svg viewBox="0 0 24 24" className="w-8 h-8" fill="none" stroke="#F5C66B" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M13 2L3 14h9l-1 10 10-12h-9l1-10z" fill="rgba(245,198,107,0.15)" />
+                  </svg>
+                </div>
+
+                <h3 className="text-[18px] font-semibold text-white m-0 mb-1">Out of Energy</h3>
+                <p className="text-[13px] text-white/50 m-0 mb-5">
+                  You&apos;ve used all {dailyCredits} casts for today.<br />
+                  Come back tomorrow for more!
+                </p>
+
+                {/* Stats row */}
+                <div className="flex gap-3 mb-5">
+                  <div className="flex-1 rounded-xl py-3 px-2" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="text-[18px] font-mono font-semibold text-gold">{(state?.dailyCatches?.length ?? 0)}</div>
+                    <div className="text-[10px] text-white/40 uppercase tracking-wider mt-0.5">Catches</div>
+                  </div>
+                  <div className="flex-1 rounded-xl py-3 px-2" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="text-[18px] font-mono font-semibold" style={{ color: "#5CE0D2" }}>{(state?.dailyCatches ?? []).reduce((s, c) => s + c.gained, 0)}</div>
+                    <div className="text-[10px] text-white/40 uppercase tracking-wider mt-0.5">GP today</div>
+                  </div>
+                  <div className="flex-1 rounded-xl py-3 px-2" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="text-[18px] font-mono font-semibold text-gold">{points.toLocaleString()}</div>
+                    <div className="text-[10px] text-white/40 uppercase tracking-wider mt-0.5">Total GP</div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowNoEnergy(false)}
+                  className="w-full py-3 rounded-xl text-[14px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98]"
+                  style={{ background: "linear-gradient(135deg, #c9a44c, #a8832a)", border: "1px solid rgba(245,198,107,0.4)" }}
+                >
+                  Got it
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {view === "cast" && (
         <div className="min-h-[100dvh] w-full flex items-center justify-center">
