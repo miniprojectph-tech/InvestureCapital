@@ -125,6 +125,8 @@ export type GameConfig = {
   treasureChance: number;
   treasureMin: number;
   treasureMax: number;
+  dailyBudgetMin: number;
+  dailyBudgetMax: number;
   assets?: GameAssets;
 };
 export type Fish = {
@@ -145,6 +147,8 @@ export type GameState = {
   collection: Record<string, { count: number; firstAt: number }>;
   completedRarities?: Record<string, number>; // rarityId → bonus points already awarded
   quests: { day: string; progress: Record<string, number>; claimed: Record<string, boolean> };
+  dailyBudget?: number;
+  dailyPointsEarned?: number;
   // Shared economy fields used by Community Tongits (Function-written).
   lockedPoints?: number; // points escrowed in an active/ready Tongits challenge
   rankingPoints?: number; // competitive ranking score (leaderboards)
@@ -174,28 +178,30 @@ export type FishOfHour = {
 export type LeaderboardEntry = { uid: string; name: string; weeklyScore: number };
 
 export const DEFAULT_GAME_CONFIG: GameConfig = {
-  dailyEnergy: 20,
+  dailyEnergy: 10,
   rarities: [
-    { id: "common", label: "Common", color: "#9CA3AF", weight: 55, points: 5, completionBonus: 50 },
-    { id: "uncommon", label: "Uncommon", color: "#4ADE80", weight: 25, points: 12, completionBonus: 120 },
-    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 12, points: 30, completionBonus: 300 },
-    { id: "epic", label: "Epic", color: "#A78BFA", weight: 5, points: 80, completionBonus: 800 },
-    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 2, points: 250, completionBonus: 2000 },
-    { id: "mythic", label: "Mythic", color: "#FB7185", weight: 0.9, points: 700, completionBonus: 5000 },
-    { id: "divine", label: "Divine Secret", color: "#E879F9", weight: 0.1, points: 2500, completionBonus: 15000 },
+    { id: "common", label: "Common", color: "#9CA3AF", weight: 51, points: 11, completionBonus: 10 },
+    { id: "uncommon", label: "Uncommon", color: "#4ADE80", weight: 20, points: 13, completionBonus: 15 },
+    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 12, points: 19, completionBonus: 25 },
+    { id: "epic", label: "Epic", color: "#A78BFA", weight: 8, points: 24, completionBonus: 40 },
+    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 5, points: 32, completionBonus: 60 },
+    { id: "mythic", label: "Mythic", color: "#FB7185", weight: 2.9, points: 43, completionBonus: 80 },
+    { id: "divine", label: "Divine Secret", color: "#E879F9", weight: 1.1, points: 54, completionBonus: 100 },
   ],
-  streakBonus: [0, 5, 10, 15, 25, 40, 60, 100],
+  streakBonus: [0, 1, 1, 2, 2, 2, 2, 2],
   fothEnabled: true,
   fothChance: 0.15,
   quests: [
-    { id: "cast5", label: "Cast 5 times", type: "casts", target: 5, reward: 20 },
-    { id: "rare1", label: "Catch a Rare or better", type: "rarity", rarity: "rare", target: 1, reward: 25 },
-    { id: "catch10", label: "Catch 10 fish", type: "catch", target: 10, reward: 30 },
+    { id: "cast5", label: "Cast 5 times", type: "casts", target: 5, reward: 3 },
+    { id: "rare1", label: "Catch a Rare or better", type: "rarity", rarity: "rare", target: 1, reward: 5 },
+    { id: "catch10", label: "Catch 10 fish", type: "catch", target: 10, reward: 5 },
   ],
   leaderboardPrizes: [500, 300, 150, 75, 50],
-  treasureChance: 0.06,
-  treasureMin: 50,
-  treasureMax: 300,
+  treasureChance: 0,
+  treasureMin: 0,
+  treasureMax: 0,
+  dailyBudgetMin: 150,
+  dailyBudgetMax: 165,
   assets: {
     bgFull: "/reef/bg-fishing-spots.webp",
     hud: "/reef/hud.webp",

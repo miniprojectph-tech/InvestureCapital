@@ -28,6 +28,8 @@ type GameConfig = {
   treasureChance: number;
   treasureMin: number;
   treasureMax: number;
+  dailyBudgetMin: number;
+  dailyBudgetMax: number;
 };
 type FishDoc = { id: string; name: string; rarity: string; image?: string };
 type Quests = { day: string; progress: Record<string, number>; claimed: Record<string, boolean> };
@@ -41,33 +43,37 @@ type GameState = {
   collection: Record<string, { count: number; firstAt: number }>;
   completedRarities?: Record<string, number>;
   quests: Quests;
+  dailyBudget?: number;
+  dailyPointsEarned?: number;
 };
 
 // Defaults used when settings/game is missing or partial. Keep in sync with the
 // client defaults in src/lib/game.ts.
 const DEFAULT_CONFIG: GameConfig = {
-  dailyEnergy: 20,
+  dailyEnergy: 10,
   rarities: [
-    { id: "common", label: "Common", color: "#9CA3AF", weight: 55, points: 5, completionBonus: 50 },
-    { id: "uncommon", label: "Uncommon", color: "#4ADE80", weight: 25, points: 12, completionBonus: 120 },
-    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 12, points: 30, completionBonus: 300 },
-    { id: "epic", label: "Epic", color: "#A78BFA", weight: 5, points: 80, completionBonus: 800 },
-    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 2, points: 250, completionBonus: 2000 },
-    { id: "mythic", label: "Mythic", color: "#FB7185", weight: 0.9, points: 700, completionBonus: 5000 },
-    { id: "divine", label: "Divine Secret", color: "#E879F9", weight: 0.1, points: 2500, completionBonus: 15000 },
+    { id: "common", label: "Common", color: "#9CA3AF", weight: 51, points: 11, completionBonus: 10 },
+    { id: "uncommon", label: "Uncommon", color: "#4ADE80", weight: 20, points: 13, completionBonus: 15 },
+    { id: "rare", label: "Rare", color: "#4F8EF7", weight: 12, points: 19, completionBonus: 25 },
+    { id: "epic", label: "Epic", color: "#A78BFA", weight: 8, points: 24, completionBonus: 40 },
+    { id: "legendary", label: "Legendary", color: "#F5C66B", weight: 5, points: 32, completionBonus: 60 },
+    { id: "mythic", label: "Mythic", color: "#FB7185", weight: 2.9, points: 43, completionBonus: 80 },
+    { id: "divine", label: "Divine Secret", color: "#E879F9", weight: 1.1, points: 54, completionBonus: 100 },
   ],
-  streakBonus: [0, 5, 10, 15, 25, 40, 60, 100],
+  streakBonus: [0, 1, 1, 2, 2, 2, 2, 2],
   fothEnabled: true,
   fothChance: 0.15,
   quests: [
-    { id: "cast5", label: "Cast 5 times", type: "casts", target: 5, reward: 20 },
-    { id: "rare1", label: "Catch a Rare or better", type: "rarity", rarity: "rare", target: 1, reward: 15 },
-    { id: "catch10", label: "Catch 10 fish", type: "catch", target: 10, reward: 30 },
+    { id: "cast5", label: "Cast 5 times", type: "casts", target: 5, reward: 3 },
+    { id: "rare1", label: "Catch a Rare or better", type: "rarity", rarity: "rare", target: 1, reward: 5 },
+    { id: "catch10", label: "Catch 10 fish", type: "catch", target: 10, reward: 5 },
   ],
   leaderboardPrizes: [500, 300, 150, 75, 50],
-  treasureChance: 0.06,
-  treasureMin: 50,
-  treasureMax: 300,
+  treasureChance: 0,
+  treasureMin: 0,
+  treasureMax: 0,
+  dailyBudgetMin: 150,
+  dailyBudgetMax: 165,
 };
 
 // ===== Helpers =====
@@ -99,6 +105,8 @@ async function loadConfig(): Promise<GameConfig> {
     treasureChance: d.treasureChance ?? DEFAULT_CONFIG.treasureChance,
     treasureMin: d.treasureMin ?? DEFAULT_CONFIG.treasureMin,
     treasureMax: d.treasureMax ?? DEFAULT_CONFIG.treasureMax,
+    dailyBudgetMin: d.dailyBudgetMin ?? DEFAULT_CONFIG.dailyBudgetMin,
+    dailyBudgetMax: d.dailyBudgetMax ?? DEFAULT_CONFIG.dailyBudgetMax,
   };
 }
 
@@ -239,11 +247,51 @@ export const castLine = onCall(async (request) => {
       caught = pickFish(fish, config, power);
     }
     const rarity = config.rarities.find((r) => r.id === caught.rarity) ?? config.rarities[0];
-    const gained = rarity.points + streakBonus;
 
-    // Random treasure chest bonus (server-decided so it can't be forged).
+    const useBudget = config.dailyBudgetMin > 0 && config.dailyBudgetMax > 0;
+    let dailyBudget = cur.dailyBudget ?? 0;
+    let dailyPointsEarned = cur.dailyPointsEarned ?? 0;
+
+    if (useBudget) {
+      if (cur.lastDay !== today) {
+        const span = config.dailyBudgetMax - config.dailyBudgetMin;
+        dailyBudget = config.dailyBudgetMin + Math.round(Math.random() * span);
+        dailyPointsEarned = 0;
+      }
+    }
+
+    let gained: number;
+    if (useBudget) {
+      const MULT = [0.8, 1.0, 1.4, 1.8, 2.4, 3.2, 4.0];
+      const rarityIdx = config.rarities.findIndex((r) => r.id === caught.rarity);
+      const mult = MULT[Math.min(Math.max(rarityIdx, 0), MULT.length - 1)];
+      const totalWeight = config.rarities.reduce((s, r) => s + r.weight, 0);
+      const expectedAvgMult = config.rarities.reduce((s, r, i) => {
+        const m = MULT[Math.min(i, MULT.length - 1)];
+        return s + (r.weight / totalWeight) * m;
+      }, 0);
+
+      const budgetRemaining = Math.max(0, dailyBudget - dailyPointsEarned);
+      const castsLeft = energy + 1;
+
+      if (energy === 0) {
+        gained = Math.round(budgetRemaining);
+      } else {
+        const baseShare = budgetRemaining / castsLeft;
+        let rawPoints = baseShare * (mult / expectedAvgMult);
+        const jitter = 0.85 + Math.random() * 0.3;
+        rawPoints *= jitter;
+        gained = Math.max(1, Math.round(rawPoints));
+        gained = Math.min(gained, Math.round(budgetRemaining));
+      }
+      dailyPointsEarned += gained;
+      gained += streakBonus;
+    } else {
+      gained = rarity.points + streakBonus;
+    }
+
     let treasure = 0;
-    if (Math.random() < config.treasureChance) {
+    if (config.treasureChance > 0 && Math.random() < config.treasureChance) {
       const span = Math.max(0, config.treasureMax - config.treasureMin);
       treasure = config.treasureMin + Math.floor(Math.random() * (span + 1));
     }
@@ -274,7 +322,7 @@ export const castLine = onCall(async (request) => {
 
     tx.set(
       stateRef,
-      { points, weeklyScore, energy, streak, totalCasts, collection, completedRarities, quests, lastDay: today },
+      { points, weeklyScore, energy, streak, totalCasts, collection, completedRarities, quests, lastDay: today, dailyBudget, dailyPointsEarned },
       { merge: true }
     );
     tx.set(lbRef, { uid, name, weeklyScore, updatedAt: now }, { merge: true });

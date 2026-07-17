@@ -505,6 +505,16 @@ export default function AdminGamesPage() {
             value={draft.treasureMax}
             onChange={(v) => setDraft({ ...draft, treasureMax: v })}
           />
+          <NumField
+            label="Daily budget min (pts)"
+            value={draft.dailyBudgetMin ?? 0}
+            onChange={(v) => setDraft({ ...draft, dailyBudgetMin: v })}
+          />
+          <NumField
+            label="Daily budget max (pts)"
+            value={draft.dailyBudgetMax ?? 0}
+            onChange={(v) => setDraft({ ...draft, dailyBudgetMax: v })}
+          />
         </div>
 
         {/* Rarities */}
