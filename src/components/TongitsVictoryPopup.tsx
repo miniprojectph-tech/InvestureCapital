@@ -265,8 +265,8 @@ function ShowdownOverlay({
 
 const S = {
   winnerAvatar: { l: 28, t: 34, w: 8, h: 12 },
-  winnerName: { l: 43, t: 30, w: 33, h: 8 },
-  winnerPoints: { l: 45, t: 40, w: 31, h: 7 },
+  winnerName: { l: 38, t: 30, w: 38, h: 8 },
+  winnerPoints: { l: 38, t: 40, w: 38, h: 7 },
   ru1Initials: { l: 27.5, t: 59, w: 5.5, h: 8 },
   ru1Row: { l: 34, t: 59, w: 31, h: 8 },
   ru2Initials: { l: 27.5, t: 70, w: 5.5, h: 8 },
@@ -423,7 +423,7 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
           </span>
         </Slot>
 
-        <Slot box={S.winnerName} style={{ justifyContent: "flex-start" }}>
+        <Slot box={S.winnerName}>
           <span
             style={{
               color: "#3d2a0a",
