@@ -1212,15 +1212,27 @@ export default function PlayPage() {
               style={{ touchAction: "none" }}
               aria-label="Cast"
             >
-              {(charging || inFlight) && (
-                <span className="absolute inset-0 flex items-center justify-center">
-                  {charging ? (
-                    <span className="text-[clamp(9px,1vw,13px)] font-bold text-white drop-shadow">
-                      {Math.round(meter * 100)}%
-                    </span>
-                  ) : (
-                    <Loader2 className="w-6 h-6 text-white animate-spin drop-shadow" />
-                  )}
+              {charging && (
+                <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <svg viewBox="0 0 48 48" className="w-[60%] h-[60%]" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.5))" }}>
+                    <circle cx="24" cy="24" r="20" fill="none" stroke="rgba(255,255,255,0.15)" strokeWidth="3" />
+                    <circle
+                      cx="24" cy="24" r="20" fill="none"
+                      stroke={meter > 0.85 ? "#F5C66B" : "#5CE0D2"}
+                      strokeWidth="3" strokeLinecap="round"
+                      strokeDasharray={`${meter * 125.6} 125.6`}
+                      transform="rotate(-90 24 24)"
+                      style={{ transition: "stroke 0.15s" }}
+                    />
+                    <text x="24" y="26" textAnchor="middle" fill="white" fontSize="11" fontWeight="700" fontFamily="monospace">
+                      {Math.round(meter * 100)}
+                    </text>
+                  </svg>
+                </span>
+              )}
+              {inFlight && !charging && (
+                <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <Loader2 className="w-6 h-6 text-white/70 animate-spin drop-shadow" />
                 </span>
               )}
             </button>
@@ -1242,12 +1254,12 @@ export default function PlayPage() {
             className={cn(
               "absolute z-20 rounded-full transition",
               HOT.autoFish,
-              autoFish ? "ring-4 ring-green/70 animate-pulse" : ""
+              autoFish ? "ring-4 ring-gold/60 animate-pulse" : ""
             )}
             aria-label={autoFish ? "Stop auto fishing" : "Auto fish"}
           >
             {autoFish && (
-              <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[clamp(7px,0.8vw,10px)] font-bold text-green bg-black/60 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+              <span className="absolute -top-1 left-1/2 -translate-x-1/2 text-[clamp(7px,0.8vw,10px)] font-bold text-gold bg-black/60 px-1.5 py-0.5 rounded-full whitespace-nowrap border border-border-gold">
                 AUTO ON
               </span>
             )}
@@ -1295,43 +1307,40 @@ export default function PlayPage() {
               button, so it never covers the fish being reeled in ── */}
           {phase === "reeling" && (
             <div
-              className="absolute z-20 left-[82%] top-[16%] w-[15.5%] min-w-[140px] max-w-[220px] rounded-2xl border border-border-gold px-3 py-3"
+              className="absolute z-20 right-[1.5%] top-[14%] w-[14%] min-w-[120px] max-w-[200px] rounded-2xl border border-white/15 px-2.5 py-2.5"
               style={{
-                background: "linear-gradient(180deg, rgba(14,32,56,0.94), rgba(8,17,32,0.94))",
-                backdropFilter: "blur(8px)",
-                WebkitBackdropFilter: "blur(8px)",
-                boxShadow: "inset 0 0 0 1px rgba(245,198,107,0.18), 0 10px 34px rgba(0,0,0,0.55)",
+                background: "linear-gradient(180deg, rgba(8,20,40,0.92), rgba(4,10,24,0.95))",
+                backdropFilter: "blur(10px)",
+                WebkitBackdropFilter: "blur(10px)",
+                boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.6)",
               }}
             >
               <div className="flex items-center justify-between mb-2">
-                <span
-                  className="text-[clamp(9px,0.95vw,13px)] font-semibold tracking-wide text-gold"
-                  style={{ fontFamily: "var(--font-display)" }}
-                >
+                <span className="text-[clamp(8px,0.85vw,12px)] font-semibold tracking-wide text-white/90">
                   Reeling
                 </span>
                 <span
                   className={cn(
-                    "text-[clamp(6px,0.7vw,10px)] font-bold px-1.5 py-0.5 rounded-full border tracking-wide",
+                    "text-[clamp(6px,0.65vw,9px)] font-bold px-1.5 py-0.5 rounded border tracking-wide",
                     tension > 85
-                      ? "text-red border-red/50 bg-red/15 animate-pulse"
+                      ? "text-red border-red/40 bg-red/15 animate-pulse"
                       : tension > 72
-                      ? "text-gold border-border-gold bg-gold/10"
-                      : "text-green border-green/40 bg-green/10"
+                      ? "text-gold border-gold/30 bg-gold/10"
+                      : "text-[#5CE0D2] border-[#5CE0D2]/30 bg-[#5CE0D2]/10"
                   )}
                 >
                   {tension > 85 ? "DANGER" : tension > 72 ? "CAREFUL" : "PERFECT"}
                 </span>
               </div>
 
-              {/* twin vertical meters (fill bottom → top) */}
-              <div className="flex items-stretch justify-center gap-5" style={{ height: "clamp(160px,42vh,380px)" }}>
+              {/* twin vertical meters */}
+              <div className="flex items-stretch justify-center gap-4" style={{ height: "clamp(120px,36vh,320px)" }}>
                 {/* line tension */}
                 <div className="flex flex-col items-center gap-1">
-                  <div className="relative w-4 flex-1 rounded-full bg-black/60 border border-white/10 overflow-hidden">
-                    <div className="absolute top-0 inset-x-0 h-[28%]" style={{ background: "linear-gradient(0deg, transparent, rgba(248,113,113,0.3))" }} />
+                  <div className="relative w-3.5 flex-1 rounded-full bg-black/50 border border-white/8 overflow-hidden">
+                    <div className="absolute top-0 inset-x-0 h-[28%]" style={{ background: "linear-gradient(0deg, transparent, rgba(248,113,113,0.25))" }} />
                     <div
-                      className="absolute bottom-0 inset-x-0 rounded-full"
+                      className="absolute bottom-0 inset-x-0 rounded-full transition-[height] duration-100"
                       style={{
                         height: `${tension}%`,
                         background:
@@ -1339,28 +1348,28 @@ export default function PlayPage() {
                             ? "linear-gradient(0deg,#F87171,#ff4d4d)"
                             : tension > 72
                             ? "linear-gradient(0deg,#F5C66B,#e0a83a)"
-                            : "linear-gradient(0deg,#3DD598,#2fb7a0)",
+                            : "linear-gradient(0deg,#5CE0D2,#3db8ab)",
                       }}
                     />
-                    <span className="absolute inset-x-0 h-px bg-white/50" style={{ bottom: "72%" }} />
-                    <span className="absolute inset-x-0 h-px bg-red/70" style={{ bottom: "85%" }} />
+                    <span className="absolute inset-x-0 h-px bg-white/40" style={{ bottom: "72%" }} />
+                    <span className="absolute inset-x-0 h-px bg-red/60" style={{ bottom: "85%" }} />
                   </div>
-                  <span className="text-[clamp(5px,0.6vw,8px)] uppercase tracking-wide text-white/45">Tension</span>
-                  <span className="text-[clamp(6px,0.68vw,9px)] font-mono text-white/80">{Math.round(tension)}%</span>
+                  <span className="text-[clamp(5px,0.55vw,7px)] uppercase tracking-wide text-white/40">Tension</span>
+                  <span className={cn("text-[clamp(6px,0.6vw,8px)] font-mono", tension > 85 ? "text-red" : "text-white/70")}>{Math.round(tension)}%</span>
                 </div>
                 {/* caught */}
                 <div className="flex flex-col items-center gap-1">
-                  <div className="relative w-4 flex-1 rounded-full bg-black/60 border border-white/10 overflow-hidden">
-                    <div className="absolute bottom-0 inset-x-0 rounded-full" style={{ height: `${progress}%`, background: "linear-gradient(0deg,#4F8EF7,#7db0ff)" }}>
-                      <span className="absolute inset-x-0 top-0 h-2" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.55),transparent)" }} />
+                  <div className="relative w-3.5 flex-1 rounded-full bg-black/50 border border-white/8 overflow-hidden">
+                    <div className="absolute bottom-0 inset-x-0 rounded-full transition-[height] duration-100" style={{ height: `${progress}%`, background: "linear-gradient(0deg,#4F8EF7,#7db0ff)" }}>
+                      <span className="absolute inset-x-0 top-0 h-2" style={{ background: "linear-gradient(180deg,rgba(255,255,255,0.45),transparent)" }} />
                     </div>
                   </div>
-                  <span className="text-[clamp(5px,0.6vw,8px)] uppercase tracking-wide text-white/45">Caught</span>
-                  <span className="text-[clamp(6px,0.68vw,9px)] font-mono text-gold">{Math.round(progress)}%</span>
+                  <span className="text-[clamp(5px,0.55vw,7px)] uppercase tracking-wide text-white/40">Caught</span>
+                  <span className="text-[clamp(6px,0.6vw,8px)] font-mono text-[#7db0ff]">{Math.round(progress)}%</span>
                 </div>
               </div>
 
-              <p className="text-center text-[clamp(6px,0.72vw,10px)] text-white/85 mt-2 mb-0 font-medium leading-tight">
+              <p className="text-center text-[clamp(6px,0.65vw,9px)] text-white/75 mt-1.5 mb-0 font-medium leading-tight">
                 {aiState === "run"
                   ? "🏃 Ease off!"
                   : aiState === "dive"
@@ -1370,9 +1379,9 @@ export default function PlayPage() {
                   : "Hold to reel"}
               </p>
               {(perfectHook || combo > 1) && (
-                <div className="flex flex-col items-center gap-0.5 mt-1">
-                  {perfectHook && <span className="text-[clamp(5px,0.65vw,9px)] text-gold font-semibold">✨ Perfect hook</span>}
-                  {combo > 1 && <span className="text-[clamp(5px,0.65vw,9px)] text-gold font-semibold">🔥 Combo ×{combo}</span>}
+                <div className="flex items-center justify-center gap-2 mt-1">
+                  {perfectHook && <span className="text-[clamp(5px,0.6vw,8px)] text-gold font-semibold">✨ Perfect hook</span>}
+                  {combo > 1 && <span className="text-[clamp(5px,0.6vw,8px)] text-gold font-semibold">🔥 ×{combo}</span>}
                 </div>
               )}
             </div>
