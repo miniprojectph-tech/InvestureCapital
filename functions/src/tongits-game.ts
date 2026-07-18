@@ -11,6 +11,7 @@ import {
   sapaw,
   looseCardValue,
   resolveShowdown,
+  resolveFightShowdown,
   autoDiscardCard,
   type Card,
 } from "./tongits-engine";
@@ -25,6 +26,7 @@ const RP_TONGITS = 30;
 const RP_SHOWDOWN = 20;
 const RP_LOSS = 2;
 const RP_SECRET = 50;
+const CHALLENGE_BONUS_RATE = 0.50;
 
 type ResultType = "tongits_win" | "draw_win" | "lowest_points_win";
 
@@ -55,6 +57,7 @@ type GamePublic = {
     callerUid: string;
     responses: Record<string, "fight" | "fold" | "burned">;
     deadline: number;
+    acceptOrder: string[];
   };
 };
 
@@ -215,6 +218,7 @@ type SettleEcoInputs = {
   C: number;
   secret: boolean;
   fightResponses?: Record<string, FightResponse>;
+  callerUid?: string;
   matchId: string;
   matchDurationSeconds: number;
 };
@@ -230,7 +234,7 @@ function settleGameStateInTx(
   ctx: Ctx,
   resultType: ResultType,
   winnerUid: string,
-  opts: { secret: boolean; fightResponses?: Record<string, FightResponse> }
+  opts: { secret: boolean; fightResponses?: Record<string, FightResponse>; callerUid?: string }
 ): SettleEcoInputs {
   const now = Date.now();
   const seats = ctx.gs.seats;
@@ -294,6 +298,7 @@ function settleGameStateInTx(
       hands: Object.fromEntries(seats.map((s) => [s.uid, ctx.hands[s.uid]])),
       completedAt: now,
       ...(opts.fightResponses ? { fightResponses: opts.fightResponses } : {}),
+      ...(opts.callerUid ? { callerUid: opts.callerUid } : {}),
     },
   });
 
@@ -314,6 +319,7 @@ function settleGameStateInTx(
     C,
     secret: opts.secret,
     fightResponses: opts.fightResponses,
+    callerUid: opts.callerUid,
     matchId,
     matchDurationSeconds: Math.round((now - (ctx.gs.startedAt ?? now)) / 1000),
   };
@@ -329,9 +335,45 @@ function settleGameStateInTx(
  * ops function later.
  */
 async function settleEconomy(input: SettleEcoInputs) {
-  const { code, now, seats, values, winnerUid, resultType, jackpot, payoutJackpot, C, secret, matchId, matchDurationSeconds, fightResponses } = input;
-  const hasFight = resultType === "lowest_points_win" && fightResponses;
-  const fighterCount = hasFight ? seats.filter((s) => fightResponses[s.uid] === "fight").length : seats.length;
+  const { code, now, seats, values, winnerUid, resultType, jackpot, payoutJackpot, C, secret, matchId, matchDurationSeconds, fightResponses, callerUid } = input;
+  const lockedAmount = Math.round(C * (1 + CHALLENGE_BONUS_RATE));
+  const challengePayment = lockedAmount;
+
+  const hasFight = resultType === "lowest_points_win" && fightResponses && callerUid;
+
+  // Compute net change per player (zero-sum before jackpot)
+  const netChanges: Record<string, number> = {};
+
+  if (hasFight) {
+    const fighters = seats.filter((s) => fightResponses[s.uid] === "fight");
+    const foldersAndBurned = seats.filter((s) =>
+      fightResponses[s.uid] === "fold" || fightResponses[s.uid] === "burned"
+    );
+    const losingFighters = fighters.filter((s) => s.uid !== winnerUid);
+
+    for (const s of seats) {
+      if (s.uid === winnerUid) {
+        netChanges[s.uid] = challengePayment * losingFighters.length;
+        if (s.uid === callerUid) netChanges[s.uid] += C * foldersAndBurned.length;
+      } else if (fightResponses[s.uid] === "fight") {
+        netChanges[s.uid] = -challengePayment;
+        if (s.uid === callerUid) netChanges[s.uid] += C * foldersAndBurned.length;
+      } else {
+        netChanges[s.uid] = -C;
+      }
+    }
+  } else {
+    for (const s of seats) {
+      netChanges[s.uid] = s.uid === winnerUid ? C * (seats.length - 1) : -C;
+    }
+  }
+
+  // Zero-sum verification (before jackpot)
+  const totalNet = Object.values(netChanges).reduce((a, b) => a + b, 0);
+  if (totalNet !== 0) {
+    // eslint-disable-next-line no-console
+    console.error("Settlement not zero-sum!", { totalNet, netChanges, code, matchId });
+  }
 
   await db.runTransaction(async (tx) => {
     const stateSnaps: Record<string, FirebaseFirestore.DocumentData> = {};
@@ -365,19 +407,19 @@ async function settleEconomy(input: SettleEcoInputs) {
       const wins = (cur.tongitsWins as number) ?? 0;
       const losses = (cur.tongitsLosses as number) ?? 0;
 
-      const isFighter = !hasFight || fightResponses[s.uid] === "fight";
-      const didFold = hasFight && !isFighter;
+      const net = netChanges[s.uid];
+      const winnerJackpot = isWinner ? jackpot : 0;
+      const winnings = lockedAmount + net + winnerJackpot;
 
       const rankingEarned = isWinner
         ? (resultType === "tongits_win" ? RP_TONGITS : RP_SHOWDOWN) + (secret ? RP_SECRET : 0)
         : RP_LOSS;
-      const winnings = isWinner ? C * fighterCount + jackpot : didFold ? C : 0;
 
       tx.set(
         userStateRef(s.uid),
         {
           points: points + winnings,
-          lockedPoints: Math.max(0, locked - C),
+          lockedPoints: Math.max(0, locked - lockedAmount),
           rankingPoints: rp + rankingEarned,
           tongitsGames: games + 1,
           tongitsWins: wins + (isWinner ? 1 : 0),
@@ -386,31 +428,32 @@ async function settleEconomy(input: SettleEcoInputs) {
         { merge: true }
       );
 
-      const pointsLost = isWinner ? 0 : didFold ? 0 : C;
+      const pointsGained = Math.max(0, net + winnerJackpot);
+      const pointsLost = Math.max(0, -net);
       tx.set(db.collection("game_match_results").doc(), {
         matchId,
         userId: s.uid,
         finalPosition: isWinner ? 1 : i + 1,
         finalHandValue: values[s.uid],
-        pointsEarned: winnings,
+        pointsEarned: pointsGained,
         pointsLost,
         rankingPointsEarned: rankingEarned,
         createdAt: now,
       });
 
-      const txnType = isWinner ? "challenge_points_won" : didFold ? "challenge_points_refunded" : "challenge_points_lost";
-      const txnAmount = isWinner ? winnings : didFold ? C : C;
+      const didFold = hasFight && (fightResponses[s.uid] === "fold" || fightResponses[s.uid] === "burned");
+      const txnType = isWinner ? "challenge_points_won" : didFold ? "challenge_points_lost_fold" : "challenge_points_lost";
       tx.set(txnCol().doc(), {
         userId: s.uid,
         type: txnType,
-        amount: txnAmount,
+        amount: Math.abs(net) + winnerJackpot,
         roomCode: code,
         matchId,
         description: isWinner
-          ? `Won ${winnings} in Tongits room ${code}`
+          ? `Won ${net + winnerJackpot} in Tongits room ${code}`
           : didFold
-            ? `Folded — ${C} refunded in room ${code}`
-            : `Lost ${C} in Tongits room ${code}`,
+            ? `Folded — lost ${-net} in room ${code}`
+            : `Lost ${-net} in Tongits room ${code}`,
         createdAt: now,
       });
 
@@ -761,7 +804,7 @@ export const tongitsCall = onCall({ region: GAME_REGION, minInstances: 1 }, asyn
   let fightStarted = false;
   await gameDb.runTransaction(async (tx) => {
     const ctx = await loadCtx(tx, code);
-    requireTurn(ctx, uid, "discard");
+    requireTurn(ctx, uid, "draw");
     if ((ctx.gs.melds[uid]?.length ?? 0) === 0) {
       throw new HttpsError("failed-precondition", "You need at least one exposed meld to call.");
     }
@@ -776,10 +819,10 @@ export const tongitsCall = onCall({ region: GAME_REGION, minInstances: 1 }, asyn
     }
     const allResolved = ctx.gs.seats.every((s) => responses[s.uid] !== undefined);
     if (allResolved) {
-      eco = resolveFightInTx(tx, code, ctx, uid, responses);
+      eco = resolveFightInTx(tx, code, ctx, uid, responses, []);
     } else {
       ctx.gs.phase = "fight";
-      ctx.gs.fightState = { callerUid: uid, responses, deadline: now + 10_000 };
+      ctx.gs.fightState = { callerUid: uid, responses, deadline: now + 10_000, acceptOrder: [] };
       commitProgress(tx, code, ctx, "fight_called", []);
       fightStarted = true;
     }
@@ -792,7 +835,8 @@ export const tongitsCall = onCall({ region: GAME_REGION, minInstances: 1 }, asyn
 
 function resolveFightInTx(
   tx: Transaction, code: string, ctx: Ctx,
-  callerUid: string, responses: Record<string, FightResponse>
+  callerUid: string, responses: Record<string, FightResponse>,
+  acceptOrder: string[] = []
 ): SettleEcoInputs {
   const fighters = ctx.gs.seats.filter((s) => responses[s.uid] === "fight");
   let winner: string;
@@ -800,9 +844,9 @@ function resolveFightInTx(
     winner = callerUid;
   } else {
     const entries = fighters.map((s) => ({ uid: s.uid, seat: s.seat, value: looseCardValue(ctx.hands[s.uid]) }));
-    winner = resolveShowdown(entries, callerUid);
+    winner = resolveFightShowdown(entries, callerUid, acceptOrder);
   }
-  return settleGameStateInTx(tx, code, ctx, "lowest_points_win", winner, { secret: false, fightResponses: responses });
+  return settleGameStateInTx(tx, code, ctx, "lowest_points_win", winner, { secret: false, fightResponses: responses, callerUid });
 }
 
 export const tongitsFightRespond = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
@@ -823,9 +867,12 @@ export const tongitsFightRespond = onCall({ region: GAME_REGION, minInstances: 1
       throw new HttpsError("failed-precondition", "You already responded.");
     }
     ctx.gs.fightState.responses[uid] = response;
+    if (response === "fight") {
+      ctx.gs.fightState.acceptOrder = [...(ctx.gs.fightState.acceptOrder ?? []), uid];
+    }
     const allResolved = ctx.gs.seats.every((s) => ctx.gs.fightState!.responses[s.uid] !== undefined);
     if (allResolved) {
-      eco = resolveFightInTx(tx, code, ctx, ctx.gs.fightState.callerUid, ctx.gs.fightState.responses);
+      eco = resolveFightInTx(tx, code, ctx, ctx.gs.fightState.callerUid, ctx.gs.fightState.responses, ctx.gs.fightState.acceptOrder ?? []);
     } else {
       commitProgress(tx, code, ctx, "fight_responded", []);
     }
@@ -850,7 +897,7 @@ export const enforceTongitsTimeout = onCall({ region: GAME_REGION }, async (requ
       for (const s of ctx.gs.seats) {
         if (ctx.gs.fightState.responses[s.uid] === undefined) ctx.gs.fightState.responses[s.uid] = "fold";
       }
-      eco = resolveFightInTx(tx, code, ctx, ctx.gs.fightState.callerUid, ctx.gs.fightState.responses);
+      eco = resolveFightInTx(tx, code, ctx, ctx.gs.fightState.callerUid, ctx.gs.fightState.responses, ctx.gs.fightState.acceptOrder ?? []);
       return { ok: true, ended: true };
     }
 

@@ -676,7 +676,7 @@ export function TongitsGameTableArt({ code, room, spectating }: { code: string; 
 
   // legal-state flags
   const canDrop = isMyTurn && gs.phase === "discard" && selected.length >= 3 && isValidMeld(selected);
-  const canFight = isMyTurn && gs.phase === "discard" && iHaveMeld && !gs.cantFight?.[uid];
+  const canFight = isMyTurn && gs.phase === "draw" && iHaveMeld && !gs.cantFight?.[uid];
   const canUngroup = selected.length > 0;
   const canDump = isMyTurn && gs.phase === "discard" && selected.length === 1;
   const sapawEligible =
@@ -739,7 +739,7 @@ export function TongitsGameTableArt({ code, room, spectating }: { code: string; 
 
   // Pill row swaps its 4th button based on phase:
   //   - draw phase:    DROP, FIGHT, UNGROUP, DRAW, [PICK]
-  //   - discard phase: DROP, FIGHT, UNGROUP, DUMP, [SAPAW]
+  //   - discard phase: DROP, (FIGHT disabled), UNGROUP, DUMP, [SAPAW]
   const inDrawPhase = isMyTurn && gs.phase === "draw";
   const showPick = inDrawPhase && !!discardTop;
   const showFivePill = anySapawPossible || showPick;
@@ -785,8 +785,8 @@ export function TongitsGameTableArt({ code, room, spectating }: { code: string; 
       onClick: () => act("fight", () => callTongits_()),
       disabledHint: !isMyTurn
         ? "Wait for your turn."
-        : inDrawPhase
-          ? "You can only fight during the discard phase."
+        : !inDrawPhase
+          ? "You can only fight before drawing a card."
           : !iHaveMeld
             ? "You need an exposed meld before you can fight."
             : gs.cantFight?.[uid]

@@ -33,6 +33,7 @@ export type TongitsGameState = {
     callerUid: string;
     responses: Record<string, "fight" | "fold" | "burned">;
     deadline: number;
+    acceptOrder?: string[];
   };
 };
 
@@ -47,6 +48,7 @@ export type TongitsResult = {
   hands?: Record<string, Card[]>;
   completedAt: number;
   fightResponses?: Record<string, "fight" | "fold" | "burned">;
+  callerUid?: string;
 };
 
 // ===== card helpers =====

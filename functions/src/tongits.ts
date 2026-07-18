@@ -13,6 +13,7 @@ const GAME_REGION = "asia-southeast1";
 const MIN_CHALLENGE = 50;
 const MAX_PLAYERS = 3;
 const DEFAULT_ANTE = 5;
+const CHALLENGE_BONUS_RATE = 0.50;
 const STALE_ROOM_MS = 30 * 60 * 1000; // rooms idle this long get reaped
 
 type RoomStatus = "open" | "full" | "ready" | "cancelled" | "in_game" | "completed";
@@ -166,6 +167,7 @@ function refundAndCancel(tx: Transaction, room: Room, now: number): PostRoomActi
 /** Apply the follow-up economy write on the default db. Errors are surfaced. */
 async function applyPostRoomAction(action: PostRoomAction): Promise<void> {
   if (action.kind === "lockStakes") {
+    const lockedAmount = Math.round(action.challengePoints * (1 + CHALLENGE_BONUS_RATE));
     await db.runTransaction(async (tx) => {
       const snaps = await Promise.all(action.players.map((p) => tx.get(stateRef(p.uid))));
       const states = snaps.map((s, i) => ({
@@ -175,22 +177,22 @@ async function applyPostRoomAction(action: PostRoomAction): Promise<void> {
         locked: (s.data()?.lockedPoints as number) ?? 0,
       }));
       for (const s of states) {
-        if (s.points < action.challengePoints) {
+        if (s.points < lockedAmount) {
           throw new HttpsError("failed-precondition", `${s.name} no longer has enough points for this challenge.`);
         }
       }
       for (const s of states) {
         tx.set(
           stateRef(s.uid),
-          { points: s.points - action.challengePoints, lockedPoints: s.locked + action.challengePoints },
+          { points: s.points - lockedAmount, lockedPoints: s.locked + lockedAmount },
           { merge: true }
         );
         writeTxn(tx, {
           userId: s.uid,
           type: "challenge_points_locked",
-          amount: action.challengePoints,
+          amount: lockedAmount,
           roomCode: action.roomCode,
-          description: `Locked ${action.challengePoints} for Tongits room ${action.roomCode}`,
+          description: `Locked ${lockedAmount} for Tongits room ${action.roomCode}`,
           now: action.now,
         });
       }
@@ -200,13 +202,14 @@ async function applyPostRoomAction(action: PostRoomAction): Promise<void> {
   // refund
   const { players, challengePoints, roomCode, returnStakes, hasJackpot, now } = action;
   if (!returnStakes && !hasJackpot) return;
+  const lockedAmount = Math.round(challengePoints * (1 + CHALLENGE_BONUS_RATE));
   await db.runTransaction(async (tx) => {
     const snaps = await Promise.all(players.map((p) => tx.get(stateRef(p.uid))));
     snaps.forEach((s, i) => {
       const p = players[i];
       const points = (s.data()?.points as number) ?? 0;
       const lp = (s.data()?.lockedPoints as number) ?? 0;
-      const stakeRefund = returnStakes ? Math.min(lp, challengePoints) : 0;
+      const stakeRefund = returnStakes ? Math.min(lp, lockedAmount) : 0;
       const anteRefund = p.jackpotContributed ?? 0;
       const refund = stakeRefund + anteRefund;
       if (refund <= 0 && stakeRefund <= 0) return;
@@ -253,7 +256,8 @@ export const createTongitsRoom = onCall({ region: GAME_REGION }, async (request)
 
   const stateSnap = await stateRef(uid).get();
   const points = (stateSnap.data()?.points as number) ?? 0;
-  if (points < challengePoints) {
+  const requiredLock = Math.round(challengePoints * (1 + CHALLENGE_BONUS_RATE));
+  if (points < requiredLock) {
     throw new HttpsError("failed-precondition", "You don't have enough Game Points for this challenge.");
   }
 
@@ -317,7 +321,8 @@ export const joinTongitsRoom = onCall({ region: GAME_REGION }, async (request) =
     if (room.players[uid]) throw new HttpsError("failed-precondition", "You're already in this room.");
     const count = Object.keys(room.players).length;
     if (count >= MAX_PLAYERS) throw new HttpsError("failed-precondition", "This room is full.");
-    if (points < room.challengePoints) {
+    const requiredLock = Math.round(room.challengePoints * (1 + CHALLENGE_BONUS_RATE));
+    if (points < requiredLock) {
       throw new HttpsError("failed-precondition", "You don't have enough Game Points to join this room.");
     }
 

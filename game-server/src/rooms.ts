@@ -4,6 +4,7 @@ import {
   sapaw as trySapaw,
   looseCardValue,
   resolveShowdown,
+  resolveFightShowdown,
   autoDiscardCard,
   type Card,
 } from "./engine.js";
@@ -41,7 +42,7 @@ function settleGame(
   room: LiveRoom,
   resultType: ResultType,
   winnerUid: string,
-  opts: { secret: boolean; fightResponses?: Record<string, FightResponse> }
+  opts: { secret: boolean; fightResponses?: Record<string, FightResponse>; callerUid?: string }
 ): SettleInput {
   const now = Date.now();
   const seats = room.gs.seats;
@@ -77,6 +78,7 @@ function settleGame(
     secret: opts.secret,
     matchDurationSeconds: Math.round((now - (room.gs.startedAt ?? now)) / 1000),
     fightResponses: opts.fightResponses,
+    callerUid: opts.callerUid,
   };
 }
 
@@ -240,7 +242,7 @@ export function doCall(room: LiveRoom, uid: string): ActionResult {
   const { gs } = room;
   if (gs.status !== "in_game") throw new Error("Game isn't running.");
   if (gs.turnUid !== uid) throw new Error("It's not your turn.");
-  if (gs.phase !== "discard") throw new Error("You must act now.");
+  if (gs.phase !== "draw") throw new Error("You must draw now.");
   if ((gs.melds[uid]?.length ?? 0) === 0)
     throw new Error("You need at least one exposed meld to call.");
   if (gs.cantFight[uid])
@@ -253,11 +255,11 @@ export function doCall(room: LiveRoom, uid: string): ActionResult {
   }
   const allResolved = gs.seats.every((s) => responses[s.uid] !== undefined);
   if (allResolved) {
-    const settle = resolveFight(room, uid, responses);
+    const settle = resolveFight(room, uid, responses, []);
     return { ok: true, settle };
   }
   gs.phase = "fight";
-  gs.fightState = { callerUid: uid, responses, deadline: Date.now() + 10_000 };
+  gs.fightState = { callerUid: uid, responses, deadline: Date.now() + 10_000, acceptOrder: [] };
   gs.lastAction = "fight_called";
   refreshCounts(room);
   return { ok: true };
@@ -266,7 +268,8 @@ export function doCall(room: LiveRoom, uid: string): ActionResult {
 function resolveFight(
   room: LiveRoom,
   callerUid: string,
-  responses: Record<string, FightResponse>
+  responses: Record<string, FightResponse>,
+  acceptOrder: string[] = []
 ): SettleInput {
   const fighters = room.gs.seats.filter((s) => responses[s.uid] === "fight");
   let winner: string;
@@ -276,9 +279,9 @@ function resolveFight(
     const entries = fighters.map((s) => ({
       uid: s.uid, seat: s.seat, value: looseCardValue(room.hands[s.uid]),
     }));
-    winner = resolveShowdown(entries, callerUid);
+    winner = resolveFightShowdown(entries, callerUid, acceptOrder);
   }
-  return settleGame(room, "lowest_points_win", winner, { secret: false, fightResponses: responses });
+  return settleGame(room, "lowest_points_win", winner, { secret: false, fightResponses: responses, callerUid });
 }
 
 export function doFightRespond(room: LiveRoom, uid: string, response: "fight" | "fold"): ActionResult {
@@ -290,9 +293,12 @@ export function doFightRespond(room: LiveRoom, uid: string, response: "fight" | 
   if (gs.fightState.responses[uid] !== undefined) throw new Error("You already responded.");
 
   gs.fightState.responses[uid] = response;
+  if (response === "fight") {
+    gs.fightState.acceptOrder = [...(gs.fightState.acceptOrder ?? []), uid];
+  }
   const allResolved = gs.seats.every((s) => gs.fightState!.responses[s.uid] !== undefined);
   if (allResolved) {
-    const settle = resolveFight(room, gs.fightState.callerUid, gs.fightState.responses);
+    const settle = resolveFight(room, gs.fightState.callerUid, gs.fightState.responses, gs.fightState.acceptOrder ?? []);
     return { ok: true, settle };
   }
   gs.lastAction = "fight_responded";
@@ -312,7 +318,7 @@ export function doEnforceTimeout(room: LiveRoom, uid: string): ActionResult {
     for (const s of gs.seats) {
       if (gs.fightState.responses[s.uid] === undefined) gs.fightState.responses[s.uid] = "fold";
     }
-    const settle = resolveFight(room, gs.fightState.callerUid, gs.fightState.responses);
+    const settle = resolveFight(room, gs.fightState.callerUid, gs.fightState.responses, gs.fightState.acceptOrder ?? []);
     return { ok: true, settle };
   }
 

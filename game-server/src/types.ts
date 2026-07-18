@@ -27,6 +27,7 @@ export type GameState = {
     callerUid: string;
     responses: Record<string, "fight" | "fold" | "burned">;
     deadline: number;
+    acceptOrder: string[];
   };
 };
 
@@ -88,4 +89,5 @@ export type SettleInput = {
   secret: boolean;
   matchDurationSeconds: number;
   fightResponses?: Record<string, FightResponse>;
+  callerUid?: string;
 };

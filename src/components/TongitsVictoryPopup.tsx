@@ -269,7 +269,7 @@ function ShowdownOverlay({
                     marginTop: "0.2cqw",
                   }}
                 >
-                  {didFold ? (fightResp === "burned" ? "NO MELDS" : "SAFE") : "POINTS"}
+                  {didFold ? (fightResp === "burned" ? "BURNED" : "FOLDED") : "POINTS"}
                 </div>
               </div>
             </div>
@@ -374,12 +374,39 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
   }
 
   const C = room.challengePoints;
+  const BONUS_RATE = 0.50;
+  const challengePayment = Math.round(C * (1 + BONUS_RATE));
   const winner = seats.find((s) => s.uid === r.winnerUserId);
   const losers = seats.filter((s) => s.uid !== r.winnerUserId);
   const iAmWinner = user?.uid === r.winnerUserId;
   const fr = r.fightResponses;
-  const fighterCount = fr ? seats.filter((s) => fr[s.uid] === "fight").length : seats.length;
-  const winnerPayout = C * fighterCount + r.jackpotWon;
+  const hasFight = r.resultType === "lowest_points_win" && fr;
+  const callerUid = hasFight ? (r.callerUid ?? r.winnerUserId) : undefined;
+
+  // Compute net changes per player (mirrors server logic)
+  const netChanges: Record<string, number> = {};
+  if (hasFight && callerUid) {
+    const fighters = seats.filter((s) => fr[s.uid] === "fight");
+    const foldersAndBurned = seats.filter((s) => fr[s.uid] === "fold" || fr[s.uid] === "burned");
+    const losingFighters = fighters.filter((s) => s.uid !== r.winnerUserId);
+    for (const s of seats) {
+      if (s.uid === r.winnerUserId) {
+        netChanges[s.uid] = challengePayment * losingFighters.length;
+        if (s.uid === callerUid) netChanges[s.uid] += C * foldersAndBurned.length;
+      } else if (fr[s.uid] === "fight") {
+        netChanges[s.uid] = -challengePayment;
+        if (s.uid === callerUid) netChanges[s.uid] += C * foldersAndBurned.length;
+      } else {
+        netChanges[s.uid] = -C;
+      }
+    }
+  } else {
+    for (const s of seats) {
+      netChanges[s.uid] = s.uid === r.winnerUserId ? C * (seats.length - 1) : -C;
+    }
+  }
+
+  const winnerPayout = netChanges[r.winnerUserId] + r.jackpotWon;
 
   async function onContinue() {
     setBusy("continue");
@@ -506,12 +533,14 @@ export function TongitsVictoryPopup({ code, room }: { code: string; room: Tongit
                 <span style={{
                   flexShrink: 0,
                   fontWeight: 900,
-                  fontSize: resp === "fold" || resp === "burned" ? "1.3cqw" : "1.5cqw",
-                  color: resp === "fold" ? "#777" : resp === "burned" ? "#d35400" : "#8f1d2a",
+                  fontSize: "1.5cqw",
+                  color: (netChanges[loser.uid] ?? 0) < 0 ? "#8f1d2a" : "#777",
                   letterSpacing: "0.04em",
                   paddingLeft: "0.5cqw",
                 }}>
-                  {resp === "fold" ? "FOLDED" : resp === "burned" ? "BURNED" : `−${C} GP`}
+                  {resp === "burned" && <span style={{ color: "#d35400", fontSize: "1cqw", marginRight: "0.3cqw" }}>BURNED </span>}
+                  {resp === "fold" && <span style={{ color: "#777", fontSize: "1cqw", marginRight: "0.3cqw" }}>FOLDED </span>}
+                  −{Math.abs(netChanges[loser.uid] ?? C)} GP
                 </span>
               </Slot>
             </div>

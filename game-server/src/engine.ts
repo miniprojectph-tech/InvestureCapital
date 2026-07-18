@@ -183,14 +183,39 @@ export function looseCardValue(hand: Card[]): number {
 export type ShowdownEntry = { uid: string; seat: number; value: number };
 
 /**
- * Lowest hand value wins. Ties go to `preferUid` when they're among the lowest
- * (the caller wins ties); otherwise the lowest seat number breaks the tie.
+ * Lowest hand value wins. Ties broken by lowest seat number.
+ * Used for draw wins (stock exhausted) — no caller preference.
  */
 export function resolveShowdown(entries: ShowdownEntry[], preferUid?: string): string {
   const min = Math.min(...entries.map((e) => e.value));
   const lowest = entries.filter((e) => e.value === min);
   if (preferUid && lowest.some((e) => e.uid === preferUid)) return preferUid;
   return lowest.sort((a, b) => a.seat - b.seat)[0].uid;
+}
+
+/**
+ * Fight showdown: lowest value wins. Tie-breaking reversed from draw:
+ * 1. Challengers beat the caller
+ * 2. Among tied challengers, first to accept wins (acceptOrder)
+ * 3. Fallback: lowest seat
+ */
+export function resolveFightShowdown(
+  entries: ShowdownEntry[],
+  callerUid: string,
+  acceptOrder: string[]
+): string {
+  const min = Math.min(...entries.map((e) => e.value));
+  const lowest = entries.filter((e) => e.value === min);
+  if (lowest.length === 1) return lowest[0].uid;
+  const challengers = lowest.filter((e) => e.uid !== callerUid);
+  if (challengers.length > 0) {
+    if (challengers.length === 1) return challengers[0].uid;
+    for (const uid of acceptOrder) {
+      if (challengers.some((e) => e.uid === uid)) return uid;
+    }
+    return challengers.sort((a, b) => a.seat - b.seat)[0].uid;
+  }
+  return callerUid;
 }
 
 /** Pick a card to auto-discard on timeout: the highest-scoring loose card. */

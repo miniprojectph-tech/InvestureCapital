@@ -115,7 +115,7 @@ export function TongitsImageLobby() {
   async function onCreate() {
     setError(null);
     if (demoMode) return setError("Connect an account to play.");
-    if (points < challenge) return setError("Not enough Game Points.");
+    if (points < Math.round(challenge * 1.5)) return setError("Not enough Game Points.");
     setBusy("create");
     try {
       const { code } = await createRoom(challenge, ante, isPrivate);
