@@ -12,6 +12,7 @@ export type GameState = {
   discard: Card[];
   melds: Record<string, Card[][]>;
   handCounts: Record<string, number>;
+  looseValues: Record<string, number>;
   hasExposed: Record<string, boolean>;
   turnStartExposed: boolean;
   seats: Seat[];

@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { seatedPlayers, type TongitsRoom } from "@/lib/tongits";
-import { postGameRespond, resolvePostGame, startGame, cardLabel, isRedSuit, type Card } from "@/lib/tongits-game";
+import { postGameRespond, resolvePostGame, startGame, cardLabel, isRedSuit, findBestMelds, type Card } from "@/lib/tongits-game";
 import { useTongitsAssets } from "@/lib/tongitsAssets";
 
 const RESULT_LABEL: Record<string, string> = {
@@ -221,9 +221,26 @@ function ShowdownOverlay({
                   }}>
                     {fightResp === "burned" ? "BURNED" : "FOLDED"}
                   </span>
-                ) : hand.map((c) => (
-                  <ShowdownCard key={c} card={c} />
-                ))}
+                ) : (() => {
+                  const { melds, loose } = findBestMelds(hand);
+                  return (
+                    <>
+                      {melds.map((meld, mi) => (
+                        <div key={`m${mi}`} style={{
+                          display: "flex", gap: "0.15cqw",
+                          background: "rgba(75,212,122,0.12)",
+                          border: "0.1cqw solid rgba(75,212,122,0.35)",
+                          borderRadius: "0.4cqw",
+                          padding: "0.2cqw",
+                          marginRight: "0.5cqw",
+                        }}>
+                          {meld.map((c) => <ShowdownCard key={c} card={c} />)}
+                        </div>
+                      ))}
+                      {loose.map((c) => <ShowdownCard key={c} card={c} />)}
+                    </>
+                  );
+                })()}
               </div>
 
               <div

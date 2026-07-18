@@ -16,6 +16,7 @@ import {
   enforceTimeout as cfEnforceTimeout,
   cardLabel,
   isRedSuit,
+  looseCardValue,
   type Card as TCard,
 } from "@/lib/tongits-game";
 import { useTongitsWs } from "@/lib/tongits-ws";
@@ -937,6 +938,20 @@ export function TongitsGameTableArt({ code, room, spectating }: { code: string; 
               <span style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.9cqw", fontFamily: "monospace" }}>
                 {gs.handCounts[opp1.uid] ?? 0} cards
               </span>
+              <span style={{
+                marginLeft: "0.5cqw",
+                background: "rgba(245,198,107,0.2)",
+                border: "0.1cqw solid rgba(245,198,107,0.5)",
+                borderRadius: "0.4cqw",
+                padding: "0.1cqw 0.5cqw",
+                color: "#F5C66B",
+                fontWeight: 800,
+                fontSize: "0.85cqw",
+                fontFamily: "monospace",
+                whiteSpace: "nowrap",
+              }}>
+                PT {gs.looseValues?.[opp1.uid] ?? "—"}
+              </span>
             </Zone>
             <Zone box={S.opp1MeldA}>
               <MeldRow
@@ -987,6 +1002,20 @@ export function TongitsGameTableArt({ code, room, spectating }: { code: string; 
             <Zone box={S.opp2Cards}>
               <span style={{ color: "rgba(255,255,255,0.7)", fontSize: "0.9cqw", fontFamily: "monospace" }}>
                 {gs.handCounts[opp2.uid] ?? 0} cards
+              </span>
+              <span style={{
+                marginLeft: "0.5cqw",
+                background: "rgba(245,198,107,0.2)",
+                border: "0.1cqw solid rgba(245,198,107,0.5)",
+                borderRadius: "0.4cqw",
+                padding: "0.1cqw 0.5cqw",
+                color: "#F5C66B",
+                fontWeight: 800,
+                fontSize: "0.85cqw",
+                fontFamily: "monospace",
+                whiteSpace: "nowrap",
+              }}>
+                PT {gs.looseValues?.[opp2.uid] ?? "—"}
               </span>
             </Zone>
             <Zone box={S.opp2MeldA}>
@@ -1184,6 +1213,20 @@ export function TongitsGameTableArt({ code, room, spectating }: { code: string; 
         </Zone>
         <Zone box={S.youName}>
           <span style={{ color: "#fff", fontWeight: 700, fontSize: "1.15cqw" }}>{me?.name ?? "You"}</span>
+          <span style={{
+            marginLeft: "0.5cqw",
+            background: "rgba(245,198,107,0.2)",
+            border: "0.1cqw solid rgba(245,198,107,0.5)",
+            borderRadius: "0.4cqw",
+            padding: "0.1cqw 0.5cqw",
+            color: "#F5C66B",
+            fontWeight: 800,
+            fontSize: "0.85cqw",
+            fontFamily: "monospace",
+            whiteSpace: "nowrap",
+          }}>
+            PT {uid ? (gs.looseValues?.[uid] ?? looseCardValue(myHand)) : "—"}
+          </span>
         </Zone>
 
         {/* your hand — auto-grouped meld clusters, each sitting on a tray */}

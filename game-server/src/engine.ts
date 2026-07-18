@@ -98,9 +98,84 @@ export function sapaw(meld: Card[], card: Card): Card[] | null {
   return null;
 }
 
-/** Sum of unmelded card values in a hand. */
+/** Sum of ALL card values in a hand (raw total, no meld exclusion). */
 export function handValue(hand: Card[]): number {
   return hand.reduce((s, c) => s + scoreValue(c), 0);
+}
+
+/**
+ * Find the optimal set of non-overlapping melds in a hand that maximizes
+ * the total melded value (= minimizes loose card value). Returns the meld
+ * groups and the remaining loose cards.
+ */
+export function findBestMelds(hand: Card[]): { melds: Card[][]; loose: Card[] } {
+  if (hand.length === 0) return { melds: [], loose: [] };
+
+  const candidates: Card[][] = [];
+
+  const byRank: Record<string, Card[]> = {};
+  for (const c of hand) (byRank[c[0]] ??= []).push(c);
+  for (const cards of Object.values(byRank)) {
+    if (cards.length >= 3) {
+      for (let i = 0; i < cards.length; i++)
+        for (let j = i + 1; j < cards.length; j++)
+          for (let k = j + 1; k < cards.length; k++)
+            candidates.push([cards[i], cards[j], cards[k]]);
+      if (cards.length === 4) candidates.push([...cards]);
+    }
+  }
+
+  const bySuit: Record<string, Card[]> = {};
+  for (const c of hand) (bySuit[c[1]] ??= []).push(c);
+  for (const cards of Object.values(bySuit)) {
+    if (cards.length < 3) continue;
+    const sorted = [...cards].sort((a, b) => rankIndex(a) - rankIndex(b));
+    let i = 0;
+    while (i < sorted.length) {
+      let j = i + 1;
+      while (j < sorted.length && rankIndex(sorted[j]) === rankIndex(sorted[j - 1]) + 1) j++;
+      const seqLen = j - i;
+      if (seqLen >= 3) {
+        for (let len = 3; len <= seqLen; len++)
+          for (let s = i; s + len <= j; s++)
+            candidates.push(sorted.slice(s, s + len));
+      }
+      i = j;
+    }
+  }
+
+  if (candidates.length === 0) return { melds: [], loose: [...hand] };
+
+  let bestMelds: Card[][] = [];
+  let bestMeldedValue = 0;
+
+  function backtrack(idx: number, used: Set<string>, cur: Card[][], curVal: number) {
+    if (curVal > bestMeldedValue) {
+      bestMeldedValue = curVal;
+      bestMelds = cur.map((m) => [...m]);
+    }
+    for (let i = idx; i < candidates.length; i++) {
+      const m = candidates[i];
+      if (m.some((c) => used.has(c))) continue;
+      for (const c of m) used.add(c);
+      cur.push(m);
+      backtrack(i + 1, used, cur, curVal + m.reduce((s, c) => s + scoreValue(c), 0));
+      cur.pop();
+      for (const c of m) used.delete(c);
+    }
+  }
+
+  backtrack(0, new Set(), [], 0);
+
+  const meldedCards = new Set(bestMelds.flat());
+  const loose = hand.filter((c) => !meldedCards.has(c));
+  return { melds: bestMelds, loose };
+}
+
+/** Sum of only loose (non-meldable) cards in a hand. */
+export function looseCardValue(hand: Card[]): number {
+  const { loose } = findBestMelds(hand);
+  return loose.reduce((s, c) => s + scoreValue(c), 0);
 }
 
 // ===== showdown resolution =====

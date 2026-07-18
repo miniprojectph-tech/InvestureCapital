@@ -2,7 +2,7 @@ import {
   isValidMeld,
   handContainsAll,
   sapaw as trySapaw,
-  handValue,
+  looseCardValue,
   resolveShowdown,
   autoDiscardCard,
   type Card,
@@ -15,6 +15,7 @@ const TURN_MS = 25_000;
 function refreshCounts(room: LiveRoom) {
   for (const s of room.gs.seats) {
     room.gs.handCounts[s.uid] = room.hands[s.uid].length;
+    room.gs.looseValues[s.uid] = looseCardValue(room.hands[s.uid]);
   }
   room.gs.stockCount = room.deck.length;
 }
@@ -51,7 +52,7 @@ function settleGame(
     values[s.uid] =
       s.uid === winnerUid && resultType === "tongits_win"
         ? 0
-        : handValue(room.hands[s.uid]);
+        : looseCardValue(room.hands[s.uid]);
   }
 
   const prevWinnerUid = room.room.lastWinnerUid;
@@ -93,9 +94,10 @@ export function doDraw(room: LiveRoom, uid: string): ActionResult {
     const entries = gs.seats.map((s) => ({
       uid: s.uid,
       seat: s.seat,
-      value: handValue(hands[s.uid]),
+      value: looseCardValue(hands[s.uid]),
     }));
-    const winner = resolveShowdown(entries);
+    const eligible = entries.filter((e) => gs.hasExposed[e.uid]);
+    const winner = resolveShowdown(eligible.length > 0 ? eligible : entries);
     const settle = settleGame(room, "draw_win", winner, { secret: false });
     return { ok: true, settle };
   }
@@ -221,8 +223,9 @@ export function doDiscard(
   if (settle) return { ok: true, settle };
 
   if (room.deck.length === 0) {
-    const entries = gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(hands[s.uid]) }));
-    const winner = resolveShowdown(entries);
+    const entries = gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: looseCardValue(hands[s.uid]) }));
+    const eligible = entries.filter((e) => gs.hasExposed[e.uid]);
+    const winner = resolveShowdown(eligible.length > 0 ? eligible : entries);
     const drawSettle = settleGame(room, "draw_win", winner, { secret: false });
     return { ok: true, settle: drawSettle };
   }
@@ -271,7 +274,7 @@ function resolveFight(
     winner = callerUid;
   } else {
     const entries = fighters.map((s) => ({
-      uid: s.uid, seat: s.seat, value: handValue(room.hands[s.uid]),
+      uid: s.uid, seat: s.seat, value: looseCardValue(room.hands[s.uid]),
     }));
     winner = resolveShowdown(entries, callerUid);
   }
@@ -324,9 +327,10 @@ export function doEnforceTimeout(room: LiveRoom, uid: string): ActionResult {
       const entries = gs.seats.map((s) => ({
         uid: s.uid,
         seat: s.seat,
-        value: handValue(hands[s.uid]),
+        value: looseCardValue(hands[s.uid]),
       }));
-      const winner = resolveShowdown(entries);
+      const eligible = entries.filter((e) => gs.hasExposed[e.uid]);
+      const winner = resolveShowdown(eligible.length > 0 ? eligible : entries);
       const settle = settleGame(room, "draw_win", winner, { secret: false });
       return { ok: true, settle };
     }
@@ -344,8 +348,9 @@ export function doEnforceTimeout(room: LiveRoom, uid: string): ActionResult {
   }
 
   if (deck.length === 0) {
-    const entries = gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(hands[s.uid]) }));
-    const winner = resolveShowdown(entries);
+    const entries = gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: looseCardValue(hands[s.uid]) }));
+    const eligible = entries.filter((e) => gs.hasExposed[e.uid]);
+    const winner = resolveShowdown(eligible.length > 0 ? eligible : entries);
     const settle = settleGame(room, "draw_win", winner, { secret: false });
     return { ok: true, settle };
   }

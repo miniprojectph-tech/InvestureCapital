@@ -19,6 +19,7 @@ export type TongitsGameState = {
   discard: Card[];
   melds: Record<string, Card[][]>;
   handCounts: Record<string, number>;
+  looseValues?: Record<string, number>;
   hasExposed: Record<string, boolean>;
   seats: GameSeat[];
   turnDeadline: number;
@@ -59,6 +60,77 @@ export function cardScore(c: Card): number {
   if (r === "A") return 1;
   if (r === "T" || r === "J" || r === "Q" || r === "K") return 10;
   return Number(r);
+}
+
+const RANKS = "A23456789TJQK";
+const rIdx = (c: Card) => RANKS.indexOf(c[0]);
+
+function isSetC(cards: Card[]) {
+  if (cards.length < 3 || cards.length > 4) return false;
+  if (!cards.every((c) => c[0] === cards[0][0])) return false;
+  return new Set(cards.map((c) => c[1])).size === cards.length;
+}
+function isRunC(cards: Card[]) {
+  if (cards.length < 3) return false;
+  if (!cards.every((c) => c[1] === cards[0][1])) return false;
+  const idxs = cards.map(rIdx).sort((a, b) => a - b);
+  for (let i = 1; i < idxs.length; i++) if (idxs[i] !== idxs[i - 1] + 1) return false;
+  return true;
+}
+
+export function findBestMelds(hand: Card[]): { melds: Card[][]; loose: Card[] } {
+  if (hand.length === 0) return { melds: [], loose: [] };
+  const candidates: Card[][] = [];
+  const byRank: Record<string, Card[]> = {};
+  for (const c of hand) (byRank[c[0]] ??= []).push(c);
+  for (const cards of Object.values(byRank)) {
+    if (cards.length >= 3) {
+      for (let i = 0; i < cards.length; i++)
+        for (let j = i + 1; j < cards.length; j++)
+          for (let k = j + 1; k < cards.length; k++)
+            candidates.push([cards[i], cards[j], cards[k]]);
+      if (cards.length === 4) candidates.push([...cards]);
+    }
+  }
+  const bySuit: Record<string, Card[]> = {};
+  for (const c of hand) (bySuit[c[1]] ??= []).push(c);
+  for (const cards of Object.values(bySuit)) {
+    if (cards.length < 3) continue;
+    const sorted = [...cards].sort((a, b) => rIdx(a) - rIdx(b));
+    let i = 0;
+    while (i < sorted.length) {
+      let j = i + 1;
+      while (j < sorted.length && rIdx(sorted[j]) === rIdx(sorted[j - 1]) + 1) j++;
+      if (j - i >= 3) {
+        for (let len = 3; len <= j - i; len++)
+          for (let s = i; s + len <= j; s++)
+            candidates.push(sorted.slice(s, s + len));
+      }
+      i = j;
+    }
+  }
+  if (candidates.length === 0) return { melds: [], loose: [...hand] };
+  let bestMelds: Card[][] = [];
+  let bestVal = 0;
+  function bt(idx: number, used: Set<string>, cur: Card[][], curVal: number) {
+    if (curVal > bestVal) { bestVal = curVal; bestMelds = cur.map((m) => [...m]); }
+    for (let i = idx; i < candidates.length; i++) {
+      const m = candidates[i];
+      if (m.some((c) => used.has(c))) continue;
+      for (const c of m) used.add(c);
+      cur.push(m);
+      bt(i + 1, used, cur, curVal + m.reduce((s, c) => s + cardScore(c), 0));
+      cur.pop();
+      for (const c of m) used.delete(c);
+    }
+  }
+  bt(0, new Set(), [], 0);
+  const meldedCards = new Set(bestMelds.flat());
+  return { melds: bestMelds, loose: hand.filter((c) => !meldedCards.has(c)) };
+}
+
+export function looseCardValue(hand: Card[]): number {
+  return findBestMelds(hand).loose.reduce((s, c) => s + cardScore(c), 0);
 }
 
 // ===== callables =====

@@ -9,7 +9,7 @@ import {
   isValidMeld,
   handContainsAll,
   sapaw,
-  handValue,
+  looseCardValue,
   resolveShowdown,
   autoDiscardCard,
   type Card,
@@ -40,6 +40,7 @@ type GamePublic = {
   discard: Card[];
   melds: Record<string, Card[][]>;
   handCounts: Record<string, number>;
+  looseValues: Record<string, number>;
   hasExposed: Record<string, boolean>;
   turnStartExposed: boolean; // did the current player already have a meld at turn start?
   seats: Seat[];
@@ -152,8 +153,13 @@ function requireTurn(ctx: Ctx, uid: string, phase?: "draw" | "discard") {
 
 function refreshCounts(ctx: Ctx) {
   const counts: Record<string, number> = {};
-  for (const s of ctx.gs.seats) counts[s.uid] = ctx.hands[s.uid].length;
+  const lv: Record<string, number> = {};
+  for (const s of ctx.gs.seats) {
+    counts[s.uid] = ctx.hands[s.uid].length;
+    lv[s.uid] = looseCardValue(ctx.hands[s.uid]);
+  }
   ctx.gs.handCounts = counts;
+  ctx.gs.looseValues = lv;
   ctx.gs.stockCount = ctx.deck.length;
 }
 
@@ -232,7 +238,7 @@ function settleGameStateInTx(
 
   const values: Record<string, number> = {};
   for (const s of seats) {
-    values[s.uid] = s.uid === winnerUid && resultType === "tongits_win" ? 0 : handValue(ctx.hands[s.uid]);
+    values[s.uid] = s.uid === winnerUid && resultType === "tongits_win" ? 0 : looseCardValue(ctx.hands[s.uid]);
   }
   // Streak-based jackpot: same winner two hands in a row claims the pot.
   const prevWinnerUid = (ctx.room.lastWinnerUid as string | null | undefined) ?? null;
@@ -544,6 +550,7 @@ export const startTongitsGame = onCall({ region: GAME_REGION }, async (request) 
         discard: [],
         melds: Object.fromEntries(seats.map((s) => [s.uid, [] as Card[][]])),
         handCounts: Object.fromEntries(seats.map((s) => [s.uid, handMap[s.uid].length])),
+        looseValues: Object.fromEntries(seats.map((s) => [s.uid, looseCardValue(handMap[s.uid])])),
         hasExposed: Object.fromEntries(seats.map((s) => [s.uid, false])),
         turnStartExposed: false,
         seats,
@@ -608,9 +615,11 @@ export const tongitsDraw = onCall({ region: GAME_REGION, minInstances: 1 }, asyn
     const ctx = await loadCtx(tx, code);
     requireTurn(ctx, uid, "draw");
     if (ctx.deck.length === 0) {
-      // Stock exhausted → showdown, lowest hand wins (draw).
-      const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
-      const winner = resolveShowdown(entries);
+      // Stock exhausted → showdown, lowest loose-card value wins (draw).
+      // Players with no exposed melds are burned and can't win.
+      const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: looseCardValue(ctx.hands[s.uid]) }));
+      const eligible = entries.filter((e) => ctx.gs.hasExposed[e.uid]);
+      const winner = resolveShowdown(eligible.length > 0 ? eligible : entries);
       eco = settleGameStateInTx(tx, code, ctx, "draw_win", winner, { secret: false });
       return;
     }
@@ -729,8 +738,9 @@ export const tongitsDiscard = onCall({ region: GAME_REGION, minInstances: 1 }, a
     eco = checkTongits(tx, code, ctx, uid);
     if (eco) return;
     if (ctx.deck.length === 0) {
-      const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
-      const winner = resolveShowdown(entries);
+      const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: looseCardValue(ctx.hands[s.uid]) }));
+      const eligible = entries.filter((e) => ctx.gs.hasExposed[e.uid]);
+      const winner = resolveShowdown(eligible.length > 0 ? eligible : entries);
       eco = settleGameStateInTx(tx, code, ctx, "draw_win", winner, { secret: false });
       return;
     }
@@ -789,7 +799,7 @@ function resolveFightInTx(
   if (fighters.length <= 1) {
     winner = callerUid;
   } else {
-    const entries = fighters.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
+    const entries = fighters.map((s) => ({ uid: s.uid, seat: s.seat, value: looseCardValue(ctx.hands[s.uid]) }));
     winner = resolveShowdown(entries, callerUid);
   }
   return settleGameStateInTx(tx, code, ctx, "lowest_points_win", winner, { secret: false, fightResponses: responses });
@@ -853,8 +863,9 @@ export const enforceTongitsTimeout = onCall({ region: GAME_REGION }, async (requ
     // Auto-play: draw from stock if needed, then discard the worst card.
     if (ctx.gs.phase === "draw") {
       if (ctx.deck.length === 0) {
-        const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
-        const winner = resolveShowdown(entries);
+        const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: looseCardValue(ctx.hands[s.uid]) }));
+        const eligible = entries.filter((e) => ctx.gs.hasExposed[e.uid]);
+        const winner = resolveShowdown(eligible.length > 0 ? eligible : entries);
         eco = settleGameStateInTx(tx, code, ctx, "draw_win", winner, { secret: false });
         return { ok: true, ended: true };
       }
@@ -864,14 +875,14 @@ export const enforceTongitsTimeout = onCall({ region: GAME_REGION }, async (requ
     ctx.hands[cur].splice(ctx.hands[cur].indexOf(drop), 1);
     ctx.gs.discard.push(drop);
     if (ctx.hands[cur].length === 0) {
-      // Auto-play emptied the hand — count it as a Tongits for that player.
       const secret = !ctx.gs.turnStartExposed;
       eco = settleGameStateInTx(tx, code, ctx, "tongits_win", cur, { secret });
       return { ok: true, ended: true };
     }
     if (ctx.deck.length === 0) {
-      const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: handValue(ctx.hands[s.uid]) }));
-      const winner = resolveShowdown(entries);
+      const entries = ctx.gs.seats.map((s) => ({ uid: s.uid, seat: s.seat, value: looseCardValue(ctx.hands[s.uid]) }));
+      const eligible = entries.filter((e) => ctx.gs.hasExposed[e.uid]);
+      const winner = resolveShowdown(eligible.length > 0 ? eligible : entries);
       eco = settleGameStateInTx(tx, code, ctx, "draw_win", winner, { secret: false });
       return { ok: true, ended: true };
     }
