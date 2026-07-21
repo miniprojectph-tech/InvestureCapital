@@ -152,7 +152,7 @@ const AMBIENT_BUBBLES = [
 export default function PlayPage() {
   const router = useRouter();
   const { user, demoMode } = useAuth();
-  const { state, loading } = useGameState();
+  const { state, loading, patchState } = useGameState();
   const { config } = useGameConfig();
   const { settings: gamesSettings } = useGamesSettings();
   const { fish } = useFish();
@@ -435,10 +435,11 @@ export default function PlayPage() {
     let res: CastResult;
     try {
       const castPromise = castLine(power);
-      castPromise.catch(() => {}); // avoid unhandled-rejection warning; re-thrown on await
-      await wait(650); // cast arc
-      setPhase("waiting"); // lure settles, suspense
+      castPromise.catch(() => {});
+      await wait(650);
+      setPhase("waiting");
       res = await castPromise;
+      patchState({ energy: res.energy, points: res.points, streak: res.streak });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Cast failed";
       setError(msg.toLowerCase().includes("sign in") ? "Session expired — please refresh the page." : msg);
@@ -750,7 +751,13 @@ export default function PlayPage() {
     setBusyQuest(questId);
     setError(null);
     try {
-      await claimQuest(questId);
+      const { points: p } = await claimQuest(questId);
+      patchState({
+        points: p,
+        quests: state?.quests
+          ? { ...state.quests, claimed: { ...state.quests.claimed, [questId]: true } }
+          : state?.quests,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Claim failed");
     } finally {
@@ -762,7 +769,8 @@ export default function PlayPage() {
     setClaimingEnergy(true);
     setError(null);
     try {
-      await claimDailyEnergy();
+      const { energy: e } = await claimDailyEnergy();
+      patchState({ energy: e, energyClaimedDay: today });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Claim failed");
     } finally {

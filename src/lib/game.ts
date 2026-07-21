@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   collection,
   collectionGroup,
@@ -420,7 +420,12 @@ export function useGameState() {
     );
     return unsub;
   }, [user, demoMode]);
-  return { state, loading };
+  const patchState = useCallback(
+    (patch: Partial<GameState>) =>
+      setState((prev) => (prev ? { ...prev, ...patch } : prev)),
+    []
+  );
+  return { state, loading, patchState };
 }
 
 // ===== Fish catalog =====
