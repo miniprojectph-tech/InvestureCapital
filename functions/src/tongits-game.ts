@@ -24,7 +24,7 @@ const TURN_MS = 25_000;
 
 const RP_TONGITS = 30;
 const RP_SHOWDOWN = 20;
-const RP_LOSS = 2;
+const RP_LOSS = -1;
 const RP_SECRET = 50;
 const CHALLENGE_BONUS_RATE = 0.50;
 
@@ -420,7 +420,7 @@ async function settleEconomy(input: SettleEcoInputs) {
         {
           points: points + winnings,
           lockedPoints: Math.max(0, locked - lockedAmount),
-          rankingPoints: rp + rankingEarned,
+          rankingPoints: Math.max(0, rp + rankingEarned),
           tongitsGames: games + 1,
           tongitsWins: wins + (isWinner ? 1 : 0),
           tongitsLosses: losses + (isWinner ? 0 : 1),
