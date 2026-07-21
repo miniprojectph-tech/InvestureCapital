@@ -55,6 +55,7 @@ type GameState = {
   dailyBudget?: number;
   dailyPointsEarned?: number;
   dailyCatches?: DailyCatch[];
+  energyClaimedDay?: string;
 };
 
 // Defaults used when settings/game is missing or partial. Keep in sync with the
@@ -205,14 +206,11 @@ export const castLine = onCall(async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
-  const [config, fish, universalCredits] = await Promise.all([
+  const [config, fish] = await Promise.all([
     loadConfig(),
     loadFish(),
-    loadUniversalDailyCredits(),
   ]);
   if (fish.length === 0) throw new HttpsError("failed-precondition", "No fish configured yet.");
-  // A game overrides the universal default only when it sets its own value (> 0).
-  const dailyEnergy = config.dailyEnergy && config.dailyEnergy > 0 ? config.dailyEnergy : universalCredits;
 
   const power = Math.max(0, Math.min(1, (request.data as { power?: number })?.power ?? 0));
   const now = Date.now();
@@ -231,7 +229,7 @@ export const castLine = onCall(async (request) => {
     const snap = await tx.get(stateRef);
     const cur = (snap.exists ? snap.data() : {}) as Partial<GameState>;
 
-    let energy = cur.energy ?? dailyEnergy;
+    let energy = cur.energy ?? 0;
     let streak = cur.streak ?? 0;
     let points = cur.points ?? 0;
     let weeklyScore = cur.weeklyScore ?? 0;
@@ -241,13 +239,12 @@ export const castLine = onCall(async (request) => {
     let dailyCatches: DailyCatch[] = cur.lastDay === today ? [...(cur.dailyCatches ?? [])] : [];
 
     if (cur.lastDay !== today) {
-      energy = dailyEnergy;
       streak = cur.lastDay === yesterday ? (cur.streak ?? 0) + 1 : 1;
       streakBonus = config.streakBonus[Math.min(streak - 1, config.streakBonus.length - 1)] ?? 0;
     }
 
     if (energy <= 0) {
-      throw new HttpsError("failed-precondition", "Out of energy — come back tomorrow!");
+      throw new HttpsError("failed-precondition", "Out of energy — claim your daily login bonus!");
     }
     energy -= 1;
 
@@ -501,31 +498,30 @@ export const fishOfTheHour = onSchedule("every 60 minutes", async () => {
   logger.info("Fish of the hour set", { fishId: pick.id });
 });
 
-// ===== Scheduled: daily energy refresh (midnight Manila) =====
-export const dailyEnergyRefresh = onSchedule(
-  { schedule: "0 0 * * *", timeZone: "Asia/Manila" },
-  async () => {
-    const [config, universalCredits] = await Promise.all([loadConfig(), loadUniversalDailyCredits()]);
-    const dailyEnergy = config.dailyEnergy && config.dailyEnergy > 0 ? config.dailyEnergy : universalCredits;
+// ===== Callable: claim daily login energy bonus =====
+export const claimDailyEnergy = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
 
-    const snap = await db.collectionGroup("game").get();
-    const statesDocs = snap.docs.filter((d) => d.id === "state");
-    if (statesDocs.length === 0) {
-      logger.info("Daily energy refresh: no players found");
-      return;
+  const [config, universalCredits] = await Promise.all([loadConfig(), loadUniversalDailyCredits()]);
+  const dailyEnergy = config.dailyEnergy && config.dailyEnergy > 0 ? config.dailyEnergy : universalCredits;
+
+  const now = Date.now();
+  const today = dayKey(now);
+  const stateRef = db.doc(`users/${uid}/game/state`);
+
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(stateRef);
+    const cur = (snap.exists ? snap.data() : {}) as Partial<GameState>;
+
+    if (cur.energyClaimedDay === today) {
+      throw new HttpsError("failed-precondition", "Already claimed today.");
     }
 
-    // Firestore batches are limited to 500 ops.
-    for (let i = 0; i < statesDocs.length; i += 500) {
-      const batch = db.batch();
-      for (const d of statesDocs.slice(i, i + 500)) {
-        batch.set(d.ref, { energy: dailyEnergy }, { merge: true });
-      }
-      await batch.commit();
-    }
-    logger.info("Daily energy refresh complete", { players: statesDocs.length, energy: dailyEnergy });
-  }
-);
+    tx.set(stateRef, { energy: dailyEnergy, energyClaimedDay: today }, { merge: true });
+    return { energy: dailyEnergy };
+  });
+});
 
 // ===== Scheduled: weekly leaderboard prizes + reset (Mondays 00:00 Manila) =====
 export const weeklyReef = onSchedule(

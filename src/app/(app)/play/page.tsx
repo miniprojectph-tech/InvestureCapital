@@ -15,6 +15,7 @@ import {
   useFishOfHour,
   castLine,
   claimQuest,
+  claimDailyEnergy,
   effectiveDailyCredits,
   type CastResult,
   type DailyCatch,
@@ -218,6 +219,7 @@ export default function PlayPage() {
     return () => clearTimeout(t);
   }, [error]);
   const [busyQuest, setBusyQuest] = useState<string | null>(null);
+  const [claimingEnergy, setClaimingEnergy] = useState(false);
   const [clock, setClock] = useState(Date.now());
 
   const meterRef = useRef(0);
@@ -362,15 +364,17 @@ export default function PlayPage() {
 
   const today = manilaDay();
   const dailyCredits = effectiveDailyCredits(config.dailyEnergy, gamesSettings.universalDailyCredits);
-  const energy = !state || state.lastDay !== today ? dailyCredits : state.energy;
+  const energy = state?.energy ?? 0;
+  const energyClaimed = state?.energyClaimedDay === today;
   const points = state?.points ?? 0;
   const activeRewards = rewards.filter((r) => r.active);
   const streak = state?.streak ?? 0;
   const questsToday =
     state?.quests?.day === today ? state.quests : { day: today, progress: {}, claimed: {} };
-  const claimable = config.quests.filter(
+  const questClaimable = config.quests.filter(
     (q) => (questsToday.progress?.[q.id] ?? 0) >= q.target && !questsToday.claimed?.[q.id]
   ).length;
+  const claimable = questClaimable + (energyClaimed ? 0 : 1);
   const totalCaught = fish.filter((f) => state?.collection?.[f.id]).length;
 
   // Ambient panel flavor: live Manila time, plus a day-stable location & weather.
@@ -754,6 +758,18 @@ export default function PlayPage() {
     }
   }
 
+  async function doClaimEnergy() {
+    setClaimingEnergy(true);
+    setError(null);
+    try {
+      await claimDailyEnergy();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Claim failed");
+    } finally {
+      setClaimingEnergy(false);
+    }
+  }
+
   function openShop() {
     setShopReward(null);
     setShopStage("list");
@@ -904,8 +920,9 @@ export default function PlayPage() {
 
                 <h3 className="text-[18px] font-semibold text-white m-0 mb-1">Out of Energy</h3>
                 <p className="text-[13px] text-white/50 m-0 mb-5">
-                  You&apos;ve used all {dailyCredits} casts for today.<br />
-                  Come back tomorrow for more!
+                  {energyClaimed
+                    ? <>You&apos;ve used all {dailyCredits} casts for today.<br />Come back tomorrow for more!</>
+                    : <>Claim your daily login bonus in Quests<br />to get {dailyCredits} casts!</>}
                 </p>
 
                 {/* Stats row */}
@@ -924,13 +941,23 @@ export default function PlayPage() {
                   </div>
                 </div>
 
-                <button
-                  onClick={() => setShowNoEnergy(false)}
-                  className="w-full py-3 rounded-xl text-[14px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98]"
-                  style={{ background: "linear-gradient(135deg, #c9a44c, #a8832a)", border: "1px solid rgba(245,198,107,0.4)" }}
-                >
-                  Got it
-                </button>
+                {!energyClaimed ? (
+                  <button
+                    onClick={() => { setShowNoEnergy(false); setQuestsOpen(true); }}
+                    className="w-full py-3 rounded-xl text-[14px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98]"
+                    style={{ background: "linear-gradient(135deg, #c9a44c, #a8832a)", border: "1px solid rgba(245,198,107,0.4)" }}
+                  >
+                    Open Quests
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setShowNoEnergy(false)}
+                    className="w-full py-3 rounded-xl text-[14px] font-semibold text-white transition-all hover:brightness-110 active:scale-[0.98]"
+                    style={{ background: "linear-gradient(135deg, #c9a44c, #a8832a)", border: "1px solid rgba(245,198,107,0.4)" }}
+                  >
+                    Got it
+                  </button>
+                )}
               </div>
             </motion.div>
           </motion.div>
@@ -1633,6 +1660,41 @@ export default function PlayPage() {
                 </button>
               </div>
               <div className="flex flex-col gap-2">
+                {/* Daily login bonus — always first */}
+                <div
+                  className="p-2.5 rounded-lg border"
+                  style={{
+                    background: energyClaimed
+                      ? "var(--color-canvas)"
+                      : "linear-gradient(135deg, rgba(245,198,107,0.12), rgba(245,198,107,0.04))",
+                    borderColor: energyClaimed ? "var(--color-border)" : "rgba(245,198,107,0.4)",
+                  }}
+                >
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-[11px] font-medium">{energyClaimed ? "Daily Login Bonus" : "⚡ Daily Login Bonus"}</span>
+                    <span className="text-[10px] font-mono text-vault">+{dailyCredits} casts</span>
+                  </div>
+                  <div className="h-1 bg-border rounded-full mb-1.5">
+                    <div className="h-full bg-gold rounded-full" style={{ width: "100%" }} />
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-[9px] text-text-subtle font-mono">1/1</span>
+                    {energyClaimed ? (
+                      <span className="text-[9px] text-green flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Claimed
+                      </span>
+                    ) : (
+                      <button
+                        onClick={doClaimEnergy}
+                        disabled={claimingEnergy || demoMode}
+                        className="text-[10px] px-3 py-0.5 rounded-md bg-gold text-gold-dark font-semibold disabled:opacity-40 hover:brightness-110 transition"
+                      >
+                        {claimingEnergy ? "…" : "Claim"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 {config.quests.map((q) => {
                   const progress = questsToday.progress?.[q.id] ?? 0;
                   const claimed = !!questsToday.claimed?.[q.id];

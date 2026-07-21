@@ -159,6 +159,7 @@ export type GameState = {
   dailyBudget?: number;
   dailyPointsEarned?: number;
   dailyCatches?: DailyCatch[];
+  energyClaimedDay?: string;
   // Shared economy fields used by Community Tongits (Function-written).
   lockedPoints?: number; // points escrowed in an active/ready Tongits challenge
   rankingPoints?: number; // competitive ranking score (leaderboards)
@@ -594,6 +595,14 @@ export async function castLine(power = 0): Promise<CastResult> {
   if (!functions) throw new Error("Not connected");
   const call = httpsCallable<{ power: number }, CastResult>(functions, "castLine");
   const res = await call({ power });
+  return res.data;
+}
+
+export async function claimDailyEnergy(): Promise<{ energy: number }> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Not connected");
+  const call = httpsCallable<Record<string, never>, { energy: number }>(functions, "claimDailyEnergy");
+  const res = await call({});
   return res.data;
 }
 

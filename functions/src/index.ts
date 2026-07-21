@@ -9,7 +9,7 @@ import { logger } from "firebase-functions";
 import { db } from "./init";
 
 // Game functions live in their own module.
-export { castLine, claimQuest, redeemReward, fishOfTheHour, dailyEnergyRefresh, weeklyReef } from "./game";
+export { castLine, claimQuest, claimDailyEnergy, redeemReward, fishOfTheHour, weeklyReef } from "./game";
 
 // Referral system: claim processor + locked-bonus release helper.
 import { onReferralClaim, releaseLockedReferrals } from "./referrals";
