@@ -362,7 +362,7 @@ export default function PlayPage() {
 
   const today = manilaDay();
   const dailyCredits = effectiveDailyCredits(config.dailyEnergy, gamesSettings.universalDailyCredits);
-  const energy = state?.energy ?? dailyCredits;
+  const energy = !state || state.lastDay !== today ? dailyCredits : state.energy;
   const points = state?.points ?? 0;
   const activeRewards = rewards.filter((r) => r.active);
   const streak = state?.streak ?? 0;

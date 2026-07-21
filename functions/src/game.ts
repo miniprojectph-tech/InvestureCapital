@@ -501,6 +501,32 @@ export const fishOfTheHour = onSchedule("every 60 minutes", async () => {
   logger.info("Fish of the hour set", { fishId: pick.id });
 });
 
+// ===== Scheduled: daily energy refresh (midnight Manila) =====
+export const dailyEnergyRefresh = onSchedule(
+  { schedule: "0 0 * * *", timeZone: "Asia/Manila" },
+  async () => {
+    const [config, universalCredits] = await Promise.all([loadConfig(), loadUniversalDailyCredits()]);
+    const dailyEnergy = config.dailyEnergy && config.dailyEnergy > 0 ? config.dailyEnergy : universalCredits;
+
+    const snap = await db.collectionGroup("game").get();
+    const statesDocs = snap.docs.filter((d) => d.id === "state");
+    if (statesDocs.length === 0) {
+      logger.info("Daily energy refresh: no players found");
+      return;
+    }
+
+    // Firestore batches are limited to 500 ops.
+    for (let i = 0; i < statesDocs.length; i += 500) {
+      const batch = db.batch();
+      for (const d of statesDocs.slice(i, i + 500)) {
+        batch.set(d.ref, { energy: dailyEnergy }, { merge: true });
+      }
+      await batch.commit();
+    }
+    logger.info("Daily energy refresh complete", { players: statesDocs.length, energy: dailyEnergy });
+  }
+);
+
 // ===== Scheduled: weekly leaderboard prizes + reset (Mondays 00:00 Manila) =====
 export const weeklyReef = onSchedule(
   { schedule: "0 0 * * 1", timeZone: "Asia/Manila" },

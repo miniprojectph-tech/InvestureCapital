@@ -35,8 +35,8 @@ export function AppShell({ nav, badge, children }: AppShellProps) {
   }
 
   return (
-    <div className="min-h-screen p-2 sm:p-3 bg-canvas">
-      <div className="mb-2 sm:mb-3">
+    <div className="h-[100dvh] flex flex-col p-2 sm:p-3 bg-canvas overflow-hidden md:overflow-hidden max-md:!h-auto max-md:!min-h-screen max-md:!overflow-visible">
+      <div className="mb-2 sm:mb-3 shrink-0">
         <CryptoTicker />
       </div>
 
@@ -61,14 +61,14 @@ export function AppShell({ nav, badge, children }: AppShellProps) {
         <div className="w-9" /> {/* spacer to balance the hamburger */}
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-1 min-h-0">
         <Sidebar
           groups={nav}
           badge={badge}
           mobileOpen={mobileOpen}
           onClose={() => setMobileOpen(false)}
         />
-        <main className="flex-1 min-w-0">{children}</main>
+        <main className="flex-1 min-w-0 md:overflow-y-auto md:pr-1">{children}</main>
       </div>
     </div>
   );

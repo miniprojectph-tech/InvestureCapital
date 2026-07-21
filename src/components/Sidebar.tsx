@@ -149,7 +149,7 @@ export function Sidebar({ groups, badge, mobileOpen, onClose }: SidebarProps) {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden md:block w-[210px] shrink-0 bg-card border border-border rounded-xl p-3.5 self-start sticky top-3">
+      <aside className="hidden md:block w-[210px] shrink-0 bg-card border border-border rounded-xl p-3.5 overflow-y-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <NavContent groups={groups} badge={badge} pathname={pathname} />
       </aside>
 
