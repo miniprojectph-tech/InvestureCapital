@@ -128,6 +128,22 @@ export async function reportChat(
   });
 }
 
+export async function reportPlayer(
+  db: Firestore,
+  args: { reporterUid: string; reporterName: string; reportedUid: string; reportedName: string; roomCode: string; reason: string }
+) {
+  await addDoc(collection(db, "game_player_reports"), {
+    reporterUid: args.reporterUid,
+    reporterName: args.reporterName,
+    reportedUid: args.reportedUid,
+    reportedName: args.reportedName,
+    roomCode: args.roomCode,
+    reason: args.reason,
+    status: "open",
+    createdAt: Date.now(),
+  });
+}
+
 // ===== Hooks =====
 
 /** Live list of open rooms for the lobby (equality-only query → no composite index). */

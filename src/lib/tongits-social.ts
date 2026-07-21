@@ -339,3 +339,35 @@ export async function adminDeleteChatMessage(db: Firestore, roomCode: string, me
 export async function adminDismissReport(db: Firestore, reportId: string) {
   await deleteDoc(doc(db, "game_chat_reports", reportId));
 }
+
+// ===== Player reports =====
+export type PlayerReport = {
+  id: string;
+  reporterUid: string;
+  reporterName: string;
+  reportedUid: string;
+  reportedName: string;
+  roomCode: string;
+  reason: string;
+  status: string;
+  createdAt: number;
+};
+
+export function useAdminPlayerReports(enabled: boolean) {
+  return useAdminCollection<PlayerReport>(
+    "game_player_reports",
+    (db) =>
+      query(
+        collection(db, "game_player_reports"),
+        where("status", "==", "open"),
+        orderBy("createdAt", "desc"),
+        limit(100)
+      ),
+    enabled
+  );
+}
+
+export async function adminDismissPlayerReport(db: Firestore, reportId: string) {
+  const { updateDoc } = await import("firebase/firestore");
+  await updateDoc(doc(db, "game_player_reports", reportId), { status: "dismissed" });
+}

@@ -30,6 +30,7 @@ import {
   joinRoom,
   sendChat,
   reportChat,
+  reportPlayer,
   seatedPlayers,
   MAX_PLAYERS,
   type TongitsRoom,
@@ -66,6 +67,9 @@ export default function TongitsRoomPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [reportTarget, setReportTarget] = useState<{ uid: string; name: string } | null>(null);
+  const [reportReason, setReportReason] = useState("");
+  const [reportSent, setReportSent] = useState<string | null>(null);
 
   const me = user && room ? room.players[user.uid] : undefined;
   const autoStartRef = useRef(false);
@@ -101,6 +105,30 @@ export default function TongitsRoomPage() {
       },
       () => setError("Couldn't copy the code.")
     );
+  }
+
+  async function submitReport() {
+    if (!reportTarget || !user || !me) return;
+    const { gameDb: db } = getFirebase();
+    if (!db) return;
+    setBusy("report");
+    try {
+      await reportPlayer(db, {
+        reporterUid: user.uid,
+        reporterName: me.name,
+        reportedUid: reportTarget.uid,
+        reportedName: reportTarget.name,
+        roomCode: code,
+        reason: reportReason.trim() || "No reason provided",
+      });
+      setReportSent(reportTarget.uid);
+      setReportTarget(null);
+      setReportReason("");
+    } catch (e) {
+      fail(e);
+    } finally {
+      setBusy(null);
+    }
   }
 
   if (loading) {
@@ -297,7 +325,18 @@ export default function TongitsRoomPage() {
               return (
                 <Card key={seat} className={cn(!p && "opacity-60 border-dashed")}>
                   {p ? (
-                    <div className="flex flex-col items-center text-center py-2">
+                    <div className="flex flex-col items-center text-center py-2 relative">
+                      {p.uid !== user?.uid && (
+                        <button
+                          onClick={() => setReportTarget({ uid: p.uid, name: p.name })}
+                          disabled={reportSent === p.uid}
+                          className="absolute top-1 right-1 p-1 text-text-subtle hover:text-red transition disabled:opacity-40"
+                          aria-label={`Report ${p.name}`}
+                          title={reportSent === p.uid ? "Reported" : `Report ${p.name}`}
+                        >
+                          <Flag className="w-3 h-3" />
+                        </button>
+                      )}
                       <div className="w-12 h-12 rounded-full bg-gold/15 flex items-center justify-center text-[14px] font-medium text-gold mb-2">
                         {initials(p.name)}
                       </div>
@@ -364,6 +403,51 @@ export default function TongitsRoomPage() {
         {/* Chat */}
         <ChatPanel room={room} />
       </div>
+
+      {/* Report player modal */}
+      {reportTarget && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => { setReportTarget(null); setReportReason(""); }}>
+          <div className="bg-card border border-border rounded-xl w-full max-w-sm p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-[14px] font-medium m-0">Report {reportTarget.name}</h3>
+              <button onClick={() => { setReportTarget(null); setReportReason(""); }} className="p-1 text-text-muted hover:text-text">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-[11px] text-text-muted mb-3 m-0">
+              Describe why you&apos;re reporting this player. Admin will review and take action.
+            </p>
+            <select
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              className="w-full mb-3 px-3 py-2 bg-canvas border border-border rounded-lg text-[12px] text-text"
+            >
+              <option value="">Select a reason…</option>
+              <option value="AFK / Not playing">AFK / Not playing</option>
+              <option value="Cheating / Exploiting">Cheating / Exploiting</option>
+              <option value="Harassment / Toxic behavior">Harassment / Toxic behavior</option>
+              <option value="Intentional losing">Intentional losing</option>
+              <option value="Other">Other</option>
+            </select>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setReportTarget(null); setReportReason(""); }}
+                className="flex-1 py-2 bg-card-elev border border-border-strong rounded-lg text-[12px] text-text-muted hover:text-text transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitReport}
+                disabled={!reportReason || busy === "report"}
+                className="flex-1 py-2 bg-red text-white rounded-lg text-[12px] font-medium disabled:opacity-60 inline-flex items-center justify-center gap-1.5"
+              >
+                {busy === "report" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Flag className="w-3.5 h-3.5" />}
+                Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

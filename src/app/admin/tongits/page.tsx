@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Spade, Loader2, Ban, Flag, Trash2, Users, Upload, RotateCcw, Image as ImageIcon } from "lucide-react";
+import { Spade, Loader2, Ban, Flag, Trash2, Users, Upload, RotateCcw, Image as ImageIcon, AlertTriangle } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { cn } from "@/lib/utils";
@@ -12,9 +12,11 @@ import {
   useAdminActiveRooms,
   useAdminRecentMatches,
   useAdminChatReports,
+  useAdminPlayerReports,
   useAdminPointTxns,
   adminDeleteChatMessage,
   adminDismissReport,
+  adminDismissPlayerReport,
 } from "@/lib/tongits-social";
 import {
   useTongitsAssets,
@@ -25,7 +27,7 @@ import {
 } from "@/lib/tongitsAssets";
 import { uploadGameAsset, describeStorageError } from "@/lib/storage";
 
-type Tab = "rooms" | "matches" | "reports" | "ledger" | "assets";
+type Tab = "rooms" | "matches" | "reports" | "player-reports" | "ledger" | "assets";
 
 export default function AdminTongitsPage() {
   const { user } = useAuth();
@@ -37,6 +39,7 @@ export default function AdminTongitsPage() {
   const rooms = useAdminActiveRooms(isAdmin);
   const matches = useAdminRecentMatches(isAdmin);
   const reports = useAdminChatReports(isAdmin);
+  const playerReports = useAdminPlayerReports(isAdmin);
   const ledger = useAdminPointTxns(isAdmin);
 
   async function run(key: string, fn: () => Promise<unknown>) {
@@ -55,6 +58,7 @@ export default function AdminTongitsPage() {
     { id: "rooms", label: "Active rooms", count: rooms.rows.length },
     { id: "matches", label: "Matches", count: matches.rows.length },
     { id: "reports", label: "Chat reports", count: reports.rows.length },
+    { id: "player-reports", label: "Player reports", count: playerReports.rows.length },
     { id: "ledger", label: "Point ledger", count: ledger.rows.length },
     { id: "assets", label: "Assets", count: TONGITS_ASSET_SLOTS.length },
   ];
@@ -108,6 +112,9 @@ export default function AdminTongitsPage() {
                       </span>
                       <span>· {r.challengePoints} pts</span>
                       {(r.jackpotPoints ?? 0) > 0 && <span>· jackpot {r.jackpotPoints}</span>}
+                    </p>
+                    <p className="text-[9px] text-text-dim m-0 mt-0.5 truncate">
+                      {seatedPlayers(r).map((p) => p.name).join(", ")}
                     </p>
                   </div>
                   <button
@@ -208,6 +215,66 @@ export default function AdminTongitsPage() {
                         })
                       }
                       disabled={busy === `dismiss-${rep.id}`}
+                      className="px-2.5 py-1.5 text-[11px] text-text-muted border border-border-strong rounded-md hover:text-text transition disabled:opacity-60"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {tab === "player-reports" && (
+        <Card className="p-0">
+          <div className="px-4 py-2.5 border-b border-border">
+            <p className="text-[12px] font-medium m-0">Player reports</p>
+          </div>
+          {playerReports.loading ? (
+            <Spin />
+          ) : playerReports.rows.length === 0 ? (
+            <Empty text="No open player reports." />
+          ) : (
+            <div className="divide-y divide-border/60">
+              {playerReports.rows.map((rep) => (
+                <div key={rep.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <AlertTriangle className="w-4 h-4 text-red shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] m-0">
+                      <span className="font-medium text-red">{rep.reportedName}</span>
+                      <span className="text-text-subtle"> reported by </span>
+                      <span className="font-medium">{rep.reporterName}</span>
+                    </p>
+                    <p className="text-[10px] text-text-subtle m-0">
+                      Room <span className="font-mono">{rep.roomCode}</span> · {rep.reason} ·{" "}
+                      {new Date(rep.createdAt).toLocaleString()}
+                    </p>
+                  </div>
+                  <div className="flex gap-1.5 shrink-0">
+                    <button
+                      onClick={() =>
+                        run(`cancel-rpt-${rep.id}`, async () => {
+                          await cancelRoom(rep.roomCode);
+                          const { db } = getFirebase();
+                          if (db) await adminDismissPlayerReport(db, rep.id);
+                        })
+                      }
+                      disabled={busy === `cancel-rpt-${rep.id}`}
+                      className="px-2.5 py-1.5 text-[11px] text-red border border-border-strong rounded-md hover:bg-red/10 transition inline-flex items-center gap-1.5 disabled:opacity-60"
+                    >
+                      {busy === `cancel-rpt-${rep.id}` ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
+                      Dissolve room
+                    </button>
+                    <button
+                      onClick={() =>
+                        run(`dismiss-rpt-${rep.id}`, async () => {
+                          const { db } = getFirebase();
+                          if (db) await adminDismissPlayerReport(db, rep.id);
+                        })
+                      }
+                      disabled={busy === `dismiss-rpt-${rep.id}`}
                       className="px-2.5 py-1.5 text-[11px] text-text-muted border border-border-strong rounded-md hover:text-text transition disabled:opacity-60"
                     >
                       Dismiss
