@@ -457,22 +457,25 @@ export const cancelTongitsRoom = onCall({ region: GAME_REGION }, async (request)
  */
 export async function reapStaleTongitsRooms(now: number): Promise<number> {
   const cutoff = now - STALE_ROOM_MS;
+  const reapable: RoomStatus[] = ["open", "full", "ready", "in_game"];
   const snap = await db
     .collection("game_rooms")
-    .where("status", "in", ["open", "full", "ready"])
+    .where("status", "in", reapable)
     .get();
   let reaped = 0;
   for (const d of snap.docs) {
     const room = d.data() as Room;
     if ((room.updatedAt ?? 0) > cutoff) continue;
     try {
+      let post: PostRoomAction | null = null;
       await db.runTransaction(async (tx) => {
         const fresh = await tx.get(d.ref);
         if (!fresh.exists) return;
         const r = fresh.data() as Room;
-        if (!["open", "full", "ready"].includes(r.status) || (r.updatedAt ?? 0) > cutoff) return;
-        await refundAndCancel(tx, r, now);
+        if (!(reapable as string[]).includes(r.status) || (r.updatedAt ?? 0) > cutoff) return;
+        post = refundAndCancel(tx, r, now);
       });
+      if (post) await applyPostRoomAction(post);
       reaped++;
     } catch (err) {
       logger.error(`reapStaleTongitsRooms failed for ${d.id}`, err);
