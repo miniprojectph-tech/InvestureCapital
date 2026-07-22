@@ -29,10 +29,10 @@ const mockPendingWithdrawals = [
 ];
 
 const mockInvestors: InvestorRow[] = [
-  { uid: "tw", name: "Theresa Webb", email: "theresa@mail.com", wallet: 250, vault: 9445, activePlansCount: 3, joinedAt: Date.now(), isAdmin: false },
-  { uid: "am", name: "Arlene McCoy", email: "arlene@mail.com", wallet: 120, vault: 3200, activePlansCount: 2, joinedAt: Date.now(), isAdmin: false },
-  { uid: "jb", name: "Jerome Bell", email: "jerome@mail.com", wallet: 890, vault: 24180, activePlansCount: 5, joinedAt: Date.now(), isAdmin: false },
-  { uid: "re", name: "Ralph Edwards", email: "ralph@mail.com", wallet: 0, vault: 0, activePlansCount: 0, joinedAt: Date.now(), isAdmin: false },
+  { uid: "tw", name: "Theresa Webb", email: "theresa@mail.com", wallet: 250, vault: 9445, deployed: 5000, activePlansCount: 3, completedPlansCount: 1, totalEarned: 450, joinedAt: Date.now(), vaultLockStartedAt: null, vaultLastCompoundedAt: null, isAdmin: false },
+  { uid: "am", name: "Arlene McCoy", email: "arlene@mail.com", wallet: 120, vault: 3200, deployed: 2000, activePlansCount: 2, completedPlansCount: 0, totalEarned: 0, joinedAt: Date.now(), vaultLockStartedAt: null, vaultLastCompoundedAt: null, isAdmin: false },
+  { uid: "jb", name: "Jerome Bell", email: "jerome@mail.com", wallet: 890, vault: 24180, deployed: 15000, activePlansCount: 5, completedPlansCount: 3, totalEarned: 2400, joinedAt: Date.now(), vaultLockStartedAt: null, vaultLastCompoundedAt: null, isAdmin: false },
+  { uid: "re", name: "Ralph Edwards", email: "ralph@mail.com", wallet: 0, vault: 0, deployed: 0, activePlansCount: 0, completedPlansCount: 0, totalEarned: 0, joinedAt: Date.now(), vaultLockStartedAt: null, vaultLastCompoundedAt: null, isAdmin: false },
 ];
 
 export default function AdminDashboard() {

@@ -13,9 +13,9 @@ import { listInvestors, type InvestorRow } from "@/lib/adminQueries";
 import { useSettings } from "@/lib/settings";
 
 const mock: InvestorRow[] = [
-  { uid: "tw", name: "Theresa Webb", email: "theresa@mail.com", wallet: 250, vault: 9445, activePlansCount: 3, joinedAt: Date.now() - 50*86400000, isAdmin: false },
-  { uid: "jb", name: "Jerome Bell", email: "jerome@mail.com", wallet: 890, vault: 24180, activePlansCount: 5, joinedAt: Date.now() - 100*86400000, isAdmin: false },
-  { uid: "am", name: "Arlene McCoy", email: "arlene@mail.com", wallet: 120, vault: 3200, activePlansCount: 2, joinedAt: Date.now() - 30*86400000, isAdmin: false },
+  { uid: "tw", name: "Theresa Webb", email: "theresa@mail.com", wallet: 250, vault: 9445, deployed: 5000, activePlansCount: 3, completedPlansCount: 1, totalEarned: 450, joinedAt: Date.now() - 50*86400000, vaultLockStartedAt: null, vaultLastCompoundedAt: null, isAdmin: false },
+  { uid: "jb", name: "Jerome Bell", email: "jerome@mail.com", wallet: 890, vault: 24180, deployed: 15000, activePlansCount: 5, completedPlansCount: 3, totalEarned: 2400, joinedAt: Date.now() - 100*86400000, vaultLockStartedAt: null, vaultLastCompoundedAt: null, isAdmin: false },
+  { uid: "am", name: "Arlene McCoy", email: "arlene@mail.com", wallet: 120, vault: 3200, deployed: 2000, activePlansCount: 2, completedPlansCount: 0, totalEarned: 0, joinedAt: Date.now() - 30*86400000, vaultLockStartedAt: null, vaultLastCompoundedAt: null, isAdmin: false },
 ];
 
 export default function AdminVaultPage() {

@@ -19,8 +19,13 @@ export type InvestorRow = {
   email: string;
   wallet: number;
   vault: number;
+  deployed: number;
   activePlansCount: number;
+  completedPlansCount: number;
+  totalEarned: number;
   joinedAt: number;
+  vaultLockStartedAt: number | null;
+  vaultLastCompoundedAt: number | null;
   isAdmin: boolean;
 };
 
@@ -39,24 +44,24 @@ export async function listInvestors(db: Firestore, max = 100): Promise<InvestorR
   return snap.docs.map((d) => {
     const data = d.data() as UserState;
     const deployed = data.activePlans?.reduce((s, p) => s + p.capital, 0) ?? 0;
+    const completed = data.completedPlans ?? [];
+    const totalEarned = completed.reduce((s, p) => s + (p.vaultCredited ?? 0), 0);
     return {
       uid: d.id,
       name: data.profile?.name ?? "—",
       email: data.profile?.email ?? "",
       wallet: data.balances?.wallet ?? 0,
       vault: data.balances?.vault ?? 0,
+      deployed,
       activePlansCount: data.activePlans?.length ?? 0,
+      completedPlansCount: completed.length,
+      totalEarned,
       joinedAt: data.profile?.joinedAt ?? 0,
+      vaultLockStartedAt: data.balances?.vaultLockStartedAt ?? null,
+      vaultLastCompoundedAt: data.balances?.vaultLastCompoundedAt ?? null,
       isAdmin: data.isAdmin === true,
-      // exposed via list for the table; deployed isn't on the row type
-      ..._with({ deployed }),
     };
   });
-}
-
-// Tiny helper to keep the extra field typed loosely without polluting the row type.
-function _with<T>(x: T) {
-  return x as T;
 }
 
 export function computeAggregate(rows: InvestorRow[]): AdminAggregate {
@@ -64,10 +69,7 @@ export function computeAggregate(rows: InvestorRow[]): AdminAggregate {
     totalInvestors: rows.length,
     totalWallet: rows.reduce((s, r) => s + r.wallet, 0),
     totalVault: rows.reduce((s, r) => s + r.vault, 0),
-    totalDeployed: rows.reduce(
-      (s, r) => s + ((r as InvestorRow & { deployed?: number }).deployed ?? 0),
-      0
-    ),
+    totalDeployed: rows.reduce((s, r) => s + r.deployed, 0),
     totalActivePlans: rows.reduce((s, r) => s + r.activePlansCount, 0),
   };
 }
