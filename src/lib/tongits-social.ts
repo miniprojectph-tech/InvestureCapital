@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   collection,
   deleteDoc,
@@ -266,6 +266,8 @@ function useAdminCollection<T>(
   enabled: boolean,
   dbKey: "db" | "gameDb" = "db"
 ) {
+  const buildRef = useRef(build);
+  buildRef.current = build;
   const [rows, setRows] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -282,7 +284,7 @@ function useAdminCollection<T>(
       return;
     }
     const unsub = onSnapshot(
-      build(db),
+      buildRef.current(db),
       (snap) => {
         setRows(snap.docs.map((d) => ({ id: d.id, ...(d.data() as object) })) as T[]);
         setLoading(false);
@@ -294,7 +296,7 @@ function useAdminCollection<T>(
       }
     );
     return unsub;
-  }, [path, build, enabled, dbKey]);
+  }, [path, enabled, dbKey]);
   return { rows, loading };
 }
 
