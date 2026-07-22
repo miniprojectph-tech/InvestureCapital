@@ -263,7 +263,8 @@ export type PointTxn = {
 function useAdminCollection<T>(
   path: string,
   build: (db: Firestore) => import("firebase/firestore").Query,
-  enabled: boolean
+  enabled: boolean,
+  dbKey: "db" | "gameDb" = "db"
 ) {
   const [rows, setRows] = useState<T[]>([]);
   const [loading, setLoading] = useState(true);
@@ -273,7 +274,8 @@ function useAdminCollection<T>(
       setLoading(false);
       return;
     }
-    const { db } = getFirebase();
+    const firebase = getFirebase();
+    const db = firebase[dbKey];
     if (!db) {
       setRows([]);
       setLoading(false);
@@ -292,7 +294,7 @@ function useAdminCollection<T>(
       }
     );
     return unsub;
-  }, [path, build, enabled]);
+  }, [path, build, enabled, dbKey]);
   return { rows, loading };
 }
 
@@ -304,7 +306,8 @@ export function useAdminActiveRooms(enabled: boolean) {
         collection(db, "game_rooms"),
         where("status", "in", ["open", "full", "ready", "in_game", "post_game"])
       ),
-    enabled
+    enabled,
+    "gameDb"
   );
 }
 

@@ -181,6 +181,13 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // === Community Tongits: player reports (players file, admins moderate) ===
+    match /game_player_reports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.reporterUid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
     // === Community Tongits: point transaction ledger (Functions write) ===
     match /game_point_transactions/{txnId} {
       allow read: if isSignedIn()

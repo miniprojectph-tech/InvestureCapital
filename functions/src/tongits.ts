@@ -458,7 +458,7 @@ export const cancelTongitsRoom = onCall({ region: GAME_REGION }, async (request)
 export async function reapStaleTongitsRooms(now: number): Promise<number> {
   const cutoff = now - STALE_ROOM_MS;
   const reapable: RoomStatus[] = ["open", "full", "ready", "in_game"];
-  const snap = await db
+  const snap = await gameDb
     .collection("game_rooms")
     .where("status", "in", reapable)
     .get();
@@ -468,7 +468,7 @@ export async function reapStaleTongitsRooms(now: number): Promise<number> {
     if ((room.updatedAt ?? 0) > cutoff) continue;
     try {
       let post: PostRoomAction | null = null;
-      await db.runTransaction(async (tx) => {
+      await gameDb.runTransaction(async (tx) => {
         const fresh = await tx.get(d.ref);
         if (!fresh.exists) return;
         const r = fresh.data() as Room;

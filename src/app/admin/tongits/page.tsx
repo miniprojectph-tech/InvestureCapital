@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Spade, Loader2, Ban, Flag, Trash2, Users, Upload, RotateCcw, Image as ImageIcon, AlertTriangle } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
+import { httpsCallable } from "firebase/functions";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -88,8 +89,22 @@ export default function AdminTongitsPage() {
 
       {tab === "rooms" && (
         <Card className="p-0">
-          <div className="px-4 py-2.5 border-b border-border">
+          <div className="px-4 py-2.5 border-b border-border flex items-center justify-between">
             <p className="text-[12px] font-medium m-0">Active rooms</p>
+            <button
+              onClick={() =>
+                run("reap", async () => {
+                  const { functions: fns } = getFirebase();
+                  if (!fns) return;
+                  await httpsCallable(fns, "runMaintenanceNow")({});
+                })
+              }
+              disabled={busy === "reap"}
+              className="px-2.5 py-1 text-[10px] text-text-muted border border-border-strong rounded-md hover:text-text transition inline-flex items-center gap-1.5 disabled:opacity-60"
+            >
+              {busy === "reap" ? <Loader2 className="w-3 h-3 animate-spin" /> : <RotateCcw className="w-3 h-3" />}
+              Run maintenance
+            </button>
           </div>
           {rooms.loading ? (
             <Spin />
