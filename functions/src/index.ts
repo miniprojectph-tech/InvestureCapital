@@ -55,6 +55,7 @@ type StoredActivePlan = {
   dailyRate?: number;
   durationDays?: number;
   planName?: string;
+  daysCredited?: number;
 };
 
 type CompletedPlan = StoredActivePlan & {
@@ -108,11 +109,10 @@ function activityRef(uid: string): DocumentReference {
 }
 
 /**
- * Processes one user inside a transaction: completes any active plans whose
- * duration has elapsed, then compounds the vault balance for each full day
- * elapsed since it was last compounded. Mirrors the math in
- * src/lib/userState.ts (completePlanForUser) so scheduled runs and the
- * admin's manual "Push to complete" stay consistent.
+ * Processes one user inside a transaction:
+ * 1. Credits daily plan earnings to the wallet for each elapsed day.
+ * 2. Completes plans whose full duration has been credited.
+ * 3. Compounds the vault balance for each full day elapsed.
  */
 async function processUser(
   uid: string,
@@ -130,63 +130,80 @@ async function processUser(
     let wallet = cur.balances?.wallet ?? 0;
     let vault = cur.balances?.vault ?? 0;
     let vaultLockStartedAt = cur.balances?.vaultLockStartedAt ?? null;
-    const activePlans = [...(cur.activePlans ?? [])];
     const completedPlans = [...(cur.completedPlans ?? [])];
     const remaining: StoredActivePlan[] = [];
     const activityWrites: { ref: DocumentReference; data: Record<string, unknown> }[] = [];
 
     let completedCount = 0;
-    for (const plan of activePlans) {
+    let earned = false;
+
+    for (const plan of (cur.activePlans ?? [])) {
       const tpl = templates.get(plan.planId);
-      // Prefer the snapshot stored on the plan; fall back to the live template.
       const dailyRate = plan.dailyRate ?? tpl?.dailyRate;
       const durationDays = plan.durationDays ?? tpl?.durationDays;
       const name = tpl?.name ?? plan.planName ?? plan.planId;
       if (dailyRate == null || durationDays == null) {
-        // No terms available (template deleted and no snapshot) — leave it be.
-        remaining.push(plan);
-        continue;
-      }
-      const completionTime = plan.startedAt + durationDays * DAY_MS;
-      if (now < completionTime) {
         remaining.push(plan);
         continue;
       }
 
-      // Earnings were credited to the vault when the plan was activated — so on
-      // completion we only return the capital to the wallet (vaultCredited is
-      // kept on the record for history, but not added to the vault again).
-      const vaultCredit = plan.capital * (dailyRate / 100) * durationDays;
-      completedPlans.push({
-        ...plan,
-        completedAt: now,
-        vaultCredited: vaultCredit,
-        capitalReturned: plan.capital,
-      });
-      wallet += plan.capital;
-      if (!vaultLockStartedAt) vaultLockStartedAt = now;
+      const daysCredited = plan.daysCredited ?? 0;
+      const daysEligible = Math.min(
+        Math.floor((now - plan.startedAt) / DAY_MS),
+        durationDays
+      );
+      const newDays = daysEligible - daysCredited;
+      const dailyEarning = plan.capital * (dailyRate / 100);
 
-      activityWrites.push({
-        ref: activityRef(uid),
-        data: {
-          type: "plan-complete",
-          title: `Plan completed — ${name}`,
-          subtitle: `Capital ${plan.capital} returned · earnings credited at activation`,
-          amount: plan.capital,
-          amountKind: "in",
-          at: FieldValue.serverTimestamp(),
-        },
-      });
-      completedCount++;
+      if (newDays > 0) {
+        const earning = dailyEarning * newDays;
+        wallet += earning;
+        earned = true;
+
+        activityWrites.push({
+          ref: activityRef(uid),
+          data: {
+            type: "plan-earning",
+            title: `Daily income — ${name}`,
+            subtitle: `${dailyRate}% × ${newDays} day${newDays > 1 ? "s" : ""} on ${plan.capital.toLocaleString()}`,
+            amount: earning,
+            amountKind: "in",
+            at: FieldValue.serverTimestamp(),
+          },
+        });
+      }
+
+      if (daysEligible >= durationDays) {
+        const totalEarnings = dailyEarning * durationDays;
+        completedPlans.push({
+          ...plan,
+          completedAt: now,
+          vaultCredited: totalEarnings,
+          capitalReturned: plan.capital,
+        });
+        wallet += plan.capital;
+        if (!vaultLockStartedAt) vaultLockStartedAt = now;
+
+        activityWrites.push({
+          ref: activityRef(uid),
+          data: {
+            type: "plan-complete",
+            title: `Plan completed — ${name}`,
+            subtitle: `Capital ${plan.capital.toLocaleString()} returned · total earned ${totalEarnings.toLocaleString()}`,
+            amount: plan.capital,
+            amountKind: "in",
+            at: FieldValue.serverTimestamp(),
+          },
+        });
+        completedCount++;
+      } else {
+        remaining.push({ ...plan, daysCredited: daysEligible });
+      }
     }
 
     let vaultLastCompoundedAt = cur.balances?.vaultLastCompoundedAt ?? null;
     let compounded = false;
 
-    // Anchor the compounding clock the first time there is a vault balance.
-    // We start from `now`, NOT vaultLockStartedAt — the lock is anchored on
-    // the first plan *activation*, before any vault exists, so using it would
-    // retroactively compound a freshly credited vault for the whole plan term.
     if (vault > 0 && !vaultLastCompoundedAt) {
       vaultLastCompoundedAt = now;
     }
@@ -199,7 +216,6 @@ async function processUser(
         const growth = grown - vault;
         vault = grown;
         compounded = true;
-        // Advance by whole days only; keep the sub-day remainder for next run.
         vaultLastCompoundedAt = vaultLastCompoundedAt + daysElapsed * DAY_MS;
 
         activityWrites.push({
@@ -216,11 +232,10 @@ async function processUser(
       }
     }
 
-    // Persist if we completed a plan, compounded, or just anchored the clock.
-    const anchored =
+    const changed = completedCount > 0 || earned || compounded ||
       vaultLastCompoundedAt !== (cur.balances?.vaultLastCompoundedAt ?? null);
 
-    if (completedCount > 0 || compounded || anchored) {
+    if (changed) {
       tx.update(ref, {
         activePlans: remaining,
         completedPlans,
@@ -234,7 +249,7 @@ async function processUser(
       }
     }
 
-    return { completed: completedCount, compounded };
+    return { completed: completedCount, compounded: compounded || earned };
   });
 }
 

@@ -55,8 +55,11 @@ export default function DashboardPage() {
   const todayCompound =
     state.balances.vault - state.balances.vault / (1 + rate);
 
-  // Earnings = everything credited to the vault (plan completions + compounding).
-  const totalEarned = state.balances.vault;
+  // Earnings = completed plan earnings + vault balance.
+  const completedEarnings = (state.completedPlans ?? []).reduce(
+    (s, p) => s + (p.vaultCredited ?? 0), 0
+  );
+  const totalEarned = completedEarnings + state.balances.vault;
   // All capital ever put to work: currently deployed + capital of completed plans.
   const completedCapital = (state.completedPlans ?? []).reduce(
     (s, p) => s + p.capital,

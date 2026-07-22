@@ -25,6 +25,7 @@ export type StoredActivePlan = {
   durationDays?: number;
   planName?: string;
   source?: "reinvest";
+  daysCredited?: number;
 };
 
 export type CompletedPlan = StoredActivePlan & {
@@ -257,11 +258,9 @@ export async function withdrawFromWallet(
 }
 
 /**
- * Admin-only: fast-forward a user's active plan to completion. Used for
- * testing the completion flow without waiting real days. Credits the vault
- * by `capital × dailyRate × duration`, returns capital to wallet, moves the
- * plan from activePlans → completedPlans, anchors the vault lock if it's
- * the user's first ever completion, and logs the event.
+ * Admin-only: fast-forward a user's active plan to completion. Credits any
+ * remaining uncredited daily earnings to the wallet, returns the capital,
+ * and moves the plan from activePlans → completedPlans.
  */
 export async function completePlanForUser(
   db: Firestore,
@@ -272,8 +271,6 @@ export async function completePlanForUser(
   planName: string
 ): Promise<void> {
   const ref = doc(db, "users", userId);
-  // Run inside a transaction so a concurrent scheduled maintenance run can't
-  // double-complete / double-credit the same plan.
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists()) throw new Error("User not found");
@@ -282,28 +279,32 @@ export async function completePlanForUser(
     const plan = cur.activePlans?.find((p) => p.id === planInstanceId);
     if (!plan) throw new Error("Plan not found in active list");
 
-    // Earnings were already credited to the vault at activation — completion just
-    // returns the capital to the wallet. vaultCredited is recorded for history.
-    const vaultCredit = plan.capital * (planRate / 100) * planDuration;
+    const daysCredited = plan.daysCredited ?? 0;
+    const remainingDays = planDuration - daysCredited;
+    const dailyEarning = plan.capital * (planRate / 100);
+    const remainingEarnings = remainingDays > 0 ? dailyEarning * remainingDays : 0;
+    const totalEarnings = dailyEarning * planDuration;
+
     const completed: CompletedPlan = {
       ...plan,
       completedAt: Date.now(),
-      vaultCredited: vaultCredit,
+      vaultCredited: totalEarnings,
       capitalReturned: plan.capital,
     };
 
+    const walletAdd = plan.capital + remainingEarnings;
     const updates: Record<string, unknown> = {
       activePlans: cur.activePlans.filter((p) => p.id !== planInstanceId),
       completedPlans: [...(cur.completedPlans ?? []), completed],
-      "balances.wallet": (cur.balances.wallet ?? 0) + plan.capital,
+      "balances.wallet": (cur.balances.wallet ?? 0) + walletAdd,
     };
 
     tx.update(ref, updates);
     tx.set(doc(userActivityRef(db, userId)), {
       type: "plan-complete",
       title: `Plan completed — ${planName}`,
-      subtitle: `Capital ${plan.capital.toLocaleString()} returned · earnings credited at activation`,
-      amount: plan.capital,
+      subtitle: `Capital ${plan.capital.toLocaleString()} + earnings ${totalEarnings.toLocaleString()} returned`,
+      amount: walletAdd,
       amountKind: "in",
       at: serverTimestamp(),
     });
@@ -368,31 +369,20 @@ export async function activatePlanFor(
     ...(planDuration != null ? { durationDays: planDuration } : {}),
   };
 
-  // Credit the plan's TOTAL daily earnings to the vault upfront (capital stays in
-  // the plan and returns to the wallet at completion). The vault compounds from
-  // now — so vault earning starts the moment the plan is activated.
-  const vaultCredit =
-    planRate != null && planDuration != null ? capital * (planRate / 100) * planDuration : 0;
-
   const updates: Record<string, unknown> = {
     activePlans: [...cur.activePlans, newPlan],
-    "balances.vault": (cur.balances.vault ?? 0) + vaultCredit,
   };
 
   // Anchor the 365-day vault lock to the first ever activation.
   if (!cur.balances.vaultLockStartedAt) {
     updates["balances.vaultLockStartedAt"] = Date.now();
   }
-  // Start the compounding clock the first time the vault gets a balance.
-  if (vaultCredit > 0 && !cur.balances.vaultLastCompoundedAt) {
-    updates["balances.vaultLastCompoundedAt"] = Date.now();
-  }
 
   await updateDoc(ref, updates);
   await logActivity(db, uid, {
     type: "plan-activate",
     title: `Plan activated — ${planName}`,
-    subtitle: `Capital ${capital.toLocaleString()} · vault +${vaultCredit.toLocaleString()}`,
+    subtitle: `Capital ${capital.toLocaleString()} · ${planRate ?? 0}% daily for ${planDuration ?? 0} days`,
     amount: capital,
     amountKind: "out",
   });
@@ -448,27 +438,20 @@ export async function reinvestFromWallet(
     ...(planDuration != null ? { durationDays: planDuration } : {}),
   };
 
-  const vaultCredit =
-    planRate != null && planDuration != null ? capital * (planRate / 100) * planDuration : 0;
-
   const updates: Record<string, unknown> = {
     activePlans: [...cur.activePlans, newPlan],
     "balances.wallet": wallet - capital,
-    "balances.vault": (cur.balances.vault ?? 0) + vaultCredit,
   };
 
   if (!cur.balances.vaultLockStartedAt) {
     updates["balances.vaultLockStartedAt"] = Date.now();
-  }
-  if (vaultCredit > 0 && !cur.balances.vaultLastCompoundedAt) {
-    updates["balances.vaultLastCompoundedAt"] = Date.now();
   }
 
   await updateDoc(ref, updates);
   await logActivity(db, uid, {
     type: "reinvest",
     title: `Reinvested — ${planName}`,
-    subtitle: `₱${capital.toLocaleString()} from wallet · vault +₱${vaultCredit.toLocaleString()}`,
+    subtitle: `₱${capital.toLocaleString()} from wallet · ${planRate ?? 0}% daily for ${planDuration ?? 0} days`,
     amount: capital,
     amountKind: "out",
   });
