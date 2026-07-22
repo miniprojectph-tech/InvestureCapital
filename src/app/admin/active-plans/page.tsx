@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { httpsCallable } from "firebase/functions";
-import { FastForward, Loader2, Timer, CheckCircle2, AlertCircle, Search, Zap } from "lucide-react";
+import { FastForward, Loader2, Timer, CheckCircle2, AlertCircle, Search, Zap, Download } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { formatPHP, cn } from "@/lib/utils";
@@ -16,6 +16,46 @@ import {
 } from "@/lib/adminQueries";
 import { completePlanForUser, advanceUserByDays } from "@/lib/userState";
 import { usePlans } from "@/lib/plans";
+
+function fmtDate(ms: number) {
+  return new Date(ms).toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function fmtDateShort(ms: number) {
+  return new Date(ms).toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "2-digit",
+  });
+}
+
+function exportToExcel(
+  rows: Record<string, string | number>[],
+  headers: string[],
+  filename: string,
+) {
+  const esc = (v: string | number) => {
+    const s = String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n")
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
+  };
+  const csv = [
+    headers.map(esc).join(","),
+    ...rows.map((r) => headers.map((h) => esc(r[h] ?? "")).join(",")),
+  ].join("\r\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 type Tab = "active" | "expired";
 
@@ -279,33 +319,74 @@ export default function AdminActivePlansPage() {
         </div>
       ) : tab === "active" ? (
         <Card>
-          <CardHeader
-            title={`Currently active (${filteredActive.length})`}
-            subtitle="Click 'Push to complete' to fast-forward any plan for testing — credits vault, returns capital"
-          />
+          <div className="flex items-center justify-between px-4 pt-3 pb-1">
+            <CardHeader
+              title={`Currently active (${filteredActive.length})`}
+              subtitle="Click 'Complete' to fast-forward any plan — returns capital + remaining earnings"
+            />
+            {filteredActive.length > 0 && (
+              <button
+                onClick={() => {
+                  const csvRows = filteredActive.map((r) => {
+                    const tpl = planTemplates.find((t) => t.id === r.planId);
+                    const rate = r.dailyRate ?? tpl?.dailyRate;
+                    const duration = r.durationDays ?? tpl?.durationDays;
+                    const daily = rate != null ? r.capital * (rate / 100) : 0;
+                    const credited = r.daysCredited ?? 0;
+                    return {
+                      Name: r.userName,
+                      Email: r.userEmail,
+                      Plan: tpl?.name ?? r.planName ?? r.planId,
+                      "Rate (%)": rate ?? 0,
+                      "Duration (days)": duration ?? 0,
+                      Capital: r.capital,
+                      "Daily Income": Math.round(daily * 100) / 100,
+                      "Activated": fmtDate(r.startedAt),
+                      "Days Credited": credited,
+                      "Days Remaining": duration != null ? Math.max(0, duration - credited) : 0,
+                      "Total Earned So Far": Math.round(daily * credited * 100) / 100,
+                    };
+                  });
+                  exportToExcel(
+                    csvRows,
+                    ["Name", "Email", "Plan", "Rate (%)", "Duration (days)", "Capital", "Daily Income", "Activated", "Days Credited", "Days Remaining", "Total Earned So Far"],
+                    `active-plans-${new Date().toISOString().slice(0, 10)}`
+                  );
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-green/15 text-green border border-green/20 rounded-full text-[11px] hover:bg-green/25 transition shrink-0"
+              >
+                <Download className="w-3 h-3" />
+                Export CSV
+              </button>
+            )}
+          </div>
           {filteredActive.length === 0 ? (
             <p className="text-[11px] text-text-subtle text-center py-8 m-0">
               No active plans across investors right now.
             </p>
           ) : (
             <div className="overflow-x-auto -mx-1">
-              <table className="w-full text-[11px] table-fixed min-w-[720px]">
+              <table className="w-full text-[11px] table-fixed min-w-[920px]">
                 <colgroup>
-                  <col style={{ width: "26%" }} />
-                  <col style={{ width: "18%" }} />
+                  <col style={{ width: "15%" }} />
+                  <col style={{ width: "17%" }} />
                   <col style={{ width: "12%" }} />
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: "12%" }} />
-                  <col style={{ width: "18%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "11%" }} />
+                  <col style={{ width: "10%" }} />
+                  <col style={{ width: "15%" }} />
                 </colgroup>
                 <thead>
                   <tr className="text-text-subtle text-left">
-                    <th className="font-normal py-2">Investor</th>
-                    <th className="font-normal py-2">Plan</th>
-                    <th className="font-normal py-2 text-right">Capital</th>
-                    <th className="font-normal py-2 text-right">Daily income</th>
-                    <th className="font-normal py-2">Started</th>
-                    <th className="font-normal py-2"></th>
+                    <th className="font-normal py-2 px-1">Name</th>
+                    <th className="font-normal py-2 px-1">Email</th>
+                    <th className="font-normal py-2 px-1">Plan</th>
+                    <th className="font-normal py-2 px-1 text-right">Capital</th>
+                    <th className="font-normal py-2 px-1 text-right">Daily</th>
+                    <th className="font-normal py-2 px-1">Activated</th>
+                    <th className="font-normal py-2 px-1">Progress</th>
+                    <th className="font-normal py-2 px-1"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -315,46 +396,53 @@ export default function AdminActivePlansPage() {
                     const duration = r.durationDays ?? tpl?.durationDays;
                     const planLabel = tpl?.name ?? r.planName ?? r.planId;
                     const daily = rate != null ? r.capital * (rate / 100) : 0;
+                    const credited = r.daysCredited ?? 0;
+                    const pct = duration ? Math.min(100, (credited / duration) * 100) : 0;
                     const isBusy = busy === r.id;
                     return (
                       <tr key={`${r.userId}-${r.id}`} className="border-t border-border">
-                        <td className="py-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-blue/15 text-blue text-[9px] font-medium flex items-center justify-center shrink-0">
-                              {(r.userName?.[0] ?? "?").toUpperCase()}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="m-0 text-[11px] truncate">{r.userName}</p>
-                              <p className="m-0 text-[9px] text-text-subtle truncate">{r.userEmail}</p>
-                            </div>
-                          </div>
+                        <td className="py-2 px-1">
+                          <p className="m-0 text-[11px] truncate font-medium">{r.userName}</p>
                         </td>
-                        <td className="py-2">
+                        <td className="py-2 px-1">
+                          <p className="m-0 text-[10px] text-text-muted truncate">{r.userEmail}</p>
+                        </td>
+                        <td className="py-2 px-1">
                           <p className="m-0 text-[11px]">{planLabel}</p>
                           <p className="m-0 text-[9px] text-text-subtle">
                             {rate != null && duration != null ? `${rate}% · ${duration}d` : "—"}
                           </p>
                         </td>
-                        <td className="py-2 text-right font-mono">
+                        <td className="py-2 px-1 text-right font-mono">
                           {formatPHP(r.capital, { short: true })}
                         </td>
-                        <td className="py-2 text-right font-mono text-green">
+                        <td className="py-2 px-1 text-right font-mono text-green">
                           +{formatPHP(daily)}
                         </td>
-                        <td className="py-2 text-text-muted text-[10px]">
-                          {new Date(r.startedAt).toLocaleDateString("en-PH", {
-                            month: "short",
-                            day: "numeric",
-                            year: "2-digit",
-                          })}
+                        <td className="py-2 px-1 text-text-muted text-[10px]">
+                          {fmtDateShort(r.startedAt)}
                         </td>
-                        <td className="py-2 text-right">
+                        <td className="py-2 px-1">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center justify-between text-[9px]">
+                              <span className="text-text-muted">{credited}/{duration ?? "?"}</span>
+                              <span className="text-text-subtle">{pct.toFixed(0)}%</span>
+                            </div>
+                            <div className="w-full h-1 bg-border rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-green rounded-full transition-all"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-2 px-1 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => advance(r)}
                               disabled={isBusy || advancing === r.userId}
                               className="text-[10px] px-2.5 py-1.5 bg-green/15 text-green rounded-md hover:bg-green/25 transition flex items-center gap-1.5 disabled:opacity-60"
-                              title={`Fast-forward this investor by ${advanceDays} day(s) — compounds the vault and completes any due plans`}
+                              title={`Fast-forward this investor by ${advanceDays} day(s)`}
                             >
                               {advancing === r.userId ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
@@ -384,30 +472,66 @@ export default function AdminActivePlansPage() {
         </Card>
       ) : (
         <Card>
-          <CardHeader title={`Expired plans (${filteredExpired.length})`} />
+          <div className="flex items-center justify-between px-4 pt-3 pb-1">
+            <CardHeader title={`Expired plans (${filteredExpired.length})`} />
+            {filteredExpired.length > 0 && (
+              <button
+                onClick={() => {
+                  const csvRows = filteredExpired.map((r) => {
+                    const tpl = planTemplates.find((t) => t.id === r.planId);
+                    const rate = r.dailyRate ?? tpl?.dailyRate;
+                    const duration = r.durationDays ?? tpl?.durationDays;
+                    return {
+                      Name: r.userName,
+                      Email: r.userEmail,
+                      Plan: tpl?.name ?? r.planName ?? r.planId,
+                      "Rate (%)": rate ?? 0,
+                      "Duration (days)": duration ?? 0,
+                      Capital: r.capital,
+                      "Capital Returned": r.capitalReturned,
+                      "Total Earned": r.vaultCredited,
+                      "Activated": fmtDate(r.startedAt),
+                      "Completed": fmtDate(r.completedAt),
+                    };
+                  });
+                  exportToExcel(
+                    csvRows,
+                    ["Name", "Email", "Plan", "Rate (%)", "Duration (days)", "Capital", "Capital Returned", "Total Earned", "Activated", "Completed"],
+                    `expired-plans-${new Date().toISOString().slice(0, 10)}`
+                  );
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-vault/15 text-vault border border-border-vault rounded-full text-[11px] hover:bg-vault/25 transition shrink-0"
+              >
+                <Download className="w-3 h-3" />
+                Export CSV
+              </button>
+            )}
+          </div>
           {filteredExpired.length === 0 ? (
             <p className="text-[11px] text-text-subtle text-center py-8 m-0">
               No completed plans yet. Use &quot;Push to complete&quot; in the Active tab to expire one.
             </p>
           ) : (
             <div className="overflow-x-auto -mx-1">
-              <table className="w-full text-[11px] table-fixed min-w-[640px]">
+              <table className="w-full text-[11px] table-fixed min-w-[820px]">
                 <colgroup>
-                  <col style={{ width: "26%" }} />
+                  <col style={{ width: "15%" }} />
                   <col style={{ width: "18%" }} />
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: "16%" }} />
                   <col style={{ width: "12%" }} />
-                  <col style={{ width: "14%" }} />
+                  <col style={{ width: "12%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "13%" }} />
+                  <col style={{ width: "17%" }} />
                 </colgroup>
                 <thead>
                   <tr className="text-text-subtle text-left">
-                    <th className="font-normal py-2">Investor</th>
-                    <th className="font-normal py-2">Plan</th>
-                    <th className="font-normal py-2 text-right">Capital back</th>
-                    <th className="font-normal py-2 text-right">Vault credited</th>
-                    <th className="font-normal py-2">Started</th>
-                    <th className="font-normal py-2">Completed</th>
+                    <th className="font-normal py-2 px-1">Name</th>
+                    <th className="font-normal py-2 px-1">Email</th>
+                    <th className="font-normal py-2 px-1">Plan</th>
+                    <th className="font-normal py-2 px-1 text-right">Capital back</th>
+                    <th className="font-normal py-2 px-1 text-right">Total earned</th>
+                    <th className="font-normal py-2 px-1">Activated</th>
+                    <th className="font-normal py-2 px-1">Completed</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -418,34 +542,29 @@ export default function AdminActivePlansPage() {
                     const planLabel = tpl?.name ?? r.planName ?? r.planId;
                     return (
                       <tr key={`${r.userId}-${r.id}`} className="border-t border-border">
-                        <td className="py-2">
-                          <div className="flex items-center gap-2">
-                            <div className="w-6 h-6 rounded-full bg-blue/15 text-blue text-[9px] font-medium flex items-center justify-center shrink-0">
-                              {(r.userName?.[0] ?? "?").toUpperCase()}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="m-0 text-[11px] truncate">{r.userName}</p>
-                              <p className="m-0 text-[9px] text-text-subtle truncate">{r.userEmail}</p>
-                            </div>
-                          </div>
+                        <td className="py-2 px-1">
+                          <p className="m-0 text-[11px] truncate font-medium">{r.userName}</p>
                         </td>
-                        <td className="py-2">
+                        <td className="py-2 px-1">
+                          <p className="m-0 text-[10px] text-text-muted truncate">{r.userEmail}</p>
+                        </td>
+                        <td className="py-2 px-1">
                           <p className="m-0 text-[11px]">{planLabel}</p>
                           <p className="m-0 text-[9px] text-text-subtle">
                             {rate != null && duration != null ? `${rate}% · ${duration}d` : "—"}
                           </p>
                         </td>
-                        <td className="py-2 text-right font-mono">
+                        <td className="py-2 px-1 text-right font-mono">
                           {formatPHP(r.capitalReturned, { short: true })}
                         </td>
-                        <td className="py-2 text-right font-mono text-vault">
+                        <td className="py-2 px-1 text-right font-mono text-vault">
                           +{formatPHP(r.vaultCredited, { short: true })}
                         </td>
-                        <td className="py-2 text-text-muted text-[10px]">
-                          {new Date(r.startedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
+                        <td className="py-2 px-1 text-text-muted text-[10px]">
+                          {fmtDateShort(r.startedAt)}
                         </td>
-                        <td className="py-2 text-text-muted text-[10px]">
-                          {new Date(r.completedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
+                        <td className="py-2 px-1 text-text-muted text-[10px]">
+                          {fmtDateShort(r.completedAt)}
                         </td>
                       </tr>
                     );
