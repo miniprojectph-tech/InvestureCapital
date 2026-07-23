@@ -24,6 +24,7 @@ import { ColorCoinParticles } from "@/components/colorgame/ColorCoinParticles";
 import { ColorResultOverlay } from "@/components/colorgame/ColorResultOverlay";
 
 const BG_URL = "/colorgame/bg-full.png?v=3";
+const IMG_AR = 2; // 2880 / 1440
 
 function useBgReady() {
   const [ready, setReady] = useState(false);
@@ -35,6 +36,35 @@ function useBgReady() {
     if (img.complete) setReady(true);
   }, []);
   return ready;
+}
+
+function useCoverStyle(): React.CSSProperties {
+  const [style, setStyle] = useState<React.CSSProperties>({
+    position: "absolute", left: 0, top: 0, width: "100%", height: "100%",
+  });
+  useEffect(() => {
+    function calc() {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      let w: number, h: number;
+      if (vw / vh > IMG_AR) {
+        w = vw; h = vw / IMG_AR;
+      } else {
+        h = vh; w = vh * IMG_AR;
+      }
+      setStyle({
+        position: "absolute",
+        left: (vw - w) / 2,
+        top: (vh - h) / 2,
+        width: w,
+        height: h,
+      });
+    }
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
+  }, []);
+  return style;
 }
 
 export default function ColorGamePage() {
@@ -58,6 +88,7 @@ export default function ColorGamePage() {
   const myBetRef = useRef<{ color: DieColor; amount: number } | null>(null);
 
   const bgReady = useBgReady();
+  const coverStyle = useCoverStyle();
 
   const prevDiceRef = useRef<[DieColor, DieColor, DieColor] | undefined>(undefined);
 
@@ -152,121 +183,122 @@ export default function ColorGamePage() {
   }
 
   return (
-    <div
-      className="fixed inset-0 select-none overflow-hidden"
-      style={{
-        backgroundImage: `url(${BG_URL})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center",
-        backgroundRepeat: "no-repeat",
-      }}
-    >
-      {/* Coin particles — only on win, no ambient to avoid flicker */}
-      <ColorCoinParticles active={showCoins} count={25} />
+    <div className="fixed inset-0 select-none overflow-hidden bg-[#1a0a2e]">
+      {/* Cover-container: sized to mimic background-size:cover + center.
+          All overlays inside use % of the IMAGE, not the viewport,
+          so positions stay consistent across all screen aspect ratios. */}
+      <div style={coverStyle}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={BG_URL} alt="" draggable={false}
+          className="absolute inset-0 w-full h-full block" />
 
-      {/* ===== INTERACTIVE OVERLAYS (positions mapped to 2880x1440 art) ===== */}
+        {/* Coin particles — only on win */}
+        <ColorCoinParticles active={showCoins} count={25} />
 
-      {/* Back button — over hamburger icon */}
-      <button
-        onClick={() => router.push("/dashboard")}
-        className="absolute z-20 rounded-full hover:bg-white/10 transition-colors"
-        style={{ left: "1%", top: "2%", width: "4%", height: "8%" }}
-      />
+        {/* ===== OVERLAYS (% of 2880x1440 image) ===== */}
 
-      {/* GP balance — below coin icons */}
-      <div className="absolute z-20 flex items-center justify-center"
-        style={{ left: "1%", top: "11%", width: "5.5%", height: "4%" }}>
-        <span className="font-mono font-bold text-yellow-300 drop-shadow-lg" style={{ fontSize: "clamp(10px, 1vw, 16px)" }}>
-          {balance}
-        </span>
-      </div>
-
-      {/* Timer — top right */}
-      <div className="absolute z-20" style={{ right: "1.5%", top: "2%", width: "4%", height: "8%" }}>
-        <ColorRoundTimer phase={phase} remaining={timer.remaining} />
-      </div>
-
-      {/* Online count */}
-      <div className="absolute z-20 flex items-center justify-center"
-        style={{ right: "5.5%", top: "3%", width: "4%", height: "4%" }}>
-        <span className="text-white/50 font-medium" style={{ fontSize: "clamp(8px, 0.65vw, 12px)" }}>{totalBettors} online</span>
-      </div>
-
-      {/* Jackpot digits — inside pink banner purple boxes */}
-      <div className="absolute z-10"
-        style={{ left: "57%", top: "5%", width: "20%", height: "7%" }}>
-        <ColorJackpotDisplay amount={gs.jackpotPool} triggered={round?.jackpotTriggered} />
-      </div>
-
-      {/* Ranking rows — inside wooden easel cream area */}
-      <div className="absolute z-10"
-        style={{ left: "3.5%", top: "17%", width: "14%", height: "56%" }}>
-        <ColorRankingBoard leaders={leaders} />
-      </div>
-
-      {/* Dice — centered in open suitcase */}
-      <div className="absolute z-10 flex items-center justify-center"
-        style={{ left: "22%", top: "34%", width: "18%", height: "36%" }}>
-        <ColorDice results={dice} rolling={phase === "rolling"} />
-      </div>
-
-      {/* History dots — inside wooden history bar */}
-      <div className="absolute z-10"
-        style={{ left: "53%", top: "21%", width: "28%", height: "4.5%" }}>
-        <ColorHistoryStrip history={gs.history} />
-      </div>
-
-      {/* Color tiles 3x2 — over painted tiles */}
-      <div className="absolute z-10"
-        style={{ left: "53%", top: "27%", width: "33%", height: "42%" }}>
-        <ColorBettingBoard
-          selectedColor={selectedColor}
-          onSelect={handleColorTap}
-          disabled={!bettingOpen || placing}
-          betAmounts={betAmounts}
-          results={dice}
+        {/* Back button — over hamburger icon */}
+        <button
+          onClick={() => router.push("/dashboard")}
+          className="absolute z-20 rounded-full hover:bg-white/10 transition-colors"
+          style={{ left: "1%", top: "2%", width: "4%", height: "8%" }}
         />
-      </div>
 
-      {/* Bet controls — AUTO + 3 gold buttons (always mounted, fade in/out) */}
-      <div className="absolute z-10 transition-opacity duration-300"
-        style={{
-          left: "53%", top: "87%", width: "33%", height: "10%",
-          opacity: bettingOpen ? 1 : 0,
-          pointerEvents: bettingOpen ? "auto" : "none",
-        }}>
-        <ColorBetControls
-          betAmount={betAmount}
-          onBetChange={setBetAmount}
-          onPlaceBet={() => {}}
-          disabled={!bettingOpen}
-          balance={balance}
-          placing={placing}
-          selectedColor={false}
-        />
-      </div>
+        {/* GP balance — below coin icons */}
+        <div className="absolute z-20 flex items-center justify-center"
+          style={{ left: "1%", top: "11%", width: "5.5%", height: "4%" }}>
+          <span className="font-mono font-bold text-yellow-300 drop-shadow-lg" style={{ fontSize: "clamp(10px, 1vw, 16px)" }}>
+            {balance}
+          </span>
+        </div>
 
-      {/* Error */}
-      {error && (
-        <div className="absolute z-30" style={{ left: "53%", top: "73%", width: "30%", height: "5%" }}>
-          <div className="flex items-center justify-center h-full">
-            <div className="bg-red-900/80 border border-red-500/50 rounded-lg px-3 py-1">
-              <span className="text-red-300" style={{ fontSize: "clamp(9px, 0.6vw, 12px)" }}>{error}</span>
+        {/* Timer — top right */}
+        <div className="absolute z-20" style={{ right: "1.5%", top: "2%", width: "4%", height: "8%" }}>
+          <ColorRoundTimer phase={phase} remaining={timer.remaining} />
+        </div>
+
+        {/* Online count */}
+        <div className="absolute z-20 flex items-center justify-center"
+          style={{ right: "5.5%", top: "3%", width: "4%", height: "4%" }}>
+          <span className="text-white/50 font-medium" style={{ fontSize: "clamp(8px, 0.65vw, 12px)" }}>{totalBettors} online</span>
+        </div>
+
+        {/* Jackpot digits — inside pink banner purple boxes */}
+        <div className="absolute z-10"
+          style={{ left: "57%", top: "5%", width: "20%", height: "7%" }}>
+          <ColorJackpotDisplay amount={gs.jackpotPool} triggered={round?.jackpotTriggered} />
+        </div>
+
+        {/* Ranking rows — inside wooden easel cream area */}
+        <div className="absolute z-10"
+          style={{ left: "3.5%", top: "17%", width: "14%", height: "56%" }}>
+          <ColorRankingBoard leaders={leaders} />
+        </div>
+
+        {/* Dice — centered in open suitcase */}
+        <div className="absolute z-10 flex items-center justify-center"
+          style={{ left: "22%", top: "34%", width: "18%", height: "36%" }}>
+          <ColorDice results={dice} rolling={phase === "rolling"} />
+        </div>
+
+        {/* History dots — inside wooden history bar */}
+        <div className="absolute z-10"
+          style={{ left: "53%", top: "21%", width: "28%", height: "4.5%" }}>
+          <ColorHistoryStrip history={gs.history} />
+        </div>
+
+        {/* Color tiles 3x2 — over painted tiles */}
+        <div className="absolute z-10"
+          style={{ left: "53%", top: "27%", width: "33%", height: "42%" }}>
+          <ColorBettingBoard
+            selectedColor={selectedColor}
+            onSelect={handleColorTap}
+            disabled={!bettingOpen || placing}
+            betAmounts={betAmounts}
+            results={dice}
+          />
+        </div>
+
+        {/* Bet controls — 3 gold buttons (always mounted, fade in/out) */}
+        <div className="absolute z-10 transition-opacity duration-300"
+          style={{
+            left: "57.5%", top: "92%", width: "12.5%", height: "7%",
+            opacity: bettingOpen ? 1 : 0,
+            pointerEvents: bettingOpen ? "auto" : "none",
+          }}>
+          <ColorBetControls
+            betAmount={betAmount}
+            onBetChange={setBetAmount}
+            onPlaceBet={() => {}}
+            disabled={!bettingOpen}
+            balance={balance}
+            placing={placing}
+            selectedColor={false}
+          />
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="absolute z-30" style={{ left: "53%", top: "73%", width: "30%", height: "5%" }}>
+            <div className="flex items-center justify-center h-full">
+              <div className="bg-red-900/80 border border-red-500/50 rounded-lg px-3 py-1">
+                <span className="text-red-300" style={{ fontSize: "clamp(9px, 0.6vw, 12px)" }}>{error}</span>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Result banner */}
-      <ColorResultOverlay
-        visible={showResult}
-        betColor={myBetRef.current?.color ?? null}
-        betAmount={myBetRef.current?.amount ?? 0}
-        dice={dice}
-        payout={lastPayout}
-        jackpotTriggered={round?.jackpotTriggered}
-        jackpotAmount={round?.jackpotAmount}
-      />
+        {/* Result banner */}
+        <ColorResultOverlay
+          visible={showResult}
+          betColor={myBetRef.current?.color ?? null}
+          betAmount={myBetRef.current?.amount ?? 0}
+          dice={dice}
+          payout={lastPayout}
+          jackpotTriggered={round?.jackpotTriggered}
+          jackpotAmount={round?.jackpotAmount}
+        />
+      </div>
     </div>
   );
 }
