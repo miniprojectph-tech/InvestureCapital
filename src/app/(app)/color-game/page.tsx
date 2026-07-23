@@ -125,17 +125,17 @@ export default function ColorGamePage() {
   }
 
   return (
-    <div className="fixed inset-0 select-none overflow-hidden">
-      {/* Background art — 2880x1440, covers full viewport */}
-      <img
-        src="/colorgame/bg-full.png?v=3"
-        alt=""
-        className="absolute inset-0 w-full h-full object-cover"
-        draggable={false}
-      />
-
-      {/* Coin particles */}
-      <ColorCoinParticles active={showCoins} count={25} ambient />
+    <div
+      className="fixed inset-0 select-none overflow-hidden"
+      style={{
+        backgroundImage: "url(/colorgame/bg-full.png?v=3)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }}
+    >
+      {/* Coin particles — only on win, no ambient to avoid flicker */}
+      <ColorCoinParticles active={showCoins} count={25} />
 
       {/* ===== INTERACTIVE OVERLAYS (positions mapped to 2880x1440 art) ===== */}
 
