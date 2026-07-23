@@ -28,7 +28,7 @@ export function ColorResultOverlay({
     if (visible) {
       setShow(true);
     } else {
-      const t = setTimeout(() => setShow(false), 300);
+      const t = setTimeout(() => setShow(false), 400);
       return () => clearTimeout(t);
     }
   }, [visible]);
@@ -37,69 +37,63 @@ export function ColorResultOverlay({
 
   const matches = dice.filter((d) => d === betColor).length;
   const isWin = payout > 0;
-  const net = payout - betAmount;
 
   return (
     <div
-      className={`absolute inset-0 z-50 flex items-center justify-center transition-opacity duration-300 ${
-        visible ? "opacity-100" : "opacity-0"
+      className={`absolute bottom-4 left-4 z-50 transition-all duration-400 ${
+        visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
       }`}
-      style={{ backgroundColor: isWin ? "rgba(0,0,0,0.5)" : "rgba(0,0,0,0.7)" }}
     >
       <div
-        className={`rounded-2xl px-8 py-6 text-center max-w-[320px] ${
+        className={`rounded-xl px-4 py-3 min-w-[180px] backdrop-blur-md ${
           isWin
-            ? "bg-gradient-to-b from-yellow-900/90 to-yellow-950/90 border-2 border-yellow-400/50"
-            : "bg-gradient-to-b from-gray-800/90 to-gray-900/90 border border-white/10"
+            ? "bg-gradient-to-r from-yellow-900/90 to-amber-800/90 border border-yellow-400/50"
+            : "bg-gradient-to-r from-gray-900/90 to-gray-800/90 border border-white/10"
         }`}
         style={{
-          animation: visible ? "resultPopIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)" : "none",
-          boxShadow: isWin ? `0 0 60px ${COLOR_HEX[betColor]}44` : "none",
+          animation: visible ? "bannerSlideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1)" : "none",
+          boxShadow: isWin
+            ? `0 4px 24px ${COLOR_HEX[betColor]}44, 0 0 40px rgba(255,215,0,0.15)`
+            : "0 4px 12px rgba(0,0,0,0.3)",
         }}
       >
         <style>{`
-          @keyframes resultPopIn {
-            0% { transform: scale(0.5); opacity: 0; }
-            100% { transform: scale(1); opacity: 1; }
+          @keyframes bannerSlideIn {
+            0% { transform: translateX(-30px) scale(0.9); opacity: 0; }
+            100% { transform: translateX(0) scale(1); opacity: 1; }
           }
         `}</style>
 
         {jackpotTriggered && (
-          <div className="text-yellow-300 font-black text-xl mb-2 animate-pulse tracking-wider">
+          <div className="text-yellow-300 font-black text-sm mb-1 animate-pulse tracking-wider">
             JACKPOT!
           </div>
         )}
 
-        <div className={`text-2xl font-black mb-2 ${isWin ? "text-yellow-300" : "text-white/60"}`}>
-          {isWin ? "YOU WIN!" : "Better luck next round"}
-        </div>
-
-        <div className="flex items-center justify-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-1.5">
           <div
-            className="w-5 h-5 rounded"
+            className="w-4 h-4 rounded"
             style={{ backgroundColor: COLOR_HEX[betColor] }}
           />
-          <span className="text-sm text-white/80">
-            {COLOR_LABELS[betColor]} &middot; {matches} match{matches !== 1 ? "es" : ""}
+          <span className={`text-sm font-black ${isWin ? "text-yellow-300" : "text-white/60"}`}>
+            {isWin ? "WIN!" : "No match"}
+          </span>
+          <span className="text-[10px] text-white/50">
+            {matches}x {COLOR_LABELS[betColor]}
           </span>
         </div>
 
         {isWin ? (
-          <div className="space-y-1">
-            <div className="text-3xl font-mono font-black text-yellow-300">
+          <div className="flex items-baseline gap-2">
+            <span className="text-xl font-mono font-black text-yellow-300">
               +{payout} GP
-            </div>
+            </span>
             {jackpotTriggered && jackpotAmount && jackpotAmount > 0 && (
-              <div className="text-sm text-yellow-400/80">
-                includes {jackpotAmount} GP jackpot
-              </div>
+              <span className="text-[10px] text-yellow-400/70">+{jackpotAmount} jackpot</span>
             )}
-            <div className="text-xs text-white/50">
-              Net profit: +{net} GP
-            </div>
           </div>
         ) : (
-          <div className="text-lg font-mono text-red-400/80">
+          <div className="text-sm font-mono text-red-400/80">
             -{betAmount} GP
           </div>
         )}

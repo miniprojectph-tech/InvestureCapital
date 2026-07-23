@@ -14,16 +14,16 @@ const FACE_MAP: Record<DieColor, string> = {
 
 const FACE_ORDER: DieColor[] = ["red", "blue", "yellow", "pink", "white", "green"];
 
-const FACE_ROTATIONS: Record<number, string> = {
-  0: "rotateY(0deg)",      // front
-  1: "rotateY(180deg)",    // back
-  2: "rotateY(-90deg)",    // left
-  3: "rotateY(90deg)",     // right
-  4: "rotateX(90deg)",     // top
-  5: "rotateX(-90deg)",    // bottom
-};
+const FACE_TRANSFORMS: string[] = [
+  "rotateY(0deg)",      // front
+  "rotateY(180deg)",    // back
+  "rotateY(-90deg)",    // left
+  "rotateY(90deg)",     // right
+  "rotateX(90deg)",     // top
+  "rotateX(-90deg)",    // bottom
+];
 
-const LANDING_ROTATIONS: Record<DieColor, string> = {
+const LANDING: Record<DieColor, string> = {
   red:    "rotateX(0deg) rotateY(0deg)",
   blue:   "rotateX(0deg) rotateY(180deg)",
   yellow: "rotateX(0deg) rotateY(90deg)",
@@ -38,11 +38,11 @@ type Props = {
   size?: number;
 };
 
-export function ColorDice({ results, rolling, size = 80 }: Props) {
+export function ColorDice({ results, rolling, size = 90 }: Props) {
   const half = size / 2;
 
   return (
-    <div className="flex items-center justify-center gap-3 sm:gap-5">
+    <div className="flex items-end justify-center gap-2" style={{ perspective: size * 6 }}>
       {[0, 1, 2].map((i) => (
         <SingleDie
           key={i}
@@ -50,7 +50,8 @@ export function ColorDice({ results, rolling, size = 80 }: Props) {
           rolling={rolling}
           size={size}
           half={half}
-          delay={i * 200}
+          delay={i * 250}
+          yOffset={i === 1 ? -8 : 0}
         />
       ))}
     </div>
@@ -63,56 +64,62 @@ function SingleDie({
   size,
   half,
   delay,
+  yOffset,
 }: {
   result?: DieColor;
   rolling: boolean;
   size: number;
   half: number;
   delay: number;
+  yOffset: number;
 }) {
-  const cubeRef = useRef<HTMLDivElement>(null);
-  const [spinId, setSpinId] = useState(0);
+  const [animKey, setAnimKey] = useState(0);
+  const randRef = useRef({ x: 0, y: 0, z: 0 });
 
   useEffect(() => {
-    if (rolling) setSpinId((p) => p + 1);
+    if (rolling) {
+      randRef.current = {
+        x: 720 + Math.random() * 720,
+        y: 720 + Math.random() * 720,
+        z: 360 + Math.random() * 360,
+      };
+      setAnimKey((p) => p + 1);
+    }
   }, [rolling]);
 
-  const landRotation = result ? LANDING_ROTATIONS[result] : "rotateX(0deg) rotateY(0deg)";
-
-  const spinTurns = 3 + Math.random() * 2;
-  const spinX = Math.round(spinTurns * 360 + (Math.random() > 0.5 ? 180 : 0));
-  const spinY = Math.round(spinTurns * 360 + (Math.random() > 0.5 ? 90 : 0));
-  const spinZ = Math.round(spinTurns * 180);
-
-  const animName = `diceRoll_${spinId}_${delay}`;
+  const landRotation = result ? LANDING[result] : "rotateX(-20deg) rotateY(25deg)";
+  const { x, y, z } = randRef.current;
+  const anim = `diceRoll${animKey}d${delay}`;
 
   return (
-    <div
-      style={{
-        width: size,
-        height: size,
-        perspective: size * 4,
-      }}
-    >
+    <div style={{ width: size, height: size, marginBottom: yOffset }}>
       <style>{`
-        @keyframes ${animName} {
-          0% { transform: rotateX(0deg) rotateY(0deg) rotateZ(0deg); }
-          15% { transform: rotateX(${spinX * 0.3}deg) rotateY(${spinY * 0.3}deg) rotateZ(${spinZ * 0.3}deg); }
-          40% { transform: rotateX(${spinX * 0.65}deg) rotateY(${spinY * 0.65}deg) rotateZ(${spinZ * 0.6}deg); }
-          70% { transform: rotateX(${spinX * 0.9}deg) rotateY(${spinY * 0.9}deg) rotateZ(${spinZ * 0.85}deg); }
-          100% { transform: ${landRotation}; }
+        @keyframes ${anim} {
+          0%   { transform: rotateX(0) rotateY(0) rotateZ(0) translateY(0); }
+          10%  { transform: rotateX(${x * 0.15}deg) rotateY(${y * 0.15}deg) rotateZ(${z * 0.1}deg) translateY(-30px); }
+          30%  { transform: rotateX(${x * 0.45}deg) rotateY(${y * 0.45}deg) rotateZ(${z * 0.35}deg) translateY(-15px); }
+          55%  { transform: rotateX(${x * 0.75}deg) rotateY(${y * 0.75}deg) rotateZ(${z * 0.65}deg) translateY(-5px); }
+          80%  { transform: rotateX(${x * 0.95}deg) rotateY(${y * 0.95}deg) rotateZ(${z * 0.9}deg) translateY(4px); }
+          90%  { transform: ${landRotation} translateY(-2px); }
+          100% { transform: ${landRotation} translateY(0); }
+        }
+        @keyframes diceBounce${animKey}d${delay} {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(-3px); }
         }
       `}</style>
       <div
-        ref={cubeRef}
         style={{
           width: size,
           height: size,
           position: "relative",
           transformStyle: "preserve-3d",
-          transition: rolling ? "none" : "transform 0.3s ease-out",
           transform: rolling ? undefined : landRotation,
-          animation: rolling ? `${animName} 2.8s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${delay}ms forwards` : "none",
+          animation: rolling
+            ? `${anim} 2.6s cubic-bezier(0.22, 0.61, 0.36, 1) ${delay}ms forwards`
+            : result
+            ? `diceBounce${animKey}d${delay} 2s ease-in-out infinite`
+            : "none",
         }}
       >
         {FACE_ORDER.map((color, fi) => (
@@ -122,11 +129,12 @@ function SingleDie({
               position: "absolute",
               width: size,
               height: size,
-              transform: `${FACE_ROTATIONS[fi]} translateZ(${half}px)`,
+              transform: `${FACE_TRANSFORMS[fi]} translateZ(${half}px)`,
               backfaceVisibility: "hidden",
-              borderRadius: 8,
+              borderRadius: Math.round(size * 0.12),
               overflow: "hidden",
-              boxShadow: "inset 0 0 8px rgba(0,0,0,0.3)",
+              border: "2px solid rgba(255,255,255,0.25)",
+              boxShadow: "inset 0 2px 6px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.3)",
             }}
           >
             <img

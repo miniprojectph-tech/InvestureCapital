@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, Trophy, Loader2 } from "lucide-react";
+import { ChevronLeft, Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useGameState } from "@/lib/game";
 import {
@@ -12,7 +12,6 @@ import {
   placeColorBet,
   resolveColorRound,
   type DieColor,
-  type RoundPhase,
 } from "@/lib/colorgame";
 import { ColorDice } from "@/components/colorgame/ColorDice";
 import { ColorBettingBoard } from "@/components/colorgame/ColorBettingBoard";
@@ -37,7 +36,6 @@ export default function ColorGamePage() {
   const [betAmount, setBetAmount] = useState(10);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showRanking, setShowRanking] = useState(false);
   const [showResult, setShowResult] = useState(false);
   const [lastPayout, setLastPayout] = useState(0);
   const [showCoins, setShowCoins] = useState(false);
@@ -49,12 +47,10 @@ export default function ColorGamePage() {
   const phase = timer.phase;
   const bettingOpen = phase === "betting";
 
-  // My bet in current round
   const myBet = round?.bets?.[user?.uid ?? ""] ?? null;
   const hasBet = !!myBet;
   const dice = round?.dice;
 
-  // Auto-resolve when betting window closes
   useEffect(() => {
     if (phase !== "rolling" && phase !== "result") return;
     if (resolvedRef.current === roundId) return;
@@ -72,14 +68,12 @@ export default function ColorGamePage() {
     return () => clearTimeout(timeout);
   }, [phase, roundId, round?.dice]);
 
-  // Track my bet for result display
   useEffect(() => {
     if (myBet) {
       myBetRef.current = { color: myBet.color, amount: myBet.amount };
     }
   }, [myBet]);
 
-  // Show result overlay when dice resolve
   useEffect(() => {
     if (!dice || !myBetRef.current) return;
     const matches = dice.filter((d) => d === myBetRef.current!.color).length;
@@ -103,7 +97,6 @@ export default function ColorGamePage() {
     return () => clearTimeout(hide);
   }, [dice, round?.jackpotTriggered, round?.jackpotColor, round?.jackpotAmount]);
 
-  // Reset selection on new round
   useEffect(() => {
     if (phase === "betting") {
       setSelectedColor(null);
@@ -127,7 +120,6 @@ export default function ColorGamePage() {
     }
   }, [selectedColor, betAmount, placing, bettingOpen]);
 
-  // Build bet amounts map for the board
   const betAmounts: Record<string, number> = {};
   if (round?.bets) {
     for (const b of Object.values(round.bets)) {
@@ -154,140 +146,117 @@ export default function ColorGamePage() {
         className="absolute inset-0 w-full h-full object-cover"
         draggable={false}
       />
-
-      {/* Dark overlay for better contrast */}
       <div className="absolute inset-0 bg-black/30" />
 
-      {/* Coin particles */}
-      <ColorCoinParticles active={showCoins} count={25} />
+      {/* Ambient + win coin particles */}
+      <ColorCoinParticles active={showCoins} count={25} ambient />
 
-      {/* Top bar */}
+      {/* === Top bar: back, jackpot center, balance right === */}
       <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-3 py-2">
-        <button
-          onClick={() => router.push("/dashboard")}
-          className="flex items-center gap-1 text-white/80 hover:text-white text-sm"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          <span className="text-xs hidden sm:inline">Back</span>
-        </button>
-
+        {/* Left: back + player count */}
         <div className="flex items-center gap-2">
-          <div className="bg-black/50 backdrop-blur-sm rounded-full px-3 py-1 flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded-full bg-yellow-400" />
-            <span className="text-xs font-mono font-bold text-yellow-300">{balance} GP</span>
-          </div>
-          <div className="bg-black/50 backdrop-blur-sm rounded-full px-3 py-1">
-            <span className="text-[10px] text-white/60">{totalBettors} player{totalBettors !== 1 ? "s" : ""}</span>
-          </div>
+          <button
+            onClick={() => router.push("/dashboard")}
+            className="flex items-center gap-0.5 text-white/70 hover:text-white"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span className="text-[10px] hidden sm:inline">Back</span>
+          </button>
+          <span className="text-[9px] text-white/40">{totalBettors} online</span>
         </div>
 
-        <button
-          onClick={() => setShowRanking(!showRanking)}
-          className="flex items-center gap-1 text-yellow-300/80 hover:text-yellow-300"
-        >
-          <Trophy className="w-4 h-4" />
-          <span className="text-xs hidden sm:inline">Rank</span>
-        </button>
+        {/* Center: jackpot */}
+        <ColorJackpotDisplay
+          amount={gs.jackpotPool}
+          triggered={round?.jackpotTriggered}
+          lastDice={dice}
+        />
+
+        {/* Right: balance + timer */}
+        <div className="flex items-center gap-2">
+          <div className="bg-black/50 backdrop-blur-sm rounded-full px-2.5 py-1 flex items-center gap-1">
+            <div className="w-2.5 h-2.5 rounded-full bg-yellow-400" />
+            <span className="text-[10px] font-mono font-bold text-yellow-300">{balance} GP</span>
+          </div>
+          <ColorRoundTimer phase={phase} remaining={timer.remaining} />
+        </div>
       </div>
 
-      {/* Main game layout */}
-      <div className="absolute inset-0 z-10 flex items-center justify-center pt-10 pb-2">
-        <div className="flex gap-3 sm:gap-6 items-center max-w-[1200px] w-full px-3">
+      {/* === Main 3-column layout === */}
+      <div className="absolute inset-0 z-10 flex items-stretch pt-14 pb-2 px-2 sm:px-4 gap-2 sm:gap-3">
+        {/* Left column: ranking board */}
+        <div className="w-[140px] sm:w-[170px] shrink-0">
+          <ColorRankingBoard leaders={leaders} />
+        </div>
 
-          {/* Left: Timer + Dice area */}
-          <div className="flex flex-col items-center gap-3 shrink-0">
-            <ColorRoundTimer phase={phase} remaining={timer.remaining} />
-
-            {/* Dice suitcase */}
-            <div className="relative">
-              <img
-                src="/colorgame/dice-suitcase.png"
-                alt=""
-                className="w-[200px] sm:w-[280px] h-auto"
-                draggable={false}
-              />
-              <div className="absolute inset-0 flex items-center justify-center pt-[10%]">
-                <ColorDice
-                  results={dice}
-                  rolling={phase === "rolling"}
-                  size={50}
-                />
-              </div>
-            </div>
-
-            {/* Jackpot */}
-            <div className="w-[200px] sm:w-[280px]">
-              <ColorJackpotDisplay
-                amount={gs.jackpotPool}
-                triggered={round?.jackpotTriggered}
-              />
-            </div>
-          </div>
-
-          {/* Center: Betting Board */}
-          <div className="flex flex-col items-center gap-2 flex-1 max-w-[400px]">
-            <div className="w-full">
-              <ColorBettingBoard
-                selectedColor={selectedColor}
-                onSelect={setSelectedColor}
-                disabled={!bettingOpen || hasBet}
-                betAmounts={betAmounts}
+        {/* Center column: dice suitcase */}
+        <div className="flex-1 flex flex-col items-center justify-center min-w-0">
+          <div className="relative">
+            <img
+              src="/colorgame/dice-suitcase.png"
+              alt=""
+              className="w-[240px] sm:w-[340px] h-auto"
+              draggable={false}
+            />
+            <div className="absolute inset-0 flex items-center justify-center pt-[8%]">
+              <ColorDice
                 results={dice}
+                rolling={phase === "rolling"}
+                size={70}
               />
-            </div>
-
-            {/* Bet controls */}
-            {!hasBet && bettingOpen ? (
-              <div className="w-full">
-                <ColorBetControls
-                  betAmount={betAmount}
-                  onBetChange={setBetAmount}
-                  onPlaceBet={handlePlaceBet}
-                  disabled={!selectedColor || !bettingOpen}
-                  balance={balance}
-                  placing={placing}
-                />
-              </div>
-            ) : hasBet ? (
-              <div className="bg-black/40 backdrop-blur-sm rounded-lg px-4 py-2 text-center">
-                <span className="text-xs text-yellow-300 font-bold">
-                  Bet placed: {myBet?.amount} GP on {myBet?.color}
-                </span>
-              </div>
-            ) : (
-              <div className="bg-black/40 backdrop-blur-sm rounded-lg px-4 py-2 text-center">
-                <span className="text-xs text-white/50">
-                  {phase === "rolling" ? "Rolling dice..." : phase === "result" ? "Round complete" : "Waiting..."}
-                </span>
-              </div>
-            )}
-
-            {/* Error */}
-            {error && (
-              <div className="bg-red-900/60 border border-red-500/40 rounded-lg px-3 py-1.5 text-center">
-                <span className="text-[10px] text-red-300">{error}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Right: History */}
-          <div className="flex flex-col items-center gap-3 shrink-0">
-            <div className="w-[200px] sm:w-[240px]">
-              <div className="text-[9px] text-white/50 text-center mb-1 uppercase tracking-wider">Recent Results</div>
-              <ColorHistoryStrip history={gs.history} />
             </div>
           </div>
         </div>
+
+        {/* Right column: history + betting board + controls */}
+        <div className="w-[220px] sm:w-[300px] shrink-0 flex flex-col gap-2 justify-center">
+          {/* History strip */}
+          <ColorHistoryStrip history={gs.history} />
+
+          {/* Betting board */}
+          <ColorBettingBoard
+            selectedColor={selectedColor}
+            onSelect={setSelectedColor}
+            disabled={!bettingOpen || hasBet}
+            betAmounts={betAmounts}
+            results={dice}
+          />
+
+          {/* Bet controls or status */}
+          {!hasBet && bettingOpen ? (
+            <ColorBetControls
+              betAmount={betAmount}
+              onBetChange={setBetAmount}
+              onPlaceBet={handlePlaceBet}
+              disabled={!selectedColor || !bettingOpen}
+              balance={balance}
+              placing={placing}
+              hasSelectedColor={!!selectedColor}
+            />
+          ) : hasBet ? (
+            <div className="bg-black/40 backdrop-blur-sm rounded-lg px-3 py-1.5 text-center">
+              <span className="text-[10px] text-yellow-300 font-bold">
+                Bet: {myBet?.amount} GP on {myBet?.color}
+              </span>
+            </div>
+          ) : (
+            <div className="bg-black/40 backdrop-blur-sm rounded-lg px-3 py-1.5 text-center">
+              <span className="text-[10px] text-white/50">
+                {phase === "rolling" ? "Rolling..." : phase === "result" ? "Round complete" : "Waiting..."}
+              </span>
+            </div>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="bg-red-900/60 border border-red-500/40 rounded-lg px-2 py-1 text-center">
+              <span className="text-[9px] text-red-300">{error}</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Rankings overlay */}
-      <ColorRankingBoard
-        visible={showRanking}
-        onClose={() => setShowRanking(false)}
-        leaders={leaders}
-      />
-
-      {/* Result overlay */}
+      {/* Result banner (bottom-left) */}
       <ColorResultOverlay
         visible={showResult}
         betColor={myBetRef.current?.color ?? null}

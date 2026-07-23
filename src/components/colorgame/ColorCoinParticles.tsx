@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 type Props = {
   active: boolean;
   count?: number;
+  ambient?: boolean;
 };
 
 const SPRITE_FRAMES = 8;
@@ -23,11 +24,12 @@ type Particle = {
   scale: number;
 };
 
-export function ColorCoinParticles({ active, count = 20 }: Props) {
+export function ColorCoinParticles({ active, count = 20, ambient }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const spriteRef = useRef<HTMLImageElement | null>(null);
   const particlesRef = useRef<Particle[]>([]);
   const rafRef = useRef<number>(0);
+  const ambientTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const img = new Image();
@@ -36,7 +38,6 @@ export function ColorCoinParticles({ active, count = 20 }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!active) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -49,25 +50,47 @@ export function ColorCoinParticles({ active, count = 20 }: Props) {
     const w = canvas.offsetWidth;
     const h = canvas.offsetHeight;
 
-    const particles: Particle[] = [];
-    for (let i = 0; i < count; i++) {
-      particles.push({
-        x: w * 0.3 + Math.random() * w * 0.4,
-        y: h * 0.5,
-        vx: (Math.random() - 0.5) * 6,
-        vy: -3 - Math.random() * 5,
+    function spawnBurst(n: number) {
+      for (let i = 0; i < n; i++) {
+        particlesRef.current.push({
+          x: w * 0.3 + Math.random() * w * 0.4,
+          y: h * 0.5,
+          vx: (Math.random() - 0.5) * 6,
+          vy: -3 - Math.random() * 5,
+          frame: Math.floor(Math.random() * SPRITE_FRAMES),
+          frameTimer: 0,
+          life: 0,
+          maxLife: 40 + Math.random() * 30,
+          scale: 0.4 + Math.random() * 0.4,
+        });
+      }
+    }
+
+    function spawnAmbient() {
+      particlesRef.current.push({
+        x: Math.random() * w,
+        y: h + 10,
+        vx: (Math.random() - 0.5) * 1.5,
+        vy: -0.8 - Math.random() * 1.2,
         frame: Math.floor(Math.random() * SPRITE_FRAMES),
         frameTimer: 0,
         life: 0,
-        maxLife: 40 + Math.random() * 30,
-        scale: 0.4 + Math.random() * 0.4,
+        maxLife: 80 + Math.random() * 60,
+        scale: 0.2 + Math.random() * 0.25,
       });
     }
-    particlesRef.current = particles;
+
+    if (active) spawnBurst(count);
+
+    if (ambient) {
+      ambientTimerRef.current = setInterval(spawnAmbient, 800);
+    }
 
     function animate() {
       if (!ctx || !canvas) return;
-      ctx.clearRect(0, 0, w, h);
+      const cw = canvas.offsetWidth;
+      const ch = canvas.offsetHeight;
+      ctx.clearRect(0, 0, cw, ch);
       const sprite = spriteRef.current;
 
       let alive = 0;
@@ -77,7 +100,7 @@ export function ColorCoinParticles({ active, count = 20 }: Props) {
         p.life++;
         p.x += p.vx;
         p.y += p.vy;
-        p.vy += 0.15;
+        p.vy += ambient && !active ? 0.02 : 0.15;
         p.frameTimer++;
         if (p.frameTimer > 3) {
           p.frameTimer = 0;
@@ -85,7 +108,7 @@ export function ColorCoinParticles({ active, count = 20 }: Props) {
         }
 
         const alpha = Math.max(0, 1 - p.life / p.maxLife);
-        ctx.globalAlpha = alpha;
+        ctx.globalAlpha = alpha * (ambient && !active ? 0.4 : 1);
 
         if (sprite?.complete) {
           const sx = p.frame * FRAME_W;
@@ -100,16 +123,21 @@ export function ColorCoinParticles({ active, count = 20 }: Props) {
       }
 
       ctx.globalAlpha = 1;
-      if (alive > 0) {
+      particlesRef.current = particlesRef.current.filter((p) => p.life < p.maxLife);
+
+      if (alive > 0 || ambient) {
         rafRef.current = requestAnimationFrame(animate);
       }
     }
 
     rafRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(rafRef.current);
-  }, [active, count]);
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      if (ambientTimerRef.current) clearInterval(ambientTimerRef.current);
+    };
+  }, [active, count, ambient]);
 
-  if (!active) return null;
+  if (!active && !ambient) return null;
 
   return (
     <canvas

@@ -13,39 +13,28 @@ type Props = {
 };
 
 export function ColorHistoryStrip({ history }: Props) {
-  const recent = history.slice(0, 7);
+  const recent = history.slice(0, 10);
 
   return (
-    <div className="relative">
-      <img
-        src="/colorgame/history-strip.png"
-        alt="History"
-        className="w-full h-auto"
-        draggable={false}
-      />
-      <div className="absolute inset-0 flex items-center justify-center gap-1 sm:gap-1.5 px-[3%]">
-        {recent.map((entry, i) => (
-          <div key={entry.roundId} className="flex gap-0.5">
-            {entry.dice.map((color, di) => (
-              <div
-                key={di}
-                className="w-3 h-3 sm:w-4 sm:h-4 rounded-sm"
-                style={{
-                  backgroundColor: COLOR_HEX[color],
-                  opacity: 1 - i * 0.08,
-                  boxShadow: `0 0 4px ${COLOR_HEX[color]}88`,
-                }}
-              />
-            ))}
-            {i < recent.length - 1 && (
-              <div className="w-px h-3 sm:h-4 bg-white/20 mx-0.5" />
-            )}
-          </div>
-        ))}
-        {recent.length === 0 && (
-          <span className="text-[10px] text-white/40 italic">No rounds yet</span>
-        )}
-      </div>
+    <div className="flex items-center gap-1 px-2 py-1.5 rounded-lg bg-black/40 backdrop-blur-sm border border-white/10 overflow-x-auto">
+      <span className="text-[8px] text-white/40 font-bold uppercase tracking-wider shrink-0 mr-1">History</span>
+      {recent.map((entry, i) => (
+        <div key={entry.roundId} className="flex gap-[2px] shrink-0" style={{ opacity: 1 - i * 0.07 }}>
+          {entry.dice.map((color, di) => (
+            <div
+              key={di}
+              className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-[2px]"
+              style={{
+                backgroundColor: COLOR_HEX[color],
+                boxShadow: `0 0 3px ${COLOR_HEX[color]}66`,
+              }}
+            />
+          ))}
+        </div>
+      ))}
+      {recent.length === 0 && (
+        <span className="text-[8px] text-white/30 italic">No rounds yet</span>
+      )}
     </div>
   );
 }

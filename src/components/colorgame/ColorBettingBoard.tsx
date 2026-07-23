@@ -10,6 +10,12 @@ type Props = {
   results?: [DieColor, DieColor, DieColor];
 };
 
+function fmtAmt(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1)}K`;
+  return String(n);
+}
+
 export function ColorBettingBoard({ selectedColor, onSelect, disabled, betAmounts, results }: Props) {
   const matchCounts = results
     ? ALL_COLORS.reduce((acc, c) => {
@@ -19,14 +25,12 @@ export function ColorBettingBoard({ selectedColor, onSelect, disabled, betAmount
     : null;
 
   return (
-    <div className="relative">
-      <img
-        src="/colorgame/betting-board.png"
-        alt="Betting Board"
-        className="w-full h-auto"
-        draggable={false}
-      />
-      <div className="absolute inset-0 grid grid-cols-3 grid-rows-2 p-[8%] gap-[2%]">
+    <div className="relative rounded-xl overflow-hidden" style={{
+      background: "linear-gradient(145deg, #8B4513 0%, #A0522D 50%, #8B4513 100%)",
+      padding: "8px",
+      boxShadow: "0 4px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15)",
+    }}>
+      <div className="grid grid-cols-3 grid-rows-2 gap-[6px]">
         {ALL_COLORS.map((color) => {
           const isSelected = selectedColor === color;
           const isWinner = matchCounts ? matchCounts[color] > 0 : false;
@@ -38,35 +42,38 @@ export function ColorBettingBoard({ selectedColor, onSelect, disabled, betAmount
               key={color}
               onClick={() => !disabled && onSelect(color)}
               disabled={disabled}
-              className="relative rounded-lg transition-all duration-200 flex flex-col items-center justify-center overflow-hidden"
+              className="relative rounded-lg transition-all duration-200 flex flex-col items-center justify-center aspect-[4/3]"
               style={{
-                backgroundColor: `${COLOR_HEX[color]}22`,
+                background: `linear-gradient(180deg, ${COLOR_HEX[color]}dd 0%, ${COLOR_HEX[color]} 50%, ${COLOR_HEX[color]}cc 100%)`,
                 border: isSelected
-                  ? `3px solid ${COLOR_HEX[color]}`
-                  : "3px solid transparent",
+                  ? "3px solid #FFD700"
+                  : "2px solid rgba(255,255,255,0.2)",
                 boxShadow: isSelected
-                  ? `0 0 20px ${COLOR_HEX[color]}66, inset 0 0 15px ${COLOR_HEX[color]}33`
+                  ? `0 0 20px ${COLOR_HEX[color]}88, 0 0 40px #FFD70044, inset 0 2px 0 rgba(255,255,255,0.3)`
                   : isWinner
-                  ? `0 0 25px ${COLOR_HEX[color]}88`
-                  : "none",
-                opacity: disabled && !isWinner && matchCounts ? 0.4 : 1,
+                  ? `0 0 30px ${COLOR_HEX[color]}aa, inset 0 2px 0 rgba(255,255,255,0.3)`
+                  : "inset 0 2px 0 rgba(255,255,255,0.2), inset 0 -2px 4px rgba(0,0,0,0.2)",
+                opacity: disabled && !isWinner && matchCounts ? 0.5 : 1,
                 cursor: disabled ? "default" : "pointer",
+                transform: isSelected ? "scale(1.03)" : "scale(1)",
               }}
             >
-              <div
-                className="w-8 h-8 sm:w-10 sm:h-10 rounded-md mb-1"
-                style={{ backgroundColor: COLOR_HEX[color] }}
-              />
-              <span className="text-[10px] sm:text-xs font-bold text-white/90 drop-shadow">
-                {COLOR_LABELS[color]}
-              </span>
               {bet > 0 && (
-                <span className="absolute top-1 right-1 text-[9px] sm:text-[10px] bg-black/60 text-yellow-300 px-1.5 py-0.5 rounded-full font-mono font-bold">
-                  {bet}
+                <span className="text-sm sm:text-base font-black text-white drop-shadow-lg" style={{
+                  textShadow: "0 2px 4px rgba(0,0,0,0.5), 0 0 10px rgba(255,255,255,0.3)",
+                }}>
+                  {fmtAmt(bet)}
+                </span>
+              )}
+              {bet === 0 && (
+                <span className="text-xs sm:text-sm font-bold text-white/90 drop-shadow" style={{
+                  textShadow: "0 1px 3px rgba(0,0,0,0.4)",
+                }}>
+                  {COLOR_LABELS[color]}
                 </span>
               )}
               {isWinner && matches > 0 && (
-                <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] sm:text-xs bg-yellow-400 text-black px-2 py-0.5 rounded-full font-bold animate-pulse">
+                <div className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-400 rounded-full flex items-center justify-center text-[10px] font-black text-black shadow-lg animate-bounce">
                   {matches}x
                 </div>
               )}
