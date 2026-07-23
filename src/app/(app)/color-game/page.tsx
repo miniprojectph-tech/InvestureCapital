@@ -23,6 +23,20 @@ import { ColorRoundTimer } from "@/components/colorgame/ColorRoundTimer";
 import { ColorCoinParticles } from "@/components/colorgame/ColorCoinParticles";
 import { ColorResultOverlay } from "@/components/colorgame/ColorResultOverlay";
 
+const BG_URL = "/colorgame/bg-full.png?v=3";
+
+function useBgReady() {
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    const img = new Image();
+    img.onload = () => setReady(true);
+    img.onerror = () => setReady(true);
+    img.src = BG_URL;
+    if (img.complete) setReady(true);
+  }, []);
+  return ready;
+}
+
 export default function ColorGamePage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -42,6 +56,8 @@ export default function ColorGamePage() {
 
   const resolvedRef = useRef<string>("");
   const myBetRef = useRef<{ color: DieColor; amount: number } | null>(null);
+
+  const bgReady = useBgReady();
 
   const balance = gameState.state?.points ?? 0;
   const phase = timer.phase;
@@ -116,7 +132,7 @@ export default function ColorGamePage() {
 
   const totalBettors = round ? Object.keys(round.bets ?? {}).length : 0;
 
-  if (loading && !round) {
+  if (!bgReady || (loading && !round)) {
     return (
       <div className="fixed inset-0 bg-[#1a0a2e] flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-yellow-400 animate-spin" />
@@ -128,7 +144,7 @@ export default function ColorGamePage() {
     <div
       className="fixed inset-0 select-none overflow-hidden"
       style={{
-        backgroundImage: "url(/colorgame/bg-full.png?v=3)",
+        backgroundImage: `url(${BG_URL})`,
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",

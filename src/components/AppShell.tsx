@@ -17,8 +17,8 @@ export function AppShell({ nav, badge, children }: AppShellProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
-  // Tongits runs full-screen with its own chrome (see TongitsShell) — no app
-  // sidebar/ticker. Auth still applies (AuthGate wraps this in the layout).
+  // Full-screen games run with their own chrome — no app sidebar/ticker.
+  // Auth still applies (AuthGate wraps this in the layout).
   if (pathname.startsWith("/tongits")) {
     return (
       <div
@@ -32,6 +32,10 @@ export function AppShell({ nav, badge, children }: AppShellProps) {
         {children}
       </div>
     );
+  }
+
+  if (pathname.startsWith("/color-game")) {
+    return <div className="min-h-[100dvh] bg-[#1a0a2e]">{children}</div>;
   }
 
   return (
