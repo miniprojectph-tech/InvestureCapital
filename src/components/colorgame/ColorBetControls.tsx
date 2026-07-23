@@ -14,36 +14,40 @@ const PRESETS = [50, 100, 1000];
 
 export function ColorBetControls({ betAmount, onBetChange, disabled, placing }: Props) {
   return (
-    <div className="w-full h-full flex items-center gap-[3%]">
-      {/* AUTO button zone - overlays the brown toggle */}
-      <button
-        disabled={disabled}
-        className="h-[70%] flex-[1.2] rounded-full flex items-center justify-center transition-opacity opacity-0 hover:opacity-20 bg-white"
-      />
+    <div className="w-full h-full flex items-center">
+      {/* AUTO zone — overlays the brown toggle, no interaction */}
+      <div className="h-full flex-[1.3] pointer-events-none" />
 
-      {/* 3 bet amount buttons - overlay the gold circles */}
-      {PRESETS.map((p) => (
-        <button
-          key={p}
-          onClick={() => !disabled && !placing && onBetChange(p)}
-          disabled={disabled || placing}
-          className="h-[70%] flex-1 rounded-full flex items-center justify-center transition-all relative"
-          style={{
-            background: betAmount === p ? "rgba(255,255,255,0.25)" : "transparent",
-            boxShadow: betAmount === p ? "inset 0 0 15px rgba(255,255,255,0.3), 0 0 10px rgba(255,215,0,0.3)" : "none",
-          }}
-        >
-          <span
-            className="font-black text-white drop-shadow-lg"
+      {/* 3 bet amount buttons — overlay the gold circles */}
+      <div className="h-full flex-[2.4] flex items-center justify-between gap-[5%]">
+        {PRESETS.map((p) => (
+          <button
+            key={p}
+            onClick={() => !disabled && !placing && onBetChange(p)}
+            disabled={disabled || placing}
+            className="flex-1 aspect-[1.6] rounded-full flex items-center justify-center transition-all"
             style={{
-              fontSize: "min(1.1vw, 1.8vh)",
-              textShadow: "0 2px 4px rgba(0,0,0,0.5)",
+              background: betAmount === p ? "rgba(255,255,255,0.2)" : "transparent",
+              boxShadow: betAmount === p
+                ? "inset 0 0 20px rgba(255,255,255,0.35), 0 0 12px rgba(255,215,0,0.4)"
+                : "none",
+              border: betAmount === p ? "2px solid rgba(255,215,0,0.5)" : "2px solid transparent",
             }}
           >
-            {p >= 1000 ? `${p / 1000}K` : p}
-          </span>
-        </button>
-      ))}
+            <span
+              style={{
+                fontSize: "clamp(14px, 1.6vw, 26px)",
+                fontWeight: 900,
+                color: "#fff",
+                textShadow: "0 2px 6px rgba(0,0,0,0.7), 0 0 10px rgba(0,0,0,0.3)",
+                letterSpacing: "0.5px",
+              }}
+            >
+              {p >= 1000 ? `${p / 1000}K` : p}
+            </span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

@@ -230,7 +230,7 @@ export default function ColorGamePage() {
 
       {/* Bet controls — AUTO + 3 gold buttons */}
       <div className="absolute z-10"
-        style={{ left: "54%", top: "84%", width: "28%", height: "10%" }}>
+        style={{ left: "53%", top: "86%", width: "34%", height: "11%" }}>
         {bettingOpen ? (
           <ColorBetControls
             betAmount={betAmount}
