@@ -59,33 +59,39 @@ export default function ColorGamePage() {
 
   const bgReady = useBgReady();
 
+  const prevDiceRef = useRef<[DieColor, DieColor, DieColor] | undefined>(undefined);
+
   const balance = gameState.state?.points ?? 0;
   const phase = timer.phase;
   const bettingOpen = phase === "betting";
 
-  const myBet = round?.bets?.[user?.uid ?? ""] ?? null;
+  const isCurrent = round?.roundId === roundId;
+  const myBet = isCurrent ? (round?.bets?.[user?.uid ?? ""] ?? null) : null;
   const hasBet = !!myBet;
-  const dice = round?.dice;
+  const currentDice = isCurrent ? round?.dice : undefined;
+
+  if (currentDice) prevDiceRef.current = currentDice;
+  const dice = currentDice ?? prevDiceRef.current;
 
   useEffect(() => {
     if (phase !== "rolling" && phase !== "result") return;
     if (resolvedRef.current === roundId) return;
-    if (round?.dice) { resolvedRef.current = roundId; return; }
+    if (currentDice) { resolvedRef.current = roundId; return; }
     const timeout = setTimeout(() => {
       if (resolvedRef.current === roundId) return;
       resolvedRef.current = roundId;
       resolveColorRound(roundId).catch(() => {});
     }, 500);
     return () => clearTimeout(timeout);
-  }, [phase, roundId, round?.dice]);
+  }, [phase, roundId, currentDice]);
 
   useEffect(() => {
     if (myBet) myBetRef.current = { color: myBet.color, amount: myBet.amount };
   }, [myBet]);
 
   useEffect(() => {
-    if (!dice || !myBetRef.current) return;
-    const matches = dice.filter((d) => d === myBetRef.current!.color).length;
+    if (!currentDice || !myBetRef.current) return;
+    const matches = currentDice.filter((d) => d === myBetRef.current!.color).length;
     let payout = 0;
     if (matches === 1) payout = myBetRef.current.amount * 2;
     else if (matches === 2) payout = myBetRef.current.amount * 3;
@@ -98,7 +104,7 @@ export default function ColorGamePage() {
     if (payout > 0) setShowCoins(true);
     const hide = setTimeout(() => { setShowResult(false); setShowCoins(false); }, 4500);
     return () => clearTimeout(hide);
-  }, [dice, round?.jackpotTriggered, round?.jackpotColor, round?.jackpotAmount]);
+  }, [currentDice, round?.jackpotTriggered, round?.jackpotColor, round?.jackpotAmount]);
 
   useEffect(() => {
     if (phase === "betting") {
@@ -124,13 +130,13 @@ export default function ColorGamePage() {
   }, [selectedColor, betAmount, placing, bettingOpen]);
 
   const betAmounts: Record<string, number> = {};
-  if (round?.bets) {
+  if (isCurrent && round?.bets) {
     for (const b of Object.values(round.bets)) {
       betAmounts[b.color] = (betAmounts[b.color] ?? 0) + b.amount;
     }
   }
 
-  const totalBettors = round ? Object.keys(round.bets ?? {}).length : 0;
+  const totalBettors = isCurrent && round ? Object.keys(round.bets ?? {}).length : 0;
 
   if (!bgReady || (loading && !round)) {
     return (

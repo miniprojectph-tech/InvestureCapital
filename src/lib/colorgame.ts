@@ -113,6 +113,7 @@ export function useCurrentRound() {
   const [round, setRound] = useState<ColorRound | null>(null);
   const [loading, setLoading] = useState(true);
   const prevRoundIdRef = useRef<string>("");
+  const initialLoadRef = useRef(true);
 
   const timer = useRoundTimer(4);
 
@@ -123,18 +124,20 @@ export function useCurrentRound() {
     const { gameDb } = getFirebase();
     if (!gameDb) { setLoading(false); return; }
 
-    setLoading(true);
+    if (initialLoadRef.current) setLoading(true);
+
     const unsub = onSnapshot(
       doc(gameDb as Firestore, "color_rounds", timer.roundId),
       (snap) => {
         if (snap.exists()) {
           setRound(snap.data() as ColorRound);
-        } else {
+        } else if (initialLoadRef.current) {
           setRound(null);
         }
+        initialLoadRef.current = false;
         setLoading(false);
       },
-      () => setLoading(false),
+      () => { initialLoadRef.current = false; setLoading(false); },
     );
     return unsub;
   }, [user, timer.roundId]);
