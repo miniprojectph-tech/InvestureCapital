@@ -262,7 +262,7 @@ export default function ColorGamePage() {
         {/* Bet controls — 3 gold buttons (always mounted, fade in/out) */}
         <div className="absolute z-10 transition-opacity duration-300"
           style={{
-            left: "57.5%", top: "92%", width: "12.5%", height: "7%",
+            left: "67%", top: "85%", width: "21%", height: "8.5%",
             opacity: bettingOpen ? 1 : 0,
             pointerEvents: bettingOpen ? "auto" : "none",
           }}>
