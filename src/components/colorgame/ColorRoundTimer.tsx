@@ -33,22 +33,17 @@ export function ColorRoundTimer({ phase, remaining }: Props) {
   const seconds = Math.ceil(remaining / 1000);
   const color = PHASE_COLORS[phase];
 
-  const r = 18;
+  const r = 16;
   const circ = 2 * Math.PI * r;
   const offset = circ * progress;
 
   return (
-    <div className="flex items-center gap-1.5">
-      <div className="relative w-10 h-10">
-        <svg className="w-full h-full -rotate-90" viewBox="0 0 44 44">
+    <div className="flex flex-col items-center">
+      <div className="relative" style={{ width: "min(3.5vw, 5vh)", height: "min(3.5vw, 5vh)" }}>
+        <svg className="w-full h-full -rotate-90" viewBox="0 0 40 40">
+          <circle cx="20" cy="20" r={r} fill="rgba(0,0,0,0.4)" stroke="rgba(255,255,255,0.15)" strokeWidth="3" />
           <circle
-            cx="22" cy="22" r={r}
-            fill="none"
-            stroke="rgba(255,255,255,0.1)"
-            strokeWidth="3"
-          />
-          <circle
-            cx="22" cy="22" r={r}
+            cx="20" cy="20" r={r}
             fill="none"
             stroke={color}
             strokeWidth="3"
@@ -59,18 +54,12 @@ export function ColorRoundTimer({ phase, remaining }: Props) {
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span
-            className="text-sm font-mono font-black"
-            style={{ color, textShadow: `0 0 6px ${color}44` }}
-          >
+          <span className="font-mono font-black" style={{ fontSize: "min(1.2vw, 1.8vh)", color }}>
             {seconds}
           </span>
         </div>
       </div>
-      <span
-        className="text-[8px] font-bold tracking-wider"
-        style={{ color }}
-      >
+      <span className="font-bold tracking-wider" style={{ fontSize: "min(0.5vw, 0.8vh)", color }}>
         {PHASE_LABELS[phase]}
       </span>
     </div>

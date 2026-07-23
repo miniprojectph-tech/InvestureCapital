@@ -3,53 +3,55 @@
 type Props = {
   betAmount: number;
   onBetChange: (amount: number) => void;
-  onPlaceBet: () => void;
+  onPlaceBet: (amount: number) => void;
   disabled: boolean;
   balance: number;
   placing: boolean;
-  hasSelectedColor: boolean;
+  selectedColor: boolean;
 };
 
 const PRESETS = [5, 25, 50, 100];
 
-export function ColorBetControls({ betAmount, onBetChange, onPlaceBet, disabled, balance, placing, hasSelectedColor }: Props) {
+export function ColorBetControls({ betAmount, onBetChange, onPlaceBet, disabled, balance, placing, selectedColor }: Props) {
+  const handlePresetClick = (amount: number) => {
+    if (disabled || placing || amount > balance) return;
+    onBetChange(amount);
+    if (selectedColor) {
+      onPlaceBet(amount);
+    }
+  };
+
   return (
-    <div className="flex items-center justify-center gap-1.5 sm:gap-2">
+    <div className="w-full h-full flex items-center gap-[3%]">
+      {/* AUTO button zone - overlays the brown toggle */}
       <button
         disabled={disabled}
-        className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold bg-white/15 text-white/80 hover:bg-white/25 disabled:opacity-40 transition-all border border-white/10"
-      >
-        Auto
-      </button>
+        className="h-[70%] flex-[1.2] rounded-full flex items-center justify-center transition-opacity opacity-0 hover:opacity-20 bg-white"
+      />
 
+      {/* 4 bet amount buttons - overlay the gold circles */}
       {PRESETS.map((p) => (
         <button
           key={p}
-          onClick={() => onBetChange(p)}
-          disabled={disabled || p > balance}
-          className={`px-2.5 py-1.5 sm:px-3.5 sm:py-2 rounded-lg text-[10px] sm:text-xs font-bold transition-all border ${
-            betAmount === p
-              ? "bg-yellow-400 text-black border-yellow-300 shadow-lg shadow-yellow-400/30 scale-105"
-              : p > balance
-              ? "bg-white/5 text-white/20 border-white/5 cursor-not-allowed"
-              : "bg-white/15 text-white border-white/10 hover:bg-white/25"
-          }`}
+          onClick={() => handlePresetClick(p)}
+          disabled={disabled || placing || p > balance}
+          className="h-[70%] flex-1 rounded-full flex items-center justify-center transition-all relative"
+          style={{
+            background: betAmount === p ? "rgba(255,255,255,0.25)" : "transparent",
+            boxShadow: betAmount === p ? "inset 0 0 15px rgba(255,255,255,0.3), 0 0 10px rgba(255,215,0,0.3)" : "none",
+          }}
         >
-          {p}
+          <span
+            className="font-black text-white drop-shadow-lg"
+            style={{
+              fontSize: "min(1.1vw, 1.8vh)",
+              textShadow: "0 2px 4px rgba(0,0,0,0.5)",
+            }}
+          >
+            {p}
+          </span>
         </button>
       ))}
-
-      <button
-        onClick={onPlaceBet}
-        disabled={disabled || placing || betAmount > balance || !hasSelectedColor}
-        className={`ml-1 px-4 py-1.5 sm:px-6 sm:py-2 rounded-lg text-xs sm:text-sm font-black transition-all ${
-          disabled || placing || betAmount > balance || !hasSelectedColor
-            ? "bg-gray-700/50 text-gray-500 cursor-not-allowed border border-gray-600/30"
-            : "bg-gradient-to-b from-yellow-400 to-orange-500 text-black hover:from-yellow-300 hover:to-orange-400 shadow-lg shadow-orange-500/30 active:scale-95 border border-yellow-300/50"
-        }`}
-      >
-        {placing ? "..." : "BET"}
-      </button>
     </div>
   );
 }

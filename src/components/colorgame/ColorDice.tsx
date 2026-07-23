@@ -15,12 +15,12 @@ const FACE_MAP: Record<DieColor, string> = {
 const FACE_ORDER: DieColor[] = ["red", "blue", "yellow", "pink", "white", "green"];
 
 const FACE_TRANSFORMS: string[] = [
-  "rotateY(0deg)",      // front
-  "rotateY(180deg)",    // back
-  "rotateY(-90deg)",    // left
-  "rotateY(90deg)",     // right
-  "rotateX(90deg)",     // top
-  "rotateX(-90deg)",    // bottom
+  "rotateY(0deg)",
+  "rotateY(180deg)",
+  "rotateY(-90deg)",
+  "rotateY(90deg)",
+  "rotateX(90deg)",
+  "rotateX(-90deg)",
 ];
 
 const LANDING: Record<DieColor, string> = {
@@ -35,23 +35,17 @@ const LANDING: Record<DieColor, string> = {
 type Props = {
   results?: [DieColor, DieColor, DieColor];
   rolling: boolean;
-  size?: number;
 };
 
-export function ColorDice({ results, rolling, size = 90 }: Props) {
-  const half = size / 2;
-
+export function ColorDice({ results, rolling }: Props) {
   return (
-    <div className="flex items-end justify-center gap-2" style={{ perspective: size * 6 }}>
+    <div className="w-full h-full flex items-center justify-center gap-[4%]" style={{ perspective: "500px" }}>
       {[0, 1, 2].map((i) => (
         <SingleDie
           key={i}
           result={results?.[i]}
           rolling={rolling}
-          size={size}
-          half={half}
           delay={i * 250}
-          yOffset={i === 1 ? -8 : 0}
         />
       ))}
     </div>
@@ -61,17 +55,11 @@ export function ColorDice({ results, rolling, size = 90 }: Props) {
 function SingleDie({
   result,
   rolling,
-  size,
-  half,
   delay,
-  yOffset,
 }: {
   result?: DieColor;
   rolling: boolean;
-  size: number;
-  half: number;
   delay: number;
-  yOffset: number;
 }) {
   const [animKey, setAnimKey] = useState(0);
   const randRef = useRef({ x: 0, y: 0, z: 0 });
@@ -90,9 +78,10 @@ function SingleDie({
   const landRotation = result ? LANDING[result] : "rotateX(-20deg) rotateY(25deg)";
   const { x, y, z } = randRef.current;
   const anim = `diceRoll${animKey}d${delay}`;
+  const size = "min(5.5vw, 9vh)";
 
   return (
-    <div style={{ width: size, height: size, marginBottom: yOffset }}>
+    <div style={{ width: size, height: size }}>
       <style>{`
         @keyframes ${anim} {
           0%   { transform: rotateX(0) rotateY(0) rotateZ(0) translateY(0); }
@@ -110,8 +99,8 @@ function SingleDie({
       `}</style>
       <div
         style={{
-          width: size,
-          height: size,
+          width: "100%",
+          height: "100%",
           position: "relative",
           transformStyle: "preserve-3d",
           transform: rolling ? undefined : landRotation,
@@ -127,11 +116,11 @@ function SingleDie({
             key={color}
             style={{
               position: "absolute",
-              width: size,
-              height: size,
-              transform: `${FACE_TRANSFORMS[fi]} translateZ(${half}px)`,
+              width: "100%",
+              height: "100%",
+              transform: `${FACE_TRANSFORMS[fi]} translateZ(calc(${size} / 2))`,
               backfaceVisibility: "hidden",
-              borderRadius: Math.round(size * 0.12),
+              borderRadius: "12%",
               overflow: "hidden",
               border: "2px solid rgba(255,255,255,0.25)",
               boxShadow: "inset 0 2px 6px rgba(0,0,0,0.4), 0 4px 12px rgba(0,0,0,0.3)",

@@ -12,70 +12,44 @@ function fmtAmt(n: number): string {
   return String(n);
 }
 
-const RANK_COLORS = ["#FFD700", "#C0C0C0", "#CD7F32", "#94a3b8", "#94a3b8"];
-const RANK_BADGES = ["🥇", "🥈", "🥉", "", ""];
+const RANK_BADGES = ["🥇", "🥈", "🥉"];
 
 export function ColorRankingBoard({ leaders }: Props) {
-  const top = leaders.slice(0, 5);
+  const top = leaders.slice(0, 7);
 
   return (
-    <div className="relative h-full flex flex-col">
-      {/* Wooden frame background */}
-      <div className="relative rounded-xl overflow-hidden flex-1 flex flex-col" style={{
-        background: "linear-gradient(180deg, #D2A679 0%, #B8884E 20%, #A0722E 100%)",
-        padding: "4px",
-        boxShadow: "4px 4px 15px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.2)",
-      }}>
-        <div className="rounded-lg flex-1 flex flex-col p-2.5" style={{
-          background: "linear-gradient(180deg, #F5E6D3 0%, #E8D5BC 100%)",
-        }}>
-          {/* Header */}
-          <div className="text-center mb-2">
-            <div className="text-[11px] sm:text-xs font-black text-amber-800 tracking-wide uppercase">
-              Ranking
-            </div>
-            <div className="text-[9px] text-amber-700/70 font-medium">Total Win</div>
+    <div className="w-full h-full flex flex-col gap-[2%] py-[2%] px-[6%]">
+      {top.map((l, i) => (
+        <div
+          key={l.uid}
+          className="flex items-center gap-[4%] h-[12%] rounded-lg px-[4%]"
+        >
+          <span className="text-[0.7vw] w-[12%] text-center shrink-0">
+            {i < 3 ? RANK_BADGES[i] : <span className="text-amber-800/60 font-bold">{i + 1}</span>}
+          </span>
+          <div className="w-[1.2vw] h-[1.2vw] rounded-full flex items-center justify-center text-[0.5vw] font-bold text-white shrink-0" style={{
+            background: i === 0 ? "linear-gradient(135deg, #FFD700, #FFA500)" : i === 1 ? "linear-gradient(135deg, #C0C0C0, #A0A0A0)" : i === 2 ? "linear-gradient(135deg, #CD7F32, #A0622E)" : "linear-gradient(135deg, #94a3b8, #64748b)",
+          }}>
+            {(l.name?.[0] ?? "?").toUpperCase()}
           </div>
-
-          {/* Player list */}
-          <div className="flex-1 flex flex-col gap-1">
-            {top.map((l, i) => (
-              <div
-                key={l.uid}
-                className="flex items-center gap-1.5 py-1 px-1.5 rounded-md"
-                style={{
-                  background: i === 0 ? "rgba(255,215,0,0.15)" : "rgba(0,0,0,0.04)",
-                }}
-              >
-                <span className="text-[10px] w-4 text-center" style={{ color: RANK_COLORS[i] }}>
-                  {RANK_BADGES[i] || `${i + 1}`}
-                </span>
-                <div className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold text-white shrink-0" style={{
-                  background: `linear-gradient(135deg, ${RANK_COLORS[i]}88, ${RANK_COLORS[i]})`,
-                }}>
-                  {(l.name?.[0] ?? "?").toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] text-amber-900 font-semibold truncate m-0 leading-tight">
-                    {l.name}
-                  </p>
-                </div>
-                <div className="flex items-center gap-0.5 shrink-0">
-                  <span className="text-[8px]">🪙</span>
-                  <span className="text-[10px] font-bold text-amber-800 font-mono">
-                    {fmtAmt(l.totalWon)}
-                  </span>
-                </div>
-              </div>
-            ))}
-            {top.length === 0 && (
-              <div className="flex-1 flex items-center justify-center">
-                <p className="text-[10px] text-amber-700/50 italic">No players yet</p>
-              </div>
-            )}
+          <div className="flex-1 min-w-0">
+            <p className="text-[0.6vw] text-amber-900 font-semibold truncate m-0 leading-tight">
+              {l.name}
+            </p>
+          </div>
+          <div className="flex items-center gap-[2%] shrink-0">
+            <span className="text-[0.5vw]">🪙</span>
+            <span className="text-[0.6vw] font-bold text-amber-800 font-mono">
+              {fmtAmt(l.totalWon)}
+            </span>
           </div>
         </div>
-      </div>
+      ))}
+      {top.length === 0 && (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-[0.6vw] text-amber-700/40 italic">No players yet</p>
+        </div>
+      )}
     </div>
   );
 }
