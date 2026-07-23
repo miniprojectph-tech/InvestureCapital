@@ -15,11 +15,11 @@ const PRESETS = [50, 100, 1000];
 export function ColorBetControls({ betAmount, onBetChange, disabled, placing }: Props) {
   return (
     <div className="w-full h-full flex items-center">
-      {/* AUTO zone — overlays the brown toggle, no interaction */}
-      <div className="h-full flex-[1.3] pointer-events-none" />
+      {/* AUTO zone — covers brown toggle */}
+      <div className="h-full flex-[2] pointer-events-none" />
 
-      {/* 3 bet amount buttons — overlay the gold circles */}
-      <div className="h-full flex-[2.4] flex items-center justify-between gap-[5%]">
+      {/* 3 bet amount buttons — overlay the 3 gold circles */}
+      <div className="h-full flex-[3] flex items-center gap-[3%]">
         {PRESETS.map((p) => (
           <button
             key={p}

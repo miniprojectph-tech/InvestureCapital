@@ -228,20 +228,22 @@ export default function ColorGamePage() {
         />
       </div>
 
-      {/* Bet controls — AUTO + 3 gold buttons */}
-      <div className="absolute z-10"
-        style={{ left: "56%", top: "87%", width: "35%", height: "10%" }}>
-        {bettingOpen ? (
-          <ColorBetControls
-            betAmount={betAmount}
-            onBetChange={setBetAmount}
-            onPlaceBet={() => {}}
-            disabled={!bettingOpen}
-            balance={balance}
-            placing={placing}
-            selectedColor={false}
-          />
-        ) : null}
+      {/* Bet controls — AUTO + 3 gold buttons (always mounted, fade in/out) */}
+      <div className="absolute z-10 transition-opacity duration-300"
+        style={{
+          left: "53%", top: "87%", width: "33%", height: "10%",
+          opacity: bettingOpen ? 1 : 0,
+          pointerEvents: bettingOpen ? "auto" : "none",
+        }}>
+        <ColorBetControls
+          betAmount={betAmount}
+          onBetChange={setBetAmount}
+          onPlaceBet={() => {}}
+          disabled={!bettingOpen}
+          balance={balance}
+          placing={placing}
+          selectedColor={false}
+        />
       </div>
 
       {/* Error */}
