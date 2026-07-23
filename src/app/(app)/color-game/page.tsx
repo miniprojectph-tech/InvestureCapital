@@ -47,7 +47,7 @@ export default function ColorGamePage() {
   const leaders = useColorLeaderboard(10);
 
   const [selectedColor, setSelectedColor] = useState<DieColor | null>(null);
-  const [betAmount, setBetAmount] = useState(5);
+  const [betAmount, setBetAmount] = useState(50);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showResult, setShowResult] = useState(false);
@@ -66,8 +66,6 @@ export default function ColorGamePage() {
   const bettingOpen = phase === "betting";
 
   const isCurrent = round?.roundId === roundId;
-  const myBet = isCurrent ? (round?.bets?.[user?.uid ?? ""] ?? null) : null;
-  const hasBet = !!myBet;
   const currentDice = isCurrent ? round?.dice : undefined;
 
   if (currentDice) prevDiceRef.current = currentDice;
@@ -86,25 +84,32 @@ export default function ColorGamePage() {
   }, [phase, roundId, currentDice]);
 
   useEffect(() => {
-    if (myBet) myBetRef.current = { color: myBet.color, amount: myBet.amount };
-  }, [myBet]);
+    if (!currentDice || !isCurrent || !round?.bets) return;
+    const uid = user?.uid ?? "";
+    const myBets = Object.entries(round.bets)
+      .filter(([key]) => key.startsWith(`${uid}_`))
+      .map(([, b]) => b);
+    if (myBets.length === 0) return;
 
-  useEffect(() => {
-    if (!currentDice || !myBetRef.current) return;
-    const matches = currentDice.filter((d) => d === myBetRef.current!.color).length;
     let payout = 0;
-    if (matches === 1) payout = myBetRef.current.amount * 2;
-    else if (matches === 2) payout = myBetRef.current.amount * 3;
-    else if (matches === 3) payout = myBetRef.current.amount * 4;
-    if (round?.jackpotTriggered && round.jackpotColor === myBetRef.current.color && round.jackpotAmount) {
-      payout += round.jackpotAmount;
+    let totalBet = 0;
+    for (const b of myBets) {
+      totalBet += b.amount;
+      const matches = currentDice.filter((d) => d === b.color).length;
+      if (matches === 1) payout += b.amount * 2;
+      else if (matches === 2) payout += b.amount * 3;
+      else if (matches === 3) payout += b.amount * 4;
+      if (round.jackpotTriggered && round.jackpotColor === b.color && round.jackpotAmount) {
+        payout += Math.floor(round.jackpotAmount / myBets.filter((x) => x.color === round.jackpotColor).length);
+      }
     }
+    myBetRef.current = { color: myBets[0].color, amount: totalBet };
     setLastPayout(payout);
     setShowResult(true);
     if (payout > 0) setShowCoins(true);
     const hide = setTimeout(() => { setShowResult(false); setShowCoins(false); }, 4500);
     return () => clearTimeout(hide);
-  }, [currentDice, round?.jackpotTriggered, round?.jackpotColor, round?.jackpotAmount]);
+  }, [currentDice, isCurrent, round?.bets, round?.jackpotTriggered, round?.jackpotColor, round?.jackpotAmount, user?.uid]);
 
   useEffect(() => {
     if (phase === "betting") {
@@ -115,19 +120,19 @@ export default function ColorGamePage() {
     }
   }, [phase, roundId]);
 
-  const handlePlaceBet = useCallback(async (amount?: number) => {
-    const amt = amount ?? betAmount;
-    if (!selectedColor || placing || !bettingOpen) return;
+  const handleColorTap = useCallback(async (color: DieColor) => {
+    if (placing || !bettingOpen) return;
+    setSelectedColor(color);
     setPlacing(true);
     setError(null);
     try {
-      await placeColorBet(selectedColor, amt);
+      await placeColorBet(color, betAmount);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to place bet");
     } finally {
       setPlacing(false);
     }
-  }, [selectedColor, betAmount, placing, bettingOpen]);
+  }, [betAmount, placing, bettingOpen]);
 
   const betAmounts: Record<string, number> = {};
   if (isCurrent && round?.bets) {
@@ -216,34 +221,26 @@ export default function ColorGamePage() {
         style={{ left: "53%", top: "27%", width: "33%", height: "42%" }}>
         <ColorBettingBoard
           selectedColor={selectedColor}
-          onSelect={setSelectedColor}
-          disabled={!bettingOpen || hasBet}
+          onSelect={handleColorTap}
+          disabled={!bettingOpen || placing}
           betAmounts={betAmounts}
           results={dice}
         />
       </div>
 
-      {/* Bet controls — AUTO + 4 gold buttons */}
+      {/* Bet controls — AUTO + 3 gold buttons */}
       <div className="absolute z-10"
         style={{ left: "54%", top: "84%", width: "28%", height: "10%" }}>
-        {!hasBet && bettingOpen ? (
+        {bettingOpen ? (
           <ColorBetControls
             betAmount={betAmount}
             onBetChange={setBetAmount}
-            onPlaceBet={handlePlaceBet}
+            onPlaceBet={() => {}}
             disabled={!bettingOpen}
             balance={balance}
             placing={placing}
-            selectedColor={!!selectedColor}
+            selectedColor={false}
           />
-        ) : hasBet ? (
-          <div className="w-full h-full flex items-center justify-center">
-            <div className="bg-black/50 backdrop-blur-sm rounded-full px-3 py-1">
-              <span className="text-yellow-300 font-bold" style={{ fontSize: "clamp(10px, 0.9vw, 14px)" }}>
-                Bet: {myBet?.amount} GP on {myBet?.color}
-              </span>
-            </div>
-          </div>
         ) : null}
       </div>
 

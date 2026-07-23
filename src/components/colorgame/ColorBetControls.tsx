@@ -10,17 +10,9 @@ type Props = {
   selectedColor: boolean;
 };
 
-const PRESETS = [5, 25, 50, 100];
+const PRESETS = [50, 100, 1000];
 
-export function ColorBetControls({ betAmount, onBetChange, onPlaceBet, disabled, balance, placing, selectedColor }: Props) {
-  const handlePresetClick = (amount: number) => {
-    if (disabled || placing || amount > balance) return;
-    onBetChange(amount);
-    if (selectedColor) {
-      onPlaceBet(amount);
-    }
-  };
-
+export function ColorBetControls({ betAmount, onBetChange, disabled, placing }: Props) {
   return (
     <div className="w-full h-full flex items-center gap-[3%]">
       {/* AUTO button zone - overlays the brown toggle */}
@@ -29,12 +21,12 @@ export function ColorBetControls({ betAmount, onBetChange, onPlaceBet, disabled,
         className="h-[70%] flex-[1.2] rounded-full flex items-center justify-center transition-opacity opacity-0 hover:opacity-20 bg-white"
       />
 
-      {/* 4 bet amount buttons - overlay the gold circles */}
+      {/* 3 bet amount buttons - overlay the gold circles */}
       {PRESETS.map((p) => (
         <button
           key={p}
-          onClick={() => handlePresetClick(p)}
-          disabled={disabled || placing || p > balance}
+          onClick={() => !disabled && !placing && onBetChange(p)}
+          disabled={disabled || placing}
           className="h-[70%] flex-1 rounded-full flex items-center justify-center transition-all relative"
           style={{
             background: betAmount === p ? "rgba(255,255,255,0.25)" : "transparent",
@@ -48,7 +40,7 @@ export function ColorBetControls({ betAmount, onBetChange, onPlaceBet, disabled,
               textShadow: "0 2px 4px rgba(0,0,0,0.5)",
             }}
           >
-            {p}
+            {p >= 1000 ? `${p / 1000}K` : p}
           </span>
         </button>
       ))}

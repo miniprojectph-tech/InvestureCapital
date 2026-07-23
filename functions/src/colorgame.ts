@@ -87,8 +87,7 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
     tx.update(userStateRef(uid), { points: pts - amount });
   });
 
-  // Record bet on gameDb
-  const bet: ColorBet = { uid, name, color, amount, placedAt: now };
+  // Record bet on gameDb — keyed by uid_color so players can bet on multiple colors
   await gameDb.runTransaction(async (tx) => {
     const rSnap = await tx.get(roundRef(rid));
     let round: ColorRound;
@@ -96,9 +95,6 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
       round = rSnap.data() as ColorRound;
       if (round.dice) {
         throw new HttpsError("failed-precondition", "Round already resolved.");
-      }
-      if (round.bets[uid]) {
-        throw new HttpsError("already-exists", "You already bet this round.");
       }
     } else {
       round = {
@@ -108,7 +104,16 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
         bets: {},
       };
     }
-    round.bets[uid] = bet;
+    const betKey = `${uid}_${color}`;
+    const existing = round.bets[betKey];
+    const bet: ColorBet = {
+      uid,
+      name,
+      color,
+      amount: (existing?.amount ?? 0) + amount,
+      placedAt: now,
+    };
+    round.bets[betKey] = bet;
     tx.set(roundRef(rid), round, { merge: true });
 
     // Add jackpot contribution
@@ -123,7 +128,7 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
     }, { merge: true });
   });
 
-  return { ok: true, roundId: rid, bet };
+  return { ok: true, roundId: rid, color, amount };
 });
 
 // ── Resolve a round: generate dice + compute payouts ──
