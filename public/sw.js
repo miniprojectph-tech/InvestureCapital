@@ -1,5 +1,5 @@
 // Investure service worker — offline shell + cache-first for static + game asset pre-cache
-const CACHE = "investure-v4";
+const CACHE = "investure-v5";
 const APP_SHELL = ["/", "/login", "/dashboard"];
 
 // Game assets pre-cached at install so Reef and Tongits load instantly on
@@ -14,6 +14,14 @@ const GAME_ASSETS = [
   "/tongits/action-buttons-5.png",
   "/tongits/table.png",
   "/tongits/victory-popup.png",
+  // Color Game
+  "/colorgame/bg-full.png",
+  "/colorgame/dice/die_face_red.png",
+  "/colorgame/dice/die_face_blue.png",
+  "/colorgame/dice/die_face_yellow.png",
+  "/colorgame/dice/die_face_pink.png",
+  "/colorgame/dice/die_face_white.png",
+  "/colorgame/dice/die_face_green.png",
   // Reef core
   "/reef/bg-fishing-spots.webp",
   "/reef/hud.webp",
