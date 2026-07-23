@@ -11,6 +11,9 @@ import { db } from "./init";
 // Game functions live in their own module.
 export { castLine, claimQuest, claimDailyEnergy, redeemReward, fishOfTheHour, weeklyReef } from "./game";
 
+// Color Game callables.
+export { placeColorBet, resolveColorRound, adminAdjustColorJackpot } from "./colorgame";
+
 // Referral system: claim processor + locked-bonus release helper.
 import { onReferralClaim, releaseLockedReferrals } from "./referrals";
 export { onReferralClaim };

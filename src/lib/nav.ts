@@ -52,6 +52,7 @@ export const investorNav: NavGroup[] = [
       { label: "Fishing Game", href: "/play", icon: "play" },
       { label: "Rewards", href: "/rewards", icon: "gift" },
       { label: "Tongits", href: "/tongits", icon: "spade" },
+      { label: "Color Game", href: "/color-game", icon: "play" },
     ],
   },
   {
@@ -91,6 +92,7 @@ export const adminNav: NavGroup[] = [
       { label: "Game Settings", href: "/admin/games", icon: "fish" },
       { label: "Tongits", href: "/admin/tongits", icon: "spade" },
       { label: "Rewards & redemptions", href: "/admin/rewards", icon: "gift" },
+      { label: "Color Game", href: "/admin/color-game", icon: "play" },
     ],
   },
   {

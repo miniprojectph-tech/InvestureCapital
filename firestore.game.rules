@@ -48,5 +48,25 @@ service cloud.firestore {
         allow update, delete: if false;
       }
     }
+
+    // ── Color Game ──
+    // Round docs: any signed-in user can read (shared public rounds).
+    // All writes go through Cloud Functions.
+    match /color_rounds/{roundId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Color Game global state (jackpot, history).
+    match /color_game/{doc} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Color Game leaderboard.
+    match /color_game_leaderboard/{uid} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
   }
 }
