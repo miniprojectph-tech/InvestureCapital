@@ -145,7 +145,7 @@ export default function ColorGamePage() {
       >
         {/* Background art — single image with all UI chrome */}
         <img
-          src="/colorgame/bg-full.png"
+          src="/colorgame/bg-full.png?v=2"
           alt=""
           className="absolute inset-0 w-full h-full"
           draggable={false}
