@@ -35,11 +35,13 @@ const LAND: Record<DieColor, { x: number; y: number }> = {
 };
 
 // ---- tuned layout constants (verified against the background art) ----
-const PLATFORM_Y = 20;              // % of stage height
-const DIE_SIZE = 30;                // % of stage width
+const PLATFORM_Y = 21;              // ledge Y (% of stage height)
+const DIE_SIZE = 24;                // % of stage width
 const REST_X = [28, 50, 72];        // resting die centers (% of stage width)
 const BANDS = [24, 50, 76];         // landing bands (% of stage width)
-const RESTING_TILT = "rotateZ(-4deg) rotateX(-10deg) rotateY(6deg)";
+const FRAME_T = 2;                  // showcase window top (% of stage height)
+const FRAME_H = 25;                 // showcase window height (% of stage height)
+const FRAME_W = 82;                 // showcase window width (% of stage width)
 
 function pick(): DieColor {
   return FACE_ORDER[(Math.random() * 6) | 0];
@@ -56,6 +58,7 @@ type Props = {
 
 export function ColorDice({ results, phase }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
   const platformRef = useRef<HTMLDivElement>(null);
   const posRefs = useRef<(HTMLDivElement | null)[]>([]);
   const dropRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -87,10 +90,22 @@ export function ColorDice({ results, phase }: Props) {
     const diePx = (DIE_SIZE / 100) * w;
     const half = diePx / 2;
 
+    const fr = frameRef.current;
+    if (fr) {
+      const fw = w * (FRAME_W / 100);
+      const fh = h * (FRAME_H / 100);
+      fr.style.width = `${fw}px`;
+      fr.style.height = `${fh}px`;
+      fr.style.left = `${(w - fw) / 2}px`;
+      fr.style.top = `${(FRAME_T / 100) * h}px`;
+      fr.style.transition = "none";
+      fr.style.opacity = betting ? "1" : "0";
+    }
+
     const pf = platformRef.current;
     if (pf) {
-      const pw = w * 0.86;
-      const ph = h * 0.05;
+      const pw = w * 0.66;
+      const ph = h * 0.035;
       pf.style.width = `${pw}px`;
       pf.style.height = `${ph}px`;
       pf.style.left = `${(w - pw) / 2}px`;
@@ -100,7 +115,7 @@ export function ColorDice({ results, phase }: Props) {
       pf.style.opacity = betting ? "1" : "0";
     }
 
-    const restY = PLATFORM_Y - (diePx * 0.55) / h * 100;
+    const restY = PLATFORM_Y - (diePx * 0.5) / h * 100;
 
     for (let i = 0; i < 3; i++) {
       const pos = posRefs.current[i];
@@ -147,7 +162,14 @@ export function ColorDice({ results, phase }: Props) {
     const n = rollN.current;
     const diePx = (DIE_SIZE / 100) * w;
     const half = diePx / 2;
-    const restY = PLATFORM_Y - (diePx * 0.55) / h * 100;
+    const restY = PLATFORM_Y - (diePx * 0.5) / h * 100;
+
+    // showcase window fades away as the dice drop
+    const fr = frameRef.current;
+    if (fr) {
+      fr.style.transition = "opacity 0.3s ease";
+      fr.style.opacity = "0";
+    }
 
     // platform lifts up & fades out
     const pf = platformRef.current;
@@ -266,15 +288,28 @@ export function ColorDice({ results, phase }: Props) {
     <div ref={rootRef} className="absolute inset-0" style={{ perspective: "900px" }}>
       <style ref={styleRef} />
 
-      {/* wooden platform that holds the dice, then lifts on roll */}
+      {/* dice showcase window at the top of the lid */}
+      <div
+        ref={frameRef}
+        className="absolute"
+        style={{
+          borderRadius: "8%",
+          background: "linear-gradient(#f7e6c8, #ecd0a4 60%, #e2c08c)",
+          border: "3px solid #fff4e2",
+          boxShadow:
+            "0 4px 10px rgba(0,0,0,0.28), inset 0 2px 6px rgba(255,255,255,0.6), inset 0 -6px 10px rgba(160,110,60,0.35)",
+        }}
+      />
+
+      {/* thin wooden ledge inside the frame; lifts on roll */}
       <div
         ref={platformRef}
         className="absolute"
         style={{
-          borderRadius: "14% / 40%",
+          borderRadius: "10% / 45%",
           background: "linear-gradient(#c98a4b, #a9662f 55%, #86461d)",
           boxShadow:
-            "0 6px 0 #6e3714, 0 10px 14px rgba(0,0,0,0.45), inset 0 3px 3px rgba(255,220,170,0.5)",
+            "0 4px 0 #6e3714, 0 6px 8px rgba(0,0,0,0.4), inset 0 2px 2px rgba(255,220,170,0.5)",
           willChange: "transform",
         }}
       />
