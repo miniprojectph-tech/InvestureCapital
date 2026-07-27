@@ -36,14 +36,15 @@ const LAND: Record<DieColor, { x: number; y: number }> = {
 
 // ---- tuned layout constants (verified against the background art) ----
 const PLATFORM_Y = 21;              // ledge Y (% of stage height)
-const DIE_SIZE = 20;                // % of stage width (art now fills edge-to-edge)
-const REST_X = [28, 50, 72];        // resting die centers (% of stage width)
+const DIE_SIZE = 21;                // % of stage width (art fills edge-to-edge)
+const REST_X = [26, 50, 74];        // resting die centers (% of stage width)
+const REST_SINK = 0.43;             // how far the die center sits above the ledge (× die height)
 const BANDS = [24, 50, 76];         // landing bands (% of stage width)
 const FRAME_T = 2;                  // showcase window top (% of stage height)
 const FRAME_H = 25;                 // showcase window height (% of stage height)
 const FRAME_W = 82;                 // showcase window width (% of stage width)
-const TILT_X = -10;                 // viewing tilt for 3D depth (deg)
-const TILT_Y = 8;                   // viewing tilt for 3D depth (deg)
+const TILT_X = -8;                  // viewing tilt for 3D depth (deg)
+const TILT_Y = 6;                   // viewing tilt for 3D depth (deg)
 
 function pick(): DieColor {
   return FACE_ORDER[(Math.random() * 6) | 0];
@@ -117,7 +118,7 @@ export function ColorDice({ results, phase }: Props) {
       pf.style.opacity = betting ? "1" : "0";
     }
 
-    const restY = PLATFORM_Y - (diePx * 0.5) / h * 100;
+    const restY = PLATFORM_Y - (diePx * REST_SINK) / h * 100;
 
     for (let i = 0; i < 3; i++) {
       const pos = posRefs.current[i];
@@ -164,7 +165,7 @@ export function ColorDice({ results, phase }: Props) {
     const n = rollN.current;
     const diePx = (DIE_SIZE / 100) * w;
     const half = diePx / 2;
-    const restY = PLATFORM_Y - (diePx * 0.5) / h * 100;
+    const restY = PLATFORM_Y - (diePx * REST_SINK) / h * 100;
 
     // showcase window fades away as the dice drop
     const fr = frameRef.current;
