@@ -142,7 +142,7 @@ export function ColorDice({ results, phase }: Props) {
 
       cube.style.animation = "none";
       const color = betting ? betFaces.current[i] : (resultsRef.current?.[i] ?? betFaces.current[i]);
-      cube.style.transform = betting ? faceRot(color, -4) : faceRot(color, l.z);
+      cube.style.transform = betting ? faceRot(color, 0) : faceRot(color, l.z);
 
       if (shadow) {
         shadow.style.width = `${diePx * 0.9}px`;
@@ -344,9 +344,8 @@ export function ColorDice({ results, phase }: Props) {
                     className="absolute inset-0 overflow-hidden"
                     style={{
                       backfaceVisibility: "hidden",
-                      borderRadius: "16%",
-                      border: "2px solid rgba(255,255,255,0.28)",
-                      boxShadow: "inset 0 2px 6px rgba(0,0,0,0.35), 0 4px 12px rgba(0,0,0,0.3)",
+                      borderRadius: "18%",
+                      boxShadow: "0 2px 5px rgba(0,0,0,0.22)",
                     }}
                   >
                     <img
