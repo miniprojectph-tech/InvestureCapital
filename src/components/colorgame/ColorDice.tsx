@@ -4,12 +4,12 @@ import { useEffect, useRef } from "react";
 import type { DieColor } from "@/lib/colorgame";
 
 const FACE_MAP: Record<DieColor, string> = {
-  red: "/colorgame/dice/die_face_red.png",
-  blue: "/colorgame/dice/die_face_blue.png",
-  yellow: "/colorgame/dice/die_face_yellow.png",
-  pink: "/colorgame/dice/die_face_pink.png",
-  white: "/colorgame/dice/die_face_white.png",
-  green: "/colorgame/dice/die_face_green.png",
+  red: "/colorgame/dice/die_face_red.png?v=2",
+  blue: "/colorgame/dice/die_face_blue.png?v=2",
+  yellow: "/colorgame/dice/die_face_yellow.png?v=2",
+  pink: "/colorgame/dice/die_face_pink.png?v=2",
+  white: "/colorgame/dice/die_face_white.png?v=2",
+  green: "/colorgame/dice/die_face_green.png?v=2",
 };
 
 const FACE_ORDER: DieColor[] = ["red", "blue", "yellow", "pink", "white", "green"];
@@ -36,7 +36,7 @@ const LAND: Record<DieColor, { x: number; y: number }> = {
 
 // ---- tuned layout constants (verified against the background art) ----
 const PLATFORM_Y = 21;              // ledge Y (% of stage height)
-const DIE_SIZE = 24;                // % of stage width
+const DIE_SIZE = 20;                // % of stage width (art now fills edge-to-edge)
 const REST_X = [28, 50, 72];        // resting die centers (% of stage width)
 const BANDS = [24, 50, 76];         // landing bands (% of stage width)
 const FRAME_T = 2;                  // showcase window top (% of stage height)
@@ -375,8 +375,8 @@ export function ColorDice({ results, phase }: Props) {
                         style={{
                           borderRadius: "16%",
                           background:
-                            "linear-gradient(135deg, rgba(255,255,255,0.4), rgba(255,255,255,0) 42%, rgba(0,0,0,0.14) 100%)",
-                          opacity: 0.65,
+                            "linear-gradient(135deg, rgba(255,255,255,0.35), rgba(255,255,255,0) 45%, rgba(0,0,0,0.12) 100%)",
+                          opacity: 0.5,
                         }}
                       />
                     </div>
