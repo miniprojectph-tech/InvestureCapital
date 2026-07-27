@@ -341,18 +341,19 @@ export function ColorDice({ results, phase }: Props) {
                   <div
                     key={color}
                     data-color={color}
-                    className="absolute inset-0 overflow-hidden"
-                    style={{
-                      backfaceVisibility: "hidden",
-                      borderRadius: "18%",
-                      boxShadow: "0 2px 5px rgba(0,0,0,0.22)",
-                    }}
+                    className="absolute inset-0"
+                    style={{ backfaceVisibility: "hidden" }}
                   >
                     <img
                       src={FACE_MAP[color]}
                       alt={color}
                       draggable={false}
-                      style={{ width: "100%", height: "100%", display: "block" }}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "block",
+                        filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.28))",
+                      }}
                     />
                   </div>
                 ))}
