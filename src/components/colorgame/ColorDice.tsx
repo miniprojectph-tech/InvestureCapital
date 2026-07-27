@@ -42,6 +42,8 @@ const BANDS = [24, 50, 76];         // landing bands (% of stage width)
 const FRAME_T = 2;                  // showcase window top (% of stage height)
 const FRAME_H = 25;                 // showcase window height (% of stage height)
 const FRAME_W = 82;                 // showcase window width (% of stage width)
+const TILT_X = -10;                 // viewing tilt for 3D depth (deg)
+const TILT_Y = 8;                   // viewing tilt for 3D depth (deg)
 
 function pick(): DieColor {
   return FACE_ORDER[(Math.random() * 6) | 0];
@@ -212,28 +214,32 @@ export function ColorDice({ results, phase }: Props) {
       const offX = ((REST_X[i] - lx) / 100) * w;
       const offY = ((restY - ly) / 100) * h;
       const dropName = `cgdrop${n}_${i}`;
+      // gravity drop: slow start, accelerate down, two small bounces (no initial rise)
       css += `@keyframes ${dropName}{
         0%{transform:translate(${offX}px,${offY}px);}
-        12%{transform:translate(${offX * 0.96}px,${offY - 18}px);}
-        70%{transform:translate(${offX * 0.22}px,8px);}
-        84%{transform:translate(${offX * 0.05}px,-10px);}
-        93%{transform:translate(0px,4px);}
+        20%{transform:translate(${offX * 0.9}px,${offY * 0.94}px);}
+        40%{transform:translate(${offX * 0.7}px,${offY * 0.74}px);}
+        60%{transform:translate(${offX * 0.4}px,${offY * 0.41}px);}
+        78%{transform:translate(0px,0px);}
+        86%{transform:translate(0px,${offY * 0.12}px);}
+        92%{transform:translate(0px,0px);}
+        96%{transform:translate(0px,${offY * 0.045}px);}
         100%{transform:translate(0px,0px);}
       }`;
 
       const end = faceRot(color, lz);
-      const sx = (720 + Math.random() * 720) * (Math.random() < 0.5 ? -1 : 1);
-      const sy = (720 + Math.random() * 720) * (Math.random() < 0.5 ? -1 : 1);
-      const sz = (360 + Math.random() * 360) * (Math.random() < 0.5 ? -1 : 1);
+      const sx = (430 + Math.random() * 720) * (Math.random() < 0.5 ? -1 : 1);
+      const sy = (430 + Math.random() * 720) * (Math.random() < 0.5 ? -1 : 1);
+      const sz = (220 + Math.random() * 290) * (Math.random() < 0.5 ? -1 : 1);
       const start = `rotateZ(${lz + sz}deg) rotateX(${LAND[color].x + sx}deg) rotateY(${LAND[color].y + sy}deg)`;
       const tumName = `cgtum${n}_${i}`;
       css += `@keyframes ${tumName}{0%{transform:${start};}100%{transform:${end};}}`;
 
-      const delay = i * 130;
-      drop.style.animation = `${dropName} 1.7s cubic-bezier(0.3,0.05,0.4,1) ${delay}ms forwards`;
-      cube.style.animation = `${tumName} 1.5s cubic-bezier(0.2,0.6,0.3,1) ${delay}ms forwards`;
+      const delay = i * 100;
+      drop.style.animation = `${dropName} 1000ms linear ${delay}ms forwards`;
+      cube.style.animation = `${tumName} 850ms cubic-bezier(0.15,0.5,0.3,1) ${delay}ms forwards`;
       if (shadow) {
-        shadow.style.transition = `opacity 0.4s ease ${delay + 1000}ms`;
+        shadow.style.transition = `opacity 0.3s ease ${delay + 600}ms`;
         shadow.style.opacity = "0.7";
       }
     }
@@ -315,7 +321,7 @@ export function ColorDice({ results, phase }: Props) {
       />
 
       {[0, 1, 2].map((i) => (
-        <div key={`shadow-${i}`}>
+        <div key={`die-${i}`}>
           <div
             ref={(el) => { shadowRefs.current[i] = el; }}
             className="absolute"
@@ -330,33 +336,52 @@ export function ColorDice({ results, phase }: Props) {
             <div
               ref={(el) => { dropRefs.current[i] = el; }}
               className="absolute inset-0"
-              style={{ willChange: "transform" }}
+              style={{ transformStyle: "preserve-3d", willChange: "transform" }}
             >
+              {/* static viewing tilt gives the cube 3D depth */}
               <div
-                ref={(el) => { cubeRefs.current[i] = el; }}
                 className="absolute inset-0"
-                style={{ transformStyle: "preserve-3d", willChange: "transform" }}
+                style={{
+                  transformStyle: "preserve-3d",
+                  transform: `rotateX(${TILT_X}deg) rotateY(${TILT_Y}deg)`,
+                }}
               >
-                {FACE_ORDER.map((color) => (
-                  <div
-                    key={color}
-                    data-color={color}
-                    className="absolute inset-0"
-                    style={{ backfaceVisibility: "hidden" }}
-                  >
-                    <img
-                      src={FACE_MAP[color]}
-                      alt={color}
-                      draggable={false}
-                      style={{
-                        width: "100%",
-                        height: "100%",
-                        display: "block",
-                        filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.28))",
-                      }}
-                    />
-                  </div>
-                ))}
+                <div
+                  ref={(el) => { cubeRefs.current[i] = el; }}
+                  className="absolute inset-0"
+                  style={{ transformStyle: "preserve-3d", willChange: "transform" }}
+                >
+                  {FACE_ORDER.map((color) => (
+                    <div
+                      key={color}
+                      data-color={color}
+                      className="absolute inset-0"
+                      style={{ backfaceVisibility: "hidden" }}
+                    >
+                      <img
+                        src={FACE_MAP[color]}
+                        alt={color}
+                        draggable={false}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          display: "block",
+                          filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.28))",
+                        }}
+                      />
+                      {/* gloss/shade for a rounded, dimensional face */}
+                      <div
+                        className="absolute inset-0 pointer-events-none"
+                        style={{
+                          borderRadius: "16%",
+                          background:
+                            "linear-gradient(135deg, rgba(255,255,255,0.4), rgba(255,255,255,0) 42%, rgba(0,0,0,0.14) 100%)",
+                          opacity: 0.65,
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
