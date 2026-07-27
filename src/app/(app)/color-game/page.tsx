@@ -235,10 +235,10 @@ export default function ColorGamePage() {
           <ColorRankingBoard leaders={leaders} />
         </div>
 
-        {/* Dice — centered in open suitcase */}
-        <div className="absolute z-10 flex items-center justify-center"
-          style={{ left: "22%", top: "34%", width: "18%", height: "36%" }}>
-          <ColorDice results={dice} rolling={phase === "rolling"} />
+        {/* Dice — platform in the lid, dice drop & scatter into the tray */}
+        <div className="absolute z-10"
+          style={{ left: "30%", top: "8%", width: "23%", height: "70%" }}>
+          <ColorDice results={dice} phase={phase} />
         </div>
 
         {/* History dots — inside wooden history bar */}
