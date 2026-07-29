@@ -223,8 +223,13 @@ export function ColorDice({ results, phase }: Props) {
       const pos = posRefs.current[i], cube = cubeRefs.current[i];
       if (!pos || !cube) continue;
       pos.style.transform = `translate(${REST_X[i] * w - R}px, ${REST_Y * h - R}px)`;
-      paint(i, identityMap());
-      cube.style.transform = `rotateX(${LAND[betFaces.current[i]].x}deg) rotateY(${LAND[betFaces.current[i]].y}deg)`;
+      // keep the cube at identity so every die seats the same on the ledge; show the
+      // bet colour by swapping it onto the front (identity) face instead of rotating.
+      const bf = betFaces.current[i];
+      const map = identityMap();
+      map.red = bf; map[bf] = "red";
+      paint(i, map);
+      cube.style.transform = "rotateX(0deg) rotateY(0deg)";
     }
   };
 
