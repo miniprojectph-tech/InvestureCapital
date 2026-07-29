@@ -39,14 +39,16 @@ const FRAME_H = 25;
 const FRAME_W = 82;
 
 // dice + physics — fractions of stage
-const DIE_FR = 0.2;
-const REST_X = [0.3, 0.5, 0.7];
+const DIE_FR = 0.19;
+const REST_X = [0.25, 0.5, 0.75];
 const REST_Y = 0.16;
 const TRAY_FLOOR = 0.9;
 const TRAY_L = 0.14;
 const TRAY_R = 0.86;
 const VIEW_TX = -16;
 const VIEW_TY = 12;
+const BET_TX = -5;
+const BET_TY = 4;
 
 type Die = {
   x: number; y: number; vx: number; vy: number;
@@ -155,6 +157,7 @@ export function ColorDice({ results, phase }: Props) {
   const frameRef = useRef<HTMLDivElement>(null);
   const platformRef = useRef<HTMLDivElement>(null);
   const posRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const viewRefs = useRef<(HTMLDivElement | null)[]>([]);
   const cubeRefs = useRef<(HTMLDivElement | null)[]>([]);
   const faceRefs = useRef<(HTMLDivElement | null)[][]>([[], [], []]);
   const imgRefs = useRef<(HTMLImageElement | null)[][]>([[], [], []]);
@@ -206,9 +209,13 @@ export function ColorDice({ results, phase }: Props) {
       pf.style.transition = "opacity 0.25s ease";
       pf.style.opacity = betting ? "1" : "0";
     }
+    const vtx = betting ? BET_TX : VIEW_TX;
+    const vty = betting ? BET_TY : VIEW_TY;
     for (let i = 0; i < 3; i++) {
       const pos = posRefs.current[i];
       if (pos) { pos.style.width = `${diePx}px`; pos.style.height = `${diePx}px`; }
+      const view = viewRefs.current[i];
+      if (view) view.style.transform = `rotateX(${vtx}deg) rotateY(${vty}deg)`;
       sizeFaces(i, diePx);
     }
     if (!betting) return;
@@ -315,7 +322,7 @@ export function ColorDice({ results, phase }: Props) {
       {[0, 1, 2].map((i) => (
         <div key={`die-${i}`} ref={(el) => { posRefs.current[i] = el; }} className="absolute top-0 left-0"
           style={{ transformStyle: "preserve-3d", willChange: "transform" }}>
-          <div className="absolute inset-0" style={{ transformStyle: "preserve-3d", transform: `rotateX(${VIEW_TX}deg) rotateY(${VIEW_TY}deg)` }}>
+          <div ref={(el) => { viewRefs.current[i] = el; }} className="absolute inset-0" style={{ transformStyle: "preserve-3d", transform: `rotateX(${BET_TX}deg) rotateY(${BET_TY}deg)` }}>
             <div ref={(el) => { cubeRefs.current[i] = el; }} className="absolute inset-0" style={{ transformStyle: "preserve-3d", willChange: "transform" }}>
               {FACE_ORDER.map((color, fi) => (
                 <div key={color} ref={(el) => { faceRefs.current[i][fi] = el; }} className="absolute inset-0" style={{ backfaceVisibility: "hidden" }}>
