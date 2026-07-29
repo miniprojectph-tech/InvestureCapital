@@ -41,14 +41,14 @@ const FRAME_W = 82;
 // dice + physics — fractions of stage
 const DIE_FR = 0.19;
 const REST_X = [0.25, 0.5, 0.75];
-const REST_Y = 0.16;
+const REST_Y = 0.165;
 const TRAY_FLOOR = 0.9;
 const TRAY_L = 0.14;
 const TRAY_R = 0.86;
 const VIEW_TX = -16;
 const VIEW_TY = 12;
-const BET_TX = -5;
-const BET_TY = 4;
+const BET_TX = 0;
+const BET_TY = 0;
 
 type Die = {
   x: number; y: number; vx: number; vy: number;
