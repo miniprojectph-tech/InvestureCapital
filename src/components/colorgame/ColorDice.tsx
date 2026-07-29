@@ -33,7 +33,7 @@ const LAND: Record<DieColor, { x: number; y: number }> = {
 };
 
 // showcase (lid) — % of stage
-const PLATFORM_Y = 21;
+const PLATFORM_Y = 20;
 const FRAME_T = 2;
 const FRAME_H = 25;
 const FRAME_W = 82;
@@ -41,7 +41,7 @@ const FRAME_W = 82;
 // dice + physics — fractions of stage
 const DIE_FR = 0.19;
 const REST_X = [0.25, 0.5, 0.75];
-const REST_Y = 0.165;
+const REST_Y = 0.19;
 const TRAY_FLOOR = 0.9;
 const TRAY_L = 0.14;
 const TRAY_R = 0.86;
