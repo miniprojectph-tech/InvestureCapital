@@ -88,8 +88,8 @@ function frontFace(rx: number, ry: number): DieColor {
 
 function step(dice: Die[], W: number, H: number) {
   const R = (DIE_FR * W) / 2;
-  const G = 0.0016 * H;
-  const E = 0.42;
+  const G = 0.0014 * H;   // gravity (softer fall)
+  const E = 0.34;         // restitution — small bounces on the padded tray
   const left = TRAY_L * W;
   const right = TRAY_R * W;
   const sd = (cur: number, tgt: number) => ((tgt - cur + 540) % 360) - 180;
@@ -136,12 +136,13 @@ function settled(dice: Die[]): boolean {
 function initialDice(rng: () => number, W: number, H: number): Die[] {
   const R = (DIE_FR * W) / 2;
   return [0, 1, 2].map((i) => ({
-    x: REST_X[i] * W + (rng() - 0.5) * R * 0.4,
+    // start where they were resting (flat), then tumble via angular velocity as they fall
+    x: REST_X[i] * W + (rng() - 0.5) * R * 0.3,
     y: REST_Y * H,
-    vx: (0.4 + rng() * 1.6) * (W / 512) * 2,
-    vy: (0.4 + rng()) * (H / 332) * 2,
-    rx: rng() * 360, ry: rng() * 360, rz: (rng() - 0.5) * 20,
-    arx: (rng() - 0.5) * 26, ary: (rng() - 0.5) * 26, arz: (rng() - 0.5) * 10,
+    vx: (0.3 + rng() * 1.4) * (W / 512) * 2,   // slightly different forward drift per die
+    vy: (0.2 + rng() * 0.6) * (H / 332) * 2,
+    rx: 0, ry: 0, rz: (rng() - 0.5) * 6,
+    arx: (rng() - 0.5) * 30, ary: (rng() - 0.5) * 30, arz: (rng() - 0.5) * 12, // different spin speeds/axes
     onLid: true,
     floorY: (TRAY_FLOOR - rng() * 0.14) * H,
   }));
@@ -169,7 +170,10 @@ export function ColorDice({ results, phase }: Props) {
   const hasRolled = useRef(false);
   const betFaces = useRef<DieColor[]>([FACE_ORDER[0], FACE_ORDER[1], FACE_ORDER[2]]);
   const raf = useRef<number | null>(null);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   resultsRef.current = results;
+
+  const clearTimers = () => { timers.current.forEach(clearTimeout); timers.current = []; };
 
   const fns = useRef({ layoutStatic: (_betting: boolean) => {}, roll: () => {} });
 
@@ -199,6 +203,7 @@ export function ColorDice({ results, phase }: Props) {
       fr.style.width = `${fw}px`; fr.style.height = `${fh}px`;
       fr.style.left = `${(w - fw) / 2}px`; fr.style.top = `${(FRAME_T / 100) * h}px`;
       fr.style.transition = "opacity 0.25s ease";
+      fr.style.transform = "none";
       fr.style.opacity = betting ? "1" : "0";
     }
     const pf = platformRef.current;
@@ -207,6 +212,7 @@ export function ColorDice({ results, phase }: Props) {
       pf.style.width = `${pw}px`; pf.style.height = `${ph}px`;
       pf.style.left = `${(w - pw) / 2}px`; pf.style.top = `${(PLATFORM_Y / 100) * h}px`;
       pf.style.transition = "opacity 0.25s ease";
+      pf.style.transform = "translateY(0)";
       pf.style.opacity = betting ? "1" : "0";
     }
     const vtx = betting ? BET_TX : VIEW_TX;
@@ -239,45 +245,64 @@ export function ColorDice({ results, phase }: Props) {
     const { w, h } = dim.current;
     if (!w || !h) return;
     if (raf.current) cancelAnimationFrame(raf.current);
-    fns.current.layoutStatic(false);
+    clearTimers();
+    // dice stay resting (flat, on the platform) through the initial pause — don't fade/paint yet
 
     const res: DieColor[] = resultsRef.current
       ? [resultsRef.current[0], resultsRef.current[1], resultsRef.current[2]]
       : [FACE_ORDER[(Math.random() * 6) | 0], FACE_ORDER[(Math.random() * 6) | 0], FACE_ORDER[(Math.random() * 6) | 0]];
     const seed = (Date.now() & 0x7fffffff) ^ 0x9e3779b9;
 
+    // headless pre-run to learn which face each die lands on
     const head = initialDice(mulberry32(seed), w, h);
     for (let n = 0; n < 900 && !settled(head); n++) step(head, w, h);
+    const landColors = [0, 1, 2].map((i) =>
+      frontFace(Math.round(head[i].rx / 90) * 90, Math.round(head[i].ry / 90) * 90));
 
-    for (let i = 0; i < 3; i++) {
-      const landColor = frontFace(Math.round(head[i].rx / 90) * 90, Math.round(head[i].ry / 90) * 90);
-      const map = identityMap();
-      map[landColor] = res[i];
-      map[res[i]] = landColor;
-      paint(i, map);
-      faceRefs.current[i].forEach((f) => { if (f) f.style.visibility = "visible"; });
-    }
-
-    const live = initialDice(mulberry32(seed), w, h);
-    const R = (DIE_FR * w) / 2;
-    const render = () => {
-      for (let i = 0; i < 3; i++) {
-        const pos = posRefs.current[i], cube = cubeRefs.current[i];
-        if (!pos || !cube) continue;
-        pos.style.transform = `translate(${live[i].x - R}px, ${live[i].y - R}px)`;
-        cube.style.transform = `rotateX(${live[i].rx}deg) rotateY(${live[i].ry}deg) rotateZ(${live[i].rz}deg)`;
+    // 0.40s: retract the support platform backward into its slot, fade the showcase
+    timers.current.push(setTimeout(() => {
+      const pf = platformRef.current;
+      if (pf) {
+        pf.style.transition = "transform 0.16s cubic-bezier(0.45,0,0.9,0.35), opacity 0.16s ease";
+        pf.style.transform = `translateY(${-h * 0.11}px) scaleY(0.4)`;
+        pf.style.opacity = "0";
       }
-    };
-    let n = 0;
-    const loop = () => {
-      step(live, w, h);
+      const fr = frameRef.current;
+      if (fr) { fr.style.transition = "opacity 0.22s ease"; fr.style.opacity = "0"; }
+    }, 400));
+
+    // 0.52s: support gone — reveal all faces, set result colours, start the physics drop
+    timers.current.push(setTimeout(() => {
+      for (let i = 0; i < 3; i++) {
+        const map = identityMap();
+        map[landColors[i]] = res[i];
+        map[res[i]] = landColors[i];
+        paint(i, map);
+        faceRefs.current[i].forEach((f) => { if (f) f.style.visibility = "visible"; });
+        const cube = cubeRefs.current[i];
+        if (cube) cube.style.transition = "none";
+      }
+      const live = initialDice(mulberry32(seed), w, h);
+      const R = (DIE_FR * w) / 2;
+      const render = () => {
+        for (let i = 0; i < 3; i++) {
+          const pos = posRefs.current[i], cube = cubeRefs.current[i];
+          if (!pos || !cube) continue;
+          pos.style.transform = `translate(${live[i].x - R}px, ${live[i].y - R}px)`;
+          cube.style.transform = `rotateX(${live[i].rx}deg) rotateY(${live[i].ry}deg) rotateZ(${live[i].rz}deg)`;
+        }
+      };
+      let n = 0;
+      const loop = () => {
+        step(live, w, h);
+        render();
+        n++;
+        if (n < 900 && !settled(live)) raf.current = requestAnimationFrame(loop);
+        else raf.current = null;
+      };
       render();
-      n++;
-      if (n < 900 && !settled(live)) raf.current = requestAnimationFrame(loop);
-      else raf.current = null;
-    };
-    render();
-    raf.current = requestAnimationFrame(loop);
+      raf.current = requestAnimationFrame(loop);
+    }, 520));
   };
 
   useEffect(() => {
@@ -290,7 +315,7 @@ export function ColorDice({ results, phase }: Props) {
     ro.observe(el);
     dim.current = { w: el.clientWidth, h: el.clientHeight };
     fns.current.layoutStatic(true);
-    return () => { ro.disconnect(); if (raf.current) cancelAnimationFrame(raf.current); };
+    return () => { ro.disconnect(); if (raf.current) cancelAnimationFrame(raf.current); clearTimers(); };
   }, []);
 
   useEffect(() => {
@@ -301,6 +326,7 @@ export function ColorDice({ results, phase }: Props) {
       hasRolled.current = false;
       betFaces.current = [FACE_ORDER[(Math.random() * 6) | 0], FACE_ORDER[(Math.random() * 6) | 0], FACE_ORDER[(Math.random() * 6) | 0]];
       if (raf.current) { cancelAnimationFrame(raf.current); raf.current = null; }
+      clearTimers();
       fns.current.layoutStatic(true);
     }
   }, [phase]);
