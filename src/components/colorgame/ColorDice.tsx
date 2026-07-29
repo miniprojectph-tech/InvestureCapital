@@ -230,6 +230,8 @@ export function ColorDice({ results, phase }: Props) {
       map.red = bf; map[bf] = "red";
       paint(i, map);
       cube.style.transform = "rotateX(0deg) rotateY(0deg)";
+      // flat resting die: show only the front face so perspective can't reveal a side/bottom face
+      faceRefs.current[i].forEach((f, fi) => { if (f) f.style.visibility = fi === 0 ? "visible" : "hidden"; });
     }
   };
 
@@ -253,6 +255,7 @@ export function ColorDice({ results, phase }: Props) {
       map[landColor] = res[i];
       map[res[i]] = landColor;
       paint(i, map);
+      faceRefs.current[i].forEach((f) => { if (f) f.style.visibility = "visible"; });
     }
 
     const live = initialDice(mulberry32(seed), w, h);
