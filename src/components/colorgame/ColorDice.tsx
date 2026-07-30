@@ -283,6 +283,9 @@ export function ColorDice({ results, phase }: Props) {
         faceRefs.current[i].forEach((f) => { if (f) f.style.visibility = "visible"; });
         const cube = cubeRefs.current[i];
         if (cube) cube.style.transition = "none";
+        // switch to the tray 3D viewing angle for the tumble + landing
+        const view = viewRefs.current[i];
+        if (view) view.style.transform = `rotateX(${VIEW_TX}deg) rotateY(${VIEW_TY}deg)`;
       }
       const live = initialDice(mulberry32(seed), w, h);
       const R = (DIE_FR * w) / 2;
