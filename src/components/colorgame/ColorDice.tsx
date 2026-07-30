@@ -42,7 +42,7 @@ const FRAME_W = 82;
 const DIE_FR = 0.165;
 const REST_X = [0.32, 0.5, 0.68];
 const REST_Y = 0.158;
-const TRAY_FLOOR = 0.9;
+const TRAY_FLOOR = 0.82;
 const TRAY_L = 0.14;
 const TRAY_R = 0.86;
 const VIEW_TX = -22;
@@ -116,12 +116,12 @@ function step(dice: Die[], W: number, H: number) {
   for (let i = 0; i < dice.length; i++) {
     for (let j = i + 1; j < dice.length; j++) {
       const a = dice[i], b = dice[j];
-      const dx = b.x - a.x, dy = b.y - a.y, dist = Math.hypot(dx, dy), min = DIE_FR * W * 0.9;
+      const dx = b.x - a.x, dy = b.y - a.y, dist = Math.hypot(dx, dy), min = DIE_FR * W * 1.05;
       if (dist > 0 && dist < min) {
         const nx = dx / dist, ny = dy / dist, ov = (min - dist) / 2;
         a.x -= nx * ov; a.y -= ny * ov; b.x += nx * ov; b.y += ny * ov;
         const p = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
-        if (p > 0) { a.vx -= p * nx * 0.7; a.vy -= p * ny * 0.7; b.vx += p * nx * 0.7; b.vy += p * ny * 0.7; a.arz += p * 0.5; b.arz -= p * 0.5; }
+        if (p > 0) { a.vx -= p * nx * 0.8; a.vy -= p * ny * 0.8; b.vx += p * nx * 0.8; b.vy += p * ny * 0.8; a.arz += p * 0.5; b.arz -= p * 0.5; }
       }
     }
   }
@@ -139,13 +139,14 @@ function initialDice(rng: () => number, W: number, H: number): Die[] {
     // start where they were resting (flat), then tumble via angular velocity as they fall
     x: REST_X[i] * W + (rng() - 0.5) * R * 0.3,
     y: REST_Y * H,
-    vx: (0.3 + rng() * 1.2) * (W / 512) * 2,   // slightly different forward drift per die
-    vy: (0.1 + rng() * 0.4) * (H / 332) * 2,
+    // drift die 0 left, die 1 centre, die 2 right so they scatter apart across the tray
+    vx: ([-1, 0, 1][i] * 1.1 + (rng() - 0.5) * 1.0) * (W / 512) * 2,
+    vy: (0.1 + rng() * 0.3) * (H / 332) * 2,
     rx: 0, ry: 0, rz: (rng() - 0.5) * 6,
     arx: (rng() - 0.5) * 60, ary: (rng() - 0.5) * 60, arz: (rng() - 0.5) * 30, // fast, varied spin so they roll
 
     onLid: true,
-    floorY: (TRAY_FLOOR - rng() * 0.14) * H,
+    floorY: (TRAY_FLOOR - rng() * 0.12) * H,
   }));
 }
 
