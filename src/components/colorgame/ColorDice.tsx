@@ -49,12 +49,18 @@ const VIEW_TX = -32;
 const VIEW_TY = 0;
 const BET_TX = 0;
 const BET_TY = 0;
+// slide-and-coast motion (tuned in the interactive motion tuner)
+const EDGE_Y = 0.4;         // lid bottom — dice drop off here into the tray
+const SLIDE_ACC = 0.00028;  // gentle accel (x stage height) — no free fall
+const SLIDE_CAP = 0.005;    // capped speed
+const ROLL_SPIN = 14;       // forward crawl-roll per frame (x spinMul)
+const MOMENTUM = 0.94;      // coast decay after the edge
 
 type Die = {
   x: number; y: number; vx: number; vy: number;
   rx: number; ry: number; rz: number;
   arx: number; ary: number; arz: number;
-  onLid: boolean; floorY: number;
+  dropped: boolean; resting: boolean; bias: number; spinMul: number; floorY: number;
 };
 
 function mulberry32(seed: number) {
@@ -88,40 +94,57 @@ function frontFace(rx: number, ry: number): DieColor {
 
 function step(dice: Die[], W: number, H: number) {
   const R = (DIE_FR * W) / 2;
-  const G = 0.0009 * H;   // gravity — slow fall so the tumble is visible
-  const E = 0.4;          // restitution — small bounces on the padded tray
+  const ACC = SLIDE_ACC * H;
+  const CAP = SLIDE_CAP * H;
+  const edgeY = EDGE_Y * H;
   const left = TRAY_L * W;
   const right = TRAY_R * W;
   const sd = (cur: number, tgt: number) => ((tgt - cur + 540) % 360) - 180;
   const near90 = (v: number) => Math.round(v / 90) * 90;
 
   for (const d of dice) {
-    d.vy += G; d.x += d.vx; d.y += d.vy;
-    d.rx += d.arx; d.ry += d.ary; d.rz += d.arz;
-    if (d.onLid && d.y > REST_Y * H + R * 0.5 && d.x > W * 0.5) d.onLid = false;
+    if (d.resting) {
+      // sit on the tray floor and ease the tumble to a stop on the nearest face
+      d.y = d.floorY - R;
+      d.vx *= 0.85;
+      d.arx = d.arx * 0.8 + sd(d.rx, near90(d.rx)) * 0.1;
+      d.ary = d.ary * 0.8 + sd(d.ry, near90(d.ry)) * 0.1;
+      d.arz = d.arz * 0.8 + sd(d.rz, near90(d.rz)) * 0.1;
+      d.x += d.vx; d.rx += d.arx; d.ry += d.ary; d.rz += d.arz;
+      if (d.x - R < left) { d.x = left + R; d.vx *= -0.4; }
+      if (d.x + R > right) { d.x = right - R; d.vx *= -0.4; }
+      continue;
+    }
+    if (!d.dropped) {
+      // slide down the lid, crawl-rolling forward at a capped speed (no free fall)
+      d.vy = Math.min(d.vy + ACC, CAP);
+      d.arx = -ROLL_SPIN * d.spinMul;
+      if (d.y + R >= edgeY) { d.dropped = true; d.vx = d.bias; }
+    } else {
+      // coast into the tray on the slide momentum, gently decaying
+      d.vy = Math.min(d.vy * MOMENTUM + ACC * 0.3, CAP);
+      d.vx *= MOMENTUM;
+      d.arx *= 0.985;
+    }
+    d.x += d.vx; d.y += d.vy; d.rx += d.arx; d.rz += d.arz;
     if (d.y + R > d.floorY) {
       d.y = d.floorY - R;
-      if (d.vy > G * 2) { d.vy *= -E; d.vx *= 0.9; d.arx *= 0.6; d.ary *= 0.6; d.arz *= 0.6; }
-      else { d.vy = 0; }
-      if (Math.abs(d.vy) < G * 2) {
-        d.vx *= 0.9;
-        d.arx = d.arx * 0.86 + sd(d.rx, near90(d.rx)) * 0.05;
-        d.ary = d.ary * 0.86 + sd(d.ry, near90(d.ry)) * 0.05;
-        d.arz = d.arz * 0.86 + sd(d.rz, near90(d.rz)) * 0.05;
-      }
+      if (d.vy > CAP * 0.25) { d.vy *= -0.22; d.vx *= 0.9; d.arx *= 0.5; }
+      else { d.resting = true; d.vy = 0; }
     }
-    if (d.x - R < left) { d.x = left + R; d.vx *= -E; d.arz -= 2; }
-    if (d.x + R > right) { d.x = right - R; d.vx *= -E; d.arz += 2; }
+    if (d.x - R < left) { d.x = left + R; d.vx *= -0.4; }
+    if (d.x + R > right) { d.x = right - R; d.vx *= -0.4; }
   }
   for (let i = 0; i < dice.length; i++) {
     for (let j = i + 1; j < dice.length; j++) {
       const a = dice[i], b = dice[j];
+      if (!a.dropped || !b.dropped) continue;
       const dx = b.x - a.x, dy = b.y - a.y, dist = Math.hypot(dx, dy), min = DIE_FR * W * 1.05;
       if (dist > 0 && dist < min) {
         const nx = dx / dist, ny = dy / dist, ov = (min - dist) / 2;
         a.x -= nx * ov; a.y -= ny * ov; b.x += nx * ov; b.y += ny * ov;
         const p = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
-        if (p > 0) { a.vx -= p * nx * 0.8; a.vy -= p * ny * 0.8; b.vx += p * nx * 0.8; b.vy += p * ny * 0.8; a.arz += p * 0.5; b.arz -= p * 0.5; }
+        if (p > 0) { a.vx -= p * nx * 0.7; a.vy -= p * ny * 0.7; b.vx += p * nx * 0.7; b.vy += p * ny * 0.7; }
       }
     }
   }
@@ -129,23 +152,21 @@ function step(dice: Die[], W: number, H: number) {
 
 function settled(dice: Die[]): boolean {
   return dice.every((d) =>
-    Math.abs(d.vx) < 0.12 && Math.abs(d.vy) < 0.12 &&
-    Math.abs(d.arx) < 0.25 && Math.abs(d.ary) < 0.25 && Math.abs(d.arz) < 0.25);
+    d.resting && Math.abs(d.vx) < 0.1 &&
+    Math.abs(d.arx) < 0.3 && Math.abs(d.ary) < 0.3 && Math.abs(d.arz) < 0.3);
 }
 
 function initialDice(rng: () => number, W: number, H: number): Die[] {
-  const R = (DIE_FR * W) / 2;
   return [0, 1, 2].map((i) => ({
-    // start where they were resting (flat), then tumble via angular velocity as they fall
-    x: REST_X[i] * W + (rng() - 0.5) * R * 0.3,
+    x: REST_X[i] * W,
     y: REST_Y * H,
-    // drift die 0 left, die 1 centre, die 2 right so they scatter apart across the tray
-    vx: ([-1, 0, 1][i] * 1.78 + (rng() - 0.5) * 1.0) * (W / 512) * 2,
-    vy: (0.1 + rng() * 0.3) * (H / 332) * 2,
+    vx: 0, vy: 0,
     rx: 0, ry: 0, rz: (rng() - 0.5) * 6,
-    arx: (rng() - 0.5) * 60, ary: (rng() - 0.5) * 60, arz: (rng() - 0.5) * 30, // fast, varied spin so they roll
-
-    onLid: true,
+    arx: 0, ary: 0, arz: 0,
+    dropped: false, resting: false,
+    // drift left / centre / right with per-die variation -> varied spread and distance
+    bias: (([-1, 0, 1][i] * (1.4 + rng() * 1.6)) + (rng() - 0.5) * 0.8) * (W / 331),
+    spinMul: 0.8 + rng() * 0.5,
     floorY: (TRAY_FLOOR - rng() * 0.12) * H,
   }));
 }
