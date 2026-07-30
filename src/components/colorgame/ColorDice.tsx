@@ -39,14 +39,14 @@ const FRAME_H = 25;
 const FRAME_W = 82;
 
 // dice + physics — fractions of stage
-const DIE_FR = 0.165;
+const DIE_FR = 0.155;
 const REST_X = [0.32, 0.5, 0.68];
-const REST_Y = 0.158;
+const REST_Y = 0.161;
 const TRAY_FLOOR = 0.82;
 const TRAY_L = 0.14;
 const TRAY_R = 0.86;
-const VIEW_TX = -22;
-const VIEW_TY = 15;
+const VIEW_TX = -32;
+const VIEW_TY = 0;
 const BET_TX = 0;
 const BET_TY = 0;
 
@@ -140,7 +140,7 @@ function initialDice(rng: () => number, W: number, H: number): Die[] {
     x: REST_X[i] * W + (rng() - 0.5) * R * 0.3,
     y: REST_Y * H,
     // drift die 0 left, die 1 centre, die 2 right so they scatter apart across the tray
-    vx: ([-1, 0, 1][i] * 1.1 + (rng() - 0.5) * 1.0) * (W / 512) * 2,
+    vx: ([-1, 0, 1][i] * 1.78 + (rng() - 0.5) * 1.0) * (W / 512) * 2,
     vy: (0.1 + rng() * 0.3) * (H / 332) * 2,
     rx: 0, ry: 0, rz: (rng() - 0.5) * 6,
     arx: (rng() - 0.5) * 60, ary: (rng() - 0.5) * 60, arz: (rng() - 0.5) * 30, // fast, varied spin so they roll
