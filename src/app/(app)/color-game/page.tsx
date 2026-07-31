@@ -72,7 +72,7 @@ export default function ColorGamePage() {
   const { user } = useAuth();
   const gameState = useGameState();
 
-  const { round, loading, roundId, timer } = useCurrentRound();
+  const { live, loading, roundId, timer } = useCurrentRound();
   const gs = useColorGameState();
   const leaders = useColorLeaderboard(10);
 
@@ -86,6 +86,8 @@ export default function ColorGamePage() {
 
   const resolvedRef = useRef<string>("");
   const myBetRef = useRef<{ color: DieColor; amount: number } | null>(null);
+  // The client places bets so it knows its own; RTDB only carries aggregate totals.
+  const myBetsRef = useRef<{ roundId: string; bets: Partial<Record<DieColor, number>> }>({ roundId: "", bets: {} });
 
   const bgReady = useBgReady();
   const coverStyle = useCoverStyle();
@@ -96,8 +98,8 @@ export default function ColorGamePage() {
   const phase = timer.phase;
   const bettingOpen = phase === "betting";
 
-  const isCurrent = round?.roundId === roundId;
-  const currentDice = isCurrent ? round?.dice : undefined;
+  const isCurrent = live?.roundId === roundId;
+  const currentDice = isCurrent ? live?.dice : undefined;
 
   if (currentDice) prevDiceRef.current = currentDice;
   const dice = currentDice ?? prevDiceRef.current;
@@ -115,32 +117,30 @@ export default function ColorGamePage() {
   }, [phase, roundId, currentDice]);
 
   useEffect(() => {
-    if (!currentDice || !isCurrent || !round?.bets) return;
-    const uid = user?.uid ?? "";
-    const myBets = Object.entries(round.bets)
-      .filter(([key]) => key.startsWith(`${uid}_`))
-      .map(([, b]) => b);
-    if (myBets.length === 0) return;
+    if (!currentDice || !isCurrent) return;
+    const mine = myBetsRef.current;
+    if (mine.roundId !== roundId) return;
+    const entries = Object.entries(mine.bets) as [DieColor, number][];
+    if (entries.length === 0) return;
 
+    // Base win (2x/3x/4x) shown in the overlay. Any jackpot share is credited
+    // server-side and reflected in the live balance — kept out of this estimate.
     let payout = 0;
     let totalBet = 0;
-    for (const b of myBets) {
-      totalBet += b.amount;
-      const matches = currentDice.filter((d) => d === b.color).length;
-      if (matches === 1) payout += b.amount * 2;
-      else if (matches === 2) payout += b.amount * 3;
-      else if (matches === 3) payout += b.amount * 4;
-      if (round.jackpotTriggered && round.jackpotColor === b.color && round.jackpotAmount) {
-        payout += Math.floor(round.jackpotAmount / myBets.filter((x) => x.color === round.jackpotColor).length);
-      }
+    for (const [color, amt] of entries) {
+      totalBet += amt;
+      const matches = currentDice.filter((d) => d === color).length;
+      if (matches === 1) payout += amt * 2;
+      else if (matches === 2) payout += amt * 3;
+      else if (matches === 3) payout += amt * 4;
     }
-    myBetRef.current = { color: myBets[0].color, amount: totalBet };
+    myBetRef.current = { color: entries[0][0], amount: totalBet };
     setLastPayout(payout);
     setShowResult(true);
     if (payout > 0) setShowCoins(true);
     const hide = setTimeout(() => { setShowResult(false); setShowCoins(false); }, 4500);
     return () => clearTimeout(hide);
-  }, [currentDice, isCurrent, round?.bets, round?.jackpotTriggered, round?.jackpotColor, round?.jackpotAmount, user?.uid]);
+  }, [currentDice, isCurrent, roundId]);
 
   useEffect(() => {
     if (phase === "betting") {
@@ -158,23 +158,20 @@ export default function ColorGamePage() {
     setError(null);
     try {
       await placeColorBet(color, betAmount);
+      const mine = myBetsRef.current;
+      if (mine.roundId !== roundId) { mine.roundId = roundId; mine.bets = {}; }
+      mine.bets[color] = (mine.bets[color] ?? 0) + betAmount;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to place bet");
     } finally {
       setPlacing(false);
     }
-  }, [betAmount, placing, bettingOpen]);
+  }, [betAmount, placing, bettingOpen, roundId]);
 
-  const betAmounts: Record<string, number> = {};
-  if (isCurrent && round?.bets) {
-    for (const b of Object.values(round.bets)) {
-      betAmounts[b.color] = (betAmounts[b.color] ?? 0) + b.amount;
-    }
-  }
+  const betAmounts: Record<string, number> = (isCurrent && live?.betAmounts ? live.betAmounts : {}) as Record<string, number>;
+  const totalBettors = isCurrent ? (live?.totalBettors ?? 0) : 0;
 
-  const totalBettors = isCurrent && round ? Object.keys(round.bets ?? {}).length : 0;
-
-  if (!bgReady || (loading && !round)) {
+  if (!bgReady || (loading && !live)) {
     return (
       <div className="fixed inset-0 bg-[#1a0a2e] flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-yellow-400 animate-spin" />
@@ -226,7 +223,7 @@ export default function ColorGamePage() {
         {/* Jackpot digits — inside pink banner purple boxes */}
         <div className="absolute z-10"
           style={{ left: "57%", top: "5%", width: "20%", height: "7%" }}>
-          <ColorJackpotDisplay amount={gs.jackpotPool} triggered={round?.jackpotTriggered} />
+          <ColorJackpotDisplay amount={gs.jackpotPool} triggered={live?.jackpotTriggered} />
         </div>
 
         {/* Ranking rows — inside wooden easel cream area */}
@@ -295,8 +292,8 @@ export default function ColorGamePage() {
           betAmount={myBetRef.current?.amount ?? 0}
           dice={dice}
           payout={lastPayout}
-          jackpotTriggered={round?.jackpotTriggered}
-          jackpotAmount={round?.jackpotAmount}
+          jackpotTriggered={live?.jackpotTriggered}
+          jackpotAmount={live?.jackpotAmount ?? undefined}
         />
       </div>
     </div>

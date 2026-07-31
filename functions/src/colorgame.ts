@@ -1,4 +1,5 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
+import { getDatabase, ServerValue } from "firebase-admin/database";
 import { db, gameDb } from "./init";
 import {
   ALL_COLORS,
@@ -87,8 +88,10 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
     tx.update(userStateRef(uid), { points: pts - amount });
   });
 
-  // Record bet on gameDb — keyed by uid_color so players can bet on multiple colors
-  await gameDb.runTransaction(async (tx) => {
+  // Record bet on gameDb — keyed by uid_color so players can bet on multiple colors.
+  // (No client listeners on this doc anymore — clients read the aggregated totals
+  //  from Realtime Database below, which is bandwidth-priced instead of per-read.)
+  const isNewKey = await gameDb.runTransaction(async (tx) => {
     const rSnap = await tx.get(roundRef(rid));
     let round: ColorRound;
     if (rSnap.exists) {
@@ -126,7 +129,25 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
       jackpotPool: gs.jackpotPool + Math.round(amount * DEFAULT_COLOR_CONFIG.jackpotContribution),
       totalWagered: (gs.totalWagered ?? 0) + amount,
     }, { merge: true });
+
+    return !existing;
   });
+
+  // Mirror the live, high-churn state to Realtime Database (what all clients read).
+  try {
+    const jackpotAdd = Math.round(amount * DEFAULT_COLOR_CONFIG.jackpotContribution);
+    const updates: Record<string, unknown> = {
+      [`color/live/${rid}/totals/${color}`]: ServerValue.increment(amount),
+      [`color/live/${rid}/roundId`]: rid,
+      [`color/state/jackpotPool`]: ServerValue.increment(jackpotAdd),
+      [`color/state/totalWagered`]: ServerValue.increment(amount),
+    };
+    if (isNewKey) updates[`color/live/${rid}/bettors`] = ServerValue.increment(1);
+    await getDatabase().ref().update(updates);
+  } catch (e) {
+    // RTDB is a read-optimisation only — never fail the bet if it hiccups.
+    console.error("RTDB bet mirror failed", e);
+  }
 
   return { ok: true, roundId: rid, color, amount };
 });
@@ -245,8 +266,32 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       });
     }
 
-    return { alreadyResolved: false, noBets: false, dice, payouts, jackpotTriggered };
+    return {
+      alreadyResolved: false, noBets: false, dice, payouts, jackpotTriggered,
+      jackpotColor: jackpotColor ?? null, jackpotAmount: jackpotTriggered ? jackpotAmount : 0,
+      newJackpotPool: jackpotTriggered ? 0 : gs.jackpotPool,
+    };
   });
+
+  // Mirror the resolved result to Realtime Database (what clients read).
+  try {
+    const rtdb = getDatabase();
+    const liveUpd: Record<string, unknown> = {
+      [`color/live/${roundId}/dice`]: result.dice,
+      [`color/live/${roundId}/resolvedAt`]: now,
+    };
+    if (!result.alreadyResolved && !result.noBets) {
+      liveUpd[`color/live/${roundId}/jackpotTriggered`] = result.jackpotTriggered ?? false;
+      liveUpd[`color/live/${roundId}/jackpotColor`] = result.jackpotColor ?? null;
+      liveUpd[`color/live/${roundId}/jackpotAmount`] = result.jackpotAmount ?? 0;
+      liveUpd[`color/state/totalRounds`] = ServerValue.increment(1);
+      if (result.jackpotTriggered) liveUpd[`color/state/jackpotPool`] = 0;
+      liveUpd[`color/history/${roundId}`] = { dice: result.dice, at: now };
+    }
+    await rtdb.ref().update(liveUpd);
+  } catch (e) {
+    console.error("RTDB resolve mirror failed", e);
+  }
 
   if (result.alreadyResolved || result.noBets) {
     return { ok: true, dice: result.dice, payouts: result.payouts, cached: true };

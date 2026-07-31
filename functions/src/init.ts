@@ -3,7 +3,9 @@ import { getFirestore } from "firebase-admin/firestore";
 
 // Single admin-SDK init shared by all function modules. Importing this before
 // any getFirestore() call guarantees the app is initialized first.
-initializeApp();
+// databaseURL wires the Realtime Database (Color Game live state) — set the
+// COLOR_RTDB_URL env var (functions/.env) to your RTDB instance URL.
+initializeApp({ databaseURL: process.env.COLOR_RTDB_URL });
 
 // Default database (us-central) — users, economy, transactions, match history.
 export const db = getFirestore();

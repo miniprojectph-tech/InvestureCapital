@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "color": {
+      ".read": "auth != null",
+      ".write": false
+    }
+  }
+}

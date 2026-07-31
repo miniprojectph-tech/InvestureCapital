@@ -3,6 +3,7 @@ import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { getFunctions, type Functions } from "firebase/functions";
+import { getDatabase, type Database } from "firebase/database";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 // Secondary Firestore + Functions region for the hot Tongits path (Singapore).
@@ -16,6 +17,8 @@ const firebaseConfig = {
   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  // Realtime Database — the Color Game live state (bandwidth-priced, not per-read).
+  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
 };
 
 let app: FirebaseApp | undefined;
@@ -25,11 +28,12 @@ let gameDb: Firestore | undefined;
 let storage: FirebaseStorage | undefined;
 let functions: Functions | undefined;
 let gameFunctions: Functions | undefined;
+let rtdb: Database | undefined;
 
 function getFirebase() {
   if (!firebaseConfig.apiKey) {
     // Allow the prototype to run without Firebase keys for design/preview.
-    return { app: undefined, auth: undefined, db: undefined, gameDb: undefined, storage: undefined, functions: undefined, gameFunctions: undefined };
+    return { app: undefined, auth: undefined, db: undefined, gameDb: undefined, storage: undefined, functions: undefined, gameFunctions: undefined, rtdb: undefined };
   }
   if (!app) {
     app = getApps()[0] ?? initializeApp(firebaseConfig);
@@ -60,8 +64,12 @@ function getFirebase() {
     functions = getFunctions(app);
     // Cloud Functions for the tongits callables — same app, asia-southeast1 region.
     gameFunctions = getFunctions(app, GAME_REGION);
+    // Realtime Database for the Color Game live state (only when configured).
+    if (firebaseConfig.databaseURL) {
+      try { rtdb = getDatabase(app); } catch { rtdb = undefined; }
+    }
   }
-  return { app, auth, db, gameDb, storage, functions, gameFunctions };
+  return { app, auth, db, gameDb, storage, functions, gameFunctions, rtdb };
 }
 
 export { getFirebase };
