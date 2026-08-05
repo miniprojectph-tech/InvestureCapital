@@ -220,9 +220,11 @@ export default function ColorGamePage() {
           <span className="text-white/50 font-medium" style={{ fontSize: "clamp(8px, 0.65vw, 12px)" }}>{totalBettors} online</span>
         </div>
 
-        {/* Jackpot digits — inside pink banner purple boxes */}
+        {/* Jackpot digits — seated in the 6 dark tiles of the pink banner.
+            Bounds the measured tile centers (61.1%–81.7% of the 2880px art)
+            so a flex row of 6 cells lands each digit dead-center in its tile. */}
         <div className="absolute z-10"
-          style={{ left: "57%", top: "5%", width: "20%", height: "7%" }}>
+          style={{ left: "59.05%", top: "14.2%", width: "24.73%", height: "8%" }}>
           <ColorJackpotDisplay amount={gs.jackpotPool} triggered={live?.jackpotTriggered} />
         </div>
 
