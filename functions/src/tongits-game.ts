@@ -650,7 +650,7 @@ export const startTongitsGame = onCall({ region: GAME_REGION }, async (request) 
   return { ok: true };
 });
 
-export const tongitsDraw = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
+export const tongitsDraw = onCall({ region: GAME_REGION, minInstances: 0 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   let eco: SettleEcoInputs | null = null;
@@ -679,7 +679,7 @@ export const tongitsDraw = onCall({ region: GAME_REGION, minInstances: 1 }, asyn
   return { ok: true };
 });
 
-export const tongitsTakeDiscard = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
+export const tongitsTakeDiscard = onCall({ region: GAME_REGION, minInstances: 0 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const meldCards = ((request.data as { meldCards?: Card[] })?.meldCards ?? []).map(String);
@@ -712,7 +712,7 @@ export const tongitsTakeDiscard = onCall({ region: GAME_REGION, minInstances: 1 
   return { ok: true };
 });
 
-export const tongitsMeld = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
+export const tongitsMeld = onCall({ region: GAME_REGION, minInstances: 0 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const cards = ((request.data as { cards?: Card[] })?.cards ?? []).map(String);
@@ -735,7 +735,7 @@ export const tongitsMeld = onCall({ region: GAME_REGION, minInstances: 1 }, asyn
   return { ok: true };
 });
 
-export const tongitsSapaw = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
+export const tongitsSapaw = onCall({ region: GAME_REGION, minInstances: 0 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const data = (request.data ?? {}) as { targetUid?: string; meldIndex?: number; card?: string };
@@ -764,7 +764,7 @@ export const tongitsSapaw = onCall({ region: GAME_REGION, minInstances: 1 }, asy
   return { ok: true };
 });
 
-export const tongitsDiscard = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
+export const tongitsDiscard = onCall({ region: GAME_REGION, minInstances: 0 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const card = String((request.data as { card?: string })?.card ?? "");
@@ -797,7 +797,7 @@ export const tongitsDiscard = onCall({ region: GAME_REGION, minInstances: 1 }, a
   return { ok: true };
 });
 
-export const tongitsCall = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
+export const tongitsCall = onCall({ region: GAME_REGION, minInstances: 0 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   let eco: SettleEcoInputs | null = null;
@@ -849,7 +849,7 @@ function resolveFightInTx(
   return settleGameStateInTx(tx, code, ctx, "lowest_points_win", winner, { secret: false, fightResponses: responses, callerUid });
 }
 
-export const tongitsFightRespond = onCall({ region: GAME_REGION, minInstances: 1 }, async (request) => {
+export const tongitsFightRespond = onCall({ region: GAME_REGION, minInstances: 0 }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const response = (request.data as { response?: string }).response;
