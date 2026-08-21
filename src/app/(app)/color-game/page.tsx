@@ -83,6 +83,9 @@ export default function ColorGamePage() {
   const [showResult, setShowResult] = useState(false);
   const [lastPayout, setLastPayout] = useState(0);
   const [showCoins, setShowCoins] = useState(false);
+  // roundId whose dice have finished their roll animation — the win overlay
+  // waits for this so it can't pop while the dice are still tumbling.
+  const [settledRound, setSettledRound] = useState("");
 
   const resolvedRef = useRef<string>("");
   const myBetRef = useRef<{ color: DieColor; amount: number } | null>(null);
@@ -116,8 +119,18 @@ export default function ColorGamePage() {
     return () => clearTimeout(timeout);
   }, [phase, roundId, currentDice]);
 
+  // Fallback: if the dice never signal completion (e.g. tab backgrounded and
+  // rAF paused), still reveal the result a few seconds after it arrives.
+  useEffect(() => {
+    if (!currentDice || !isCurrent || settledRound === roundId) return;
+    const t = setTimeout(() => setSettledRound(roundId), 6000);
+    return () => clearTimeout(t);
+  }, [currentDice, isCurrent, roundId, settledRound]);
+
   useEffect(() => {
     if (!currentDice || !isCurrent) return;
+    // Hold the result until the dice have finished rolling for this round.
+    if (settledRound !== roundId) return;
     const mine = myBetsRef.current;
     if (mine.roundId !== roundId) return;
     const entries = Object.entries(mine.bets) as [DieColor, number][];
@@ -237,7 +250,7 @@ export default function ColorGamePage() {
         {/* Dice — showcase window in the lid, dice drop & scatter into the tray */}
         <div className="absolute z-10"
           style={{ left: "30%", top: "6%", width: "23%", height: "72%" }}>
-          <ColorDice results={dice} phase={phase} />
+          <ColorDice results={dice} phase={phase} onSettled={() => setSettledRound(roundId)} />
         </div>
 
         {/* History dots — inside wooden history bar */}

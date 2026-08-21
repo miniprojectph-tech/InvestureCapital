@@ -174,9 +174,14 @@ function initialDice(rng: () => number, W: number, H: number): Die[] {
 type Props = {
   results?: [DieColor, DieColor, DieColor];
   phase: string;
+  // Fired once the dice physics come to rest (so the win overlay can wait
+  // for the roll to finish instead of popping the instant results arrive).
+  onSettled?: () => void;
 };
 
-export function ColorDice({ results, phase }: Props) {
+export function ColorDice({ results, phase, onSettled }: Props) {
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
   const rootRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   const platformRef = useRef<HTMLDivElement>(null);
@@ -324,7 +329,7 @@ export function ColorDice({ results, phase }: Props) {
         render();
         n++;
         if (n < 900 && !settled(live)) raf.current = requestAnimationFrame(loop);
-        else raf.current = null;
+        else { raf.current = null; onSettledRef.current?.(); }
       };
       render();
       raf.current = requestAnimationFrame(loop);
