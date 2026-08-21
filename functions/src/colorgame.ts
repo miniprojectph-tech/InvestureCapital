@@ -92,7 +92,11 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
   // (No client listeners on this doc anymore — clients read the aggregated totals
   //  from Realtime Database below, which is bandwidth-priced instead of per-read.)
   const isNewKey = await gameDb.runTransaction(async (tx) => {
+    // Firestore requires ALL reads before ANY writes — read the round and the
+    // game-state (jackpot) docs up front, then do both writes afterward.
     const rSnap = await tx.get(roundRef(rid));
+    const gsSnap = await tx.get(gameStateRef());
+
     let round: ColorRound;
     if (rSnap.exists) {
       round = rSnap.data() as ColorRound;
@@ -117,13 +121,13 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
       placedAt: now,
     };
     round.bets[betKey] = bet;
-    tx.set(roundRef(rid), round, { merge: true });
 
-    // Add jackpot contribution
-    const gsSnap = await tx.get(gameStateRef());
     const gs = gsSnap.exists
       ? (gsSnap.data() as ColorGameState)
       : { jackpotPool: 0, totalRounds: 0, totalWagered: 0, history: [] };
+
+    // Writes (after all reads)
+    tx.set(roundRef(rid), round, { merge: true });
     tx.set(gameStateRef(), {
       ...gs,
       jackpotPool: gs.jackpotPool + Math.round(amount * DEFAULT_COLOR_CONFIG.jackpotContribution),
@@ -189,16 +193,25 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
     const betEntries = Object.values(bets);
     const totalPool = betEntries.reduce((s, b) => s + b.amount, 0);
 
+    // Firestore requires ALL reads before ANY writes. Read the game-state doc
+    // and every bettor's leaderboard row up front, then compute + write below.
+    const gsSnap = await tx.get(gameStateRef());
+    const gs = gsSnap.exists
+      ? (gsSnap.data() as ColorGameState)
+      : { jackpotPool: 0, totalRounds: 0, totalWagered: 0, history: [] };
+
+    const leaderSnaps = new Map<string, FirebaseFirestore.DocumentSnapshot>();
+    for (const b of betEntries) {
+      if (!leaderSnaps.has(b.uid)) {
+        leaderSnaps.set(b.uid, await tx.get(leaderRef(b.uid)));
+      }
+    }
+
     // Check jackpot: all 3 dice same color
     const isTriple = dice[0] === dice[1] && dice[1] === dice[2];
     let jackpotTriggered = false;
     let jackpotColor: DieColor | undefined;
     let jackpotAmount = 0;
-
-    const gsSnap = await tx.get(gameStateRef());
-    const gs = gsSnap.exists
-      ? (gsSnap.data() as ColorGameState)
-      : { jackpotPool: 0, totalRounds: 0, totalWagered: 0, history: [] };
 
     if (isTriple) {
       const tripleColor = dice[0];
@@ -226,7 +239,7 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       payouts[b.uid] = payout;
     }
 
-    // Update round doc
+    // ── Writes (after all reads) ──
     tx.update(roundRef(roundId), {
       dice,
       phase: "result",
@@ -237,7 +250,6 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       jackpotAmount: jackpotTriggered ? jackpotAmount : 0,
     });
 
-    // Update game state
     const history = [...(gs.history ?? [])];
     history.unshift({ roundId, dice, at: now });
     if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
@@ -249,10 +261,10 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       history,
     });
 
-    // Update leaderboard entries on gameDb
+    // Update leaderboard entries on gameDb (using the rows read above)
     for (const b of betEntries) {
-      const lSnap = await tx.get(leaderRef(b.uid));
-      const existing = lSnap.exists ? (lSnap.data() as ColorLeaderboardEntry) : null;
+      const lSnap = leaderSnaps.get(b.uid);
+      const existing = lSnap?.exists ? (lSnap.data() as ColorLeaderboardEntry) : null;
       const won = payouts[b.uid] ?? 0;
       const netWin = won > 0 ? won - b.amount : 0;
       tx.set(leaderRef(b.uid), {
