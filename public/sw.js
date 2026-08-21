@@ -1,5 +1,5 @@
 // Investure service worker — offline shell + cache-first for static + game asset pre-cache
-const CACHE = "investure-v5";
+const CACHE = "investure-v6";
 const APP_SHELL = ["/", "/login", "/dashboard"];
 
 // Game assets pre-cached at install so Reef and Tongits load instantly on
@@ -137,6 +137,24 @@ self.addEventListener("fetch", (event) => {
     /^\/(icon|apple-touch-icon|favicon)/.test(url.pathname)
   ) {
     event.respondWith(fetch(request).catch(() => caches.match(request)));
+    return;
+  }
+
+  // Network-first for scripts and styles, so a new deploy takes effect on the
+  // next load instead of being trapped behind a cache-first stale bundle.
+  // Falls back to cache only when offline.
+  if (request.destination === "script" || request.destination === "style") {
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          if (res.ok && res.type === "basic") {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match(request))
+    );
     return;
   }
 
