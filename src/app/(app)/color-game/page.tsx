@@ -81,7 +81,6 @@ export default function ColorGamePage() {
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCoins, setShowCoins] = useState(false);
-  const resolvedRef = useRef<string>("");
   // The client places bets so it knows its own; RTDB only carries aggregate totals.
   const myBetsRef = useRef<{ roundId: string; bets: Partial<Record<DieColor, number>> }>({ roundId: "", bets: {} });
 
@@ -100,16 +99,18 @@ export default function ColorGamePage() {
   if (currentDice) prevDiceRef.current = currentDice;
   const dice = currentDice ?? prevDiceRef.current;
 
+  // Keep asking the server to resolve this round until its dice actually land.
+  // resolveColorRound is idempotent (re-mirrors the dice to RTDB), so retrying
+  // safely recovers rounds where a single attempt failed or never arrived —
+  // which is what left rounds stuck with no dice and no payout.
   useEffect(() => {
     if (phase !== "rolling" && phase !== "result") return;
-    if (resolvedRef.current === roundId) return;
-    if (currentDice) { resolvedRef.current = roundId; return; }
-    const timeout = setTimeout(() => {
-      if (resolvedRef.current === roundId) return;
-      resolvedRef.current = roundId;
-      resolveColorRound(roundId).catch(() => {});
-    }, 500);
-    return () => clearTimeout(timeout);
+    if (currentDice) return; // resolved and received — stop asking
+    let cancelled = false;
+    const attempt = () => { if (!cancelled) resolveColorRound(roundId).catch(() => {}); };
+    const first = setTimeout(attempt, 400);
+    const iv = setInterval(attempt, 2000);
+    return () => { cancelled = true; clearTimeout(first); clearInterval(iv); };
   }, [phase, roundId, currentDice]);
 
   // This player's result for the current round — derived fresh every render, so
