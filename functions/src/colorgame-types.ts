@@ -37,9 +37,9 @@ export const DEFAULT_COLOR_CONFIG: ColorGameConfig = {
   minBet: 5,
   maxBet: 500,
   jackpotContribution: 0.02,
-  roundDurationMs: 23_000,
+  roundDurationMs: 29_000,
   betWindowMs: 15_000,
-  rollAnimationMs: 3_000,
+  rollAnimationMs: 9_000,
 };
 
 export type ColorGameState = {

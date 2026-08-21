@@ -162,7 +162,7 @@ export default function ColorGamePage() {
   // Auto-hide the result overlay a few seconds after it shows.
   useEffect(() => {
     if (!showResult) return;
-    const hide = setTimeout(() => { setShowResult(false); setShowCoins(false); }, 4500);
+    const hide = setTimeout(() => { setShowResult(false); setShowCoins(false); }, 5500);
     return () => clearTimeout(hide);
   }, [showResult]);
 

@@ -54,9 +54,9 @@ export type ColorLeaderboardEntry = {
 
 // ===== Constants =====
 
-export const ROUND_MS = 23_000;
+export const ROUND_MS = 29_000;
 export const BET_MS = 15_000;
-export const ROLL_MS = 3_000;
+export const ROLL_MS = 9_000; // long enough for the dice to fully settle before the result window
 export const RESULT_MS = ROUND_MS - BET_MS - ROLL_MS; // 5000
 
 export const COLOR_HEX: Record<DieColor, string> = {
