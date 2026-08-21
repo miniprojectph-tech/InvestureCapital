@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -80,15 +80,8 @@ export default function ColorGamePage() {
   const [betAmount, setBetAmount] = useState(50);
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showResult, setShowResult] = useState(false);
-  const [lastPayout, setLastPayout] = useState(0);
   const [showCoins, setShowCoins] = useState(false);
   const resolvedRef = useRef<string>("");
-  const myBetRef = useRef<{ color: DieColor; amount: number } | null>(null);
-  // Reveal is scheduled once per round (ref-guarded) so re-renders / live
-  // updates can't cancel and re-arm the timer, which would stop it firing.
-  const revealRoundRef = useRef<string>("");
-  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The client places bets so it knows its own; RTDB only carries aggregate totals.
   const myBetsRef = useRef<{ roundId: string; bets: Partial<Record<DieColor, number>> }>({ roundId: "", bets: {} });
 
@@ -119,21 +112,15 @@ export default function ColorGamePage() {
     return () => clearTimeout(timeout);
   }, [phase, roundId, currentDice]);
 
-  // When the dice arrive, compute this player's result, then reveal it once the
-  // dice have finished rolling. The dice settle ~5.5s after the result arrives
-  // (measured), so a 6s deterministic delay lands the overlay right as they
-  // stop — no dependency on a settle signal that can race the result.
-  useEffect(() => {
-    if (!currentDice || !isCurrent) return;
-    if (revealRoundRef.current === roundId) return; // already scheduled this round
+  // This player's result for the current round — derived fresh every render, so
+  // it can never get "stuck" across rounds. Base win only (2x/3x/4x); any
+  // jackpot share is credited server-side and shows in the live balance.
+  const myResult = useMemo(() => {
+    if (!currentDice || !isCurrent) return null;
     const mine = myBetsRef.current;
-    if (mine.roundId !== roundId) return;
+    if (mine.roundId !== roundId) return null;
     const entries = Object.entries(mine.bets) as [DieColor, number][];
-    if (entries.length === 0) return;
-    revealRoundRef.current = roundId;
-
-    // Base win (2x/3x/4x) shown in the overlay. Any jackpot share is credited
-    // server-side and reflected in the live balance — kept out of this estimate.
+    if (entries.length === 0) return null;
     let payout = 0;
     let totalBet = 0;
     for (const [color, amt] of entries) {
@@ -143,32 +130,25 @@ export default function ColorGamePage() {
       else if (matches === 2) payout += amt * 3;
       else if (matches === 3) payout += amt * 4;
     }
-    myBetRef.current = { color: entries[0][0], amount: totalBet };
-
-    // Fire once — deliberately not cleared on re-render, so live-node churn
-    // can't cancel it. Reveals ~as the dice settle (~5.5s measured).
-    revealTimerRef.current = setTimeout(() => {
-      setLastPayout(payout);
-      setShowResult(true);
-      if (payout > 0) setShowCoins(true);
-    }, 6000);
+    return { color: entries[0][0], amount: totalBet, payout };
   }, [currentDice, isCurrent, roundId]);
 
-  // Auto-hide the result overlay a few seconds after it shows.
+  // Show the result banner through the whole result phase (dice have already
+  // settled by then). Nothing to schedule or cancel — it just tracks the phase.
+  const showResult = phase === "result" && myResult !== null;
+
+  // One-shot coin burst when a winning result appears.
   useEffect(() => {
-    if (!showResult) return;
-    const hide = setTimeout(() => { setShowResult(false); setShowCoins(false); }, 5500);
-    return () => clearTimeout(hide);
+    if (showResult && (myResult?.payout ?? 0) > 0) {
+      setShowCoins(true);
+      const t = setTimeout(() => setShowCoins(false), 3000);
+      return () => clearTimeout(t);
+    }
+    setShowCoins(false);
   }, [showResult]);
 
   useEffect(() => {
-    if (phase === "betting") {
-      if (revealTimerRef.current) { clearTimeout(revealTimerRef.current); revealTimerRef.current = null; }
-      setSelectedColor(null);
-      myBetRef.current = null;
-      setShowResult(false);
-      setShowCoins(false);
-    }
+    if (phase === "betting") setSelectedColor(null);
   }, [phase, roundId]);
 
   const handleColorTap = useCallback(async (color: DieColor) => {
@@ -311,10 +291,10 @@ export default function ColorGamePage() {
         {/* Result banner */}
         <ColorResultOverlay
           visible={showResult}
-          betColor={myBetRef.current?.color ?? null}
-          betAmount={myBetRef.current?.amount ?? 0}
+          betColor={myResult?.color ?? null}
+          betAmount={myResult?.amount ?? 0}
           dice={dice}
-          payout={lastPayout}
+          payout={myResult?.payout ?? 0}
           jackpotTriggered={live?.jackpotTriggered}
           jackpotAmount={live?.jackpotAmount ?? undefined}
         />
