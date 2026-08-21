@@ -246,9 +246,10 @@ export default function ColorGamePage() {
           <ColorHistoryStrip history={gs.history} />
         </div>
 
-        {/* Color tiles 3x2 — over painted tiles */}
+        {/* Color tiles 3x2 — over the painted tiles (measured tile block:
+            cols 62.1/72.7/83.0%, rows 50.9/69.0% of the 2880x1440 art). */}
         <div className="absolute z-10"
-          style={{ left: "53%", top: "27%", width: "33%", height: "42%" }}>
+          style={{ left: "57.5%", top: "43.7%", width: "30.1%", height: "32.5%" }}>
           <ColorBettingBoard
             selectedColor={selectedColor}
             onSelect={handleColorTap}

@@ -27,7 +27,10 @@ export function ColorBettingBoard({ selectedColor, onSelect, disabled, betAmount
     : null;
 
   return (
-    <div className="w-full h-full grid grid-cols-3 grid-rows-2 gap-[3%] p-[3%]">
+    <div
+      className="w-full h-full grid grid-cols-3 grid-rows-2"
+      style={{ columnGap: "4.15%", rowGap: "11.4%" }}
+    >
       {TILE_ORDER.map((color) => {
         const isSelected = selectedColor === color;
         const isWinner = matchCounts ? matchCounts[color] > 0 : false;
