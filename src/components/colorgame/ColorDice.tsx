@@ -73,7 +73,9 @@ function mulberry32(seed: number) {
   };
 }
 
-function frontFace(rx: number, ry: number): DieColor {
+// Which face ends up most upward on screen after the die + view rotation.
+// (In the tilted tray view the player reads the TOP face, not the front.)
+function topFace(rx: number, ry: number): DieColor {
   const N: Record<DieColor, [number, number, number]> = {
     red: [0, 0, 1], blue: [0, 0, -1], yellow: [-1, 0, 0],
     pink: [1, 0, 0], white: [0, -1, 0], green: [0, 1, 0],
@@ -81,13 +83,13 @@ function frontFace(rx: number, ry: number): DieColor {
   const d = Math.PI / 180;
   const rotY = (v: number[], a: number) => [v[0] * Math.cos(a) + v[2] * Math.sin(a), v[1], -v[0] * Math.sin(a) + v[2] * Math.cos(a)];
   const rotX = (v: number[], a: number) => [v[0], v[1] * Math.cos(a) - v[2] * Math.sin(a), v[1] * Math.sin(a) + v[2] * Math.cos(a)];
-  let best: DieColor = "red";
-  let bestZ = -Infinity;
+  let best: DieColor = "white";
+  let bestY = Infinity; // screen-Y is positive downward, so the top face is the min
   (Object.keys(N) as DieColor[]).forEach((c) => {
     let v: number[] = N[c];
     v = rotY(v, ry * d); v = rotX(v, rx * d);
     v = rotY(v, VIEW_TY * d); v = rotX(v, VIEW_TX * d);
-    if (v[2] > bestZ) { bestZ = v[2]; best = c; }
+    if (v[1] < bestY) { bestY = v[1]; best = c; }
   });
   return best;
 }
@@ -285,7 +287,7 @@ export function ColorDice({ results, phase, onSettled }: Props) {
     const head = initialDice(mulberry32(seed), w, h);
     for (let n = 0; n < 900 && !settled(head); n++) step(head, w, h);
     const landColors = [0, 1, 2].map((i) =>
-      frontFace(Math.round(head[i].rx / 90) * 90, Math.round(head[i].ry / 90) * 90));
+      topFace(Math.round(head[i].rx / 90) * 90, Math.round(head[i].ry / 90) * 90));
 
     // 0.40s: retract the support platform backward into its slot, fade the showcase
     timers.current.push(setTimeout(() => {
