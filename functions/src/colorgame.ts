@@ -223,8 +223,12 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       }
     }
 
-    // Compute payouts
+    // Compute payouts. A player can bet several colours (one bet entry each,
+    // all sharing their uid), so ACCUMULATE per uid — indexing by uid alone
+    // would overwrite and credit only the last colour (usually under-crediting).
     const payouts: Record<string, number> = {};
+    const totalBetByUid: Record<string, number> = {};
+    const nameByUid: Record<string, string> = {};
     for (const b of betEntries) {
       const matches = countMatches(dice, b.color);
       let payout = 0;
@@ -236,7 +240,9 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
         const share = Math.floor(jackpotAmount / betEntries.filter((x) => x.color === jackpotColor).length);
         payout += share;
       }
-      payouts[b.uid] = payout;
+      payouts[b.uid] = (payouts[b.uid] ?? 0) + payout;
+      totalBetByUid[b.uid] = (totalBetByUid[b.uid] ?? 0) + b.amount;
+      nameByUid[b.uid] = b.name;
     }
 
     // ── Writes (after all reads) ──
@@ -261,17 +267,19 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       history,
     });
 
-    // Update leaderboard entries on gameDb (using the rows read above)
-    for (const b of betEntries) {
-      const lSnap = leaderSnaps.get(b.uid);
+    // Update leaderboard — once per player (not per bet entry), using the
+    // aggregated payout and total bet so multi-colour bettors are counted once.
+    for (const uid of Object.keys(payouts)) {
+      const lSnap = leaderSnaps.get(uid);
       const existing = lSnap?.exists ? (lSnap.data() as ColorLeaderboardEntry) : null;
-      const won = payouts[b.uid] ?? 0;
-      const netWin = won > 0 ? won - b.amount : 0;
-      tx.set(leaderRef(b.uid), {
-        uid: b.uid,
-        name: b.name,
+      const won = payouts[uid] ?? 0;
+      const bet = totalBetByUid[uid] ?? 0;
+      const netWin = won > 0 ? won - bet : 0;
+      tx.set(leaderRef(uid), {
+        uid,
+        name: nameByUid[uid],
         totalWon: (existing?.totalWon ?? 0) + netWin,
-        totalBet: (existing?.totalBet ?? 0) + b.amount,
+        totalBet: (existing?.totalBet ?? 0) + bet,
         roundsPlayed: (existing?.roundsPlayed ?? 0) + 1,
         biggestWin: Math.max(existing?.biggestWin ?? 0, netWin),
         updatedAt: now,
