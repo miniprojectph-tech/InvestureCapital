@@ -83,12 +83,14 @@ export default function ColorGamePage() {
   const [showResult, setShowResult] = useState(false);
   const [lastPayout, setLastPayout] = useState(0);
   const [showCoins, setShowCoins] = useState(false);
-  // roundId whose dice have finished their roll animation — the win overlay
-  // waits for this so it can't pop while the dice are still tumbling.
-  const [settledRound, setSettledRound] = useState("");
+  // Bumped each time the dice come to rest — the win overlay reveals on this
+  // (a plain counter, not a roundId, so a round rollover can't swallow it).
+  const [settleTick, setSettleTick] = useState(0);
 
   const resolvedRef = useRef<string>("");
   const myBetRef = useRef<{ color: DieColor; amount: number } | null>(null);
+  // Result computed when the dice arrive, revealed when they settle.
+  const pendingResultRef = useRef<{ payout: number } | null>(null);
   // The client places bets so it knows its own; RTDB only carries aggregate totals.
   const myBetsRef = useRef<{ roundId: string; bets: Partial<Record<DieColor, number>> }>({ roundId: "", bets: {} });
 
@@ -119,18 +121,10 @@ export default function ColorGamePage() {
     return () => clearTimeout(timeout);
   }, [phase, roundId, currentDice]);
 
-  // Fallback: if the dice never signal completion (e.g. tab backgrounded and
-  // rAF paused), still reveal the result a few seconds after it arrives.
-  useEffect(() => {
-    if (!currentDice || !isCurrent || settledRound === roundId) return;
-    const t = setTimeout(() => setSettledRound(roundId), 6000);
-    return () => clearTimeout(t);
-  }, [currentDice, isCurrent, roundId, settledRound]);
-
+  // When the dice arrive, compute this player's result and stash it — but don't
+  // reveal it yet. Also arm a fallback tick in case the dice never signal.
   useEffect(() => {
     if (!currentDice || !isCurrent) return;
-    // Hold the result until the dice have finished rolling for this round.
-    if (settledRound !== roundId) return;
     const mine = myBetsRef.current;
     if (mine.roundId !== roundId) return;
     const entries = Object.entries(mine.bets) as [DieColor, number][];
@@ -148,17 +142,35 @@ export default function ColorGamePage() {
       else if (matches === 3) payout += amt * 4;
     }
     myBetRef.current = { color: entries[0][0], amount: totalBet };
-    setLastPayout(payout);
+    pendingResultRef.current = { payout };
+
+    const t = setTimeout(() => setSettleTick((x) => x + 1), 6000);
+    return () => clearTimeout(t);
+  }, [currentDice, isCurrent, roundId]);
+
+  // Reveal the stashed result once the dice come to rest (settleTick bump).
+  useEffect(() => {
+    if (settleTick === 0) return;
+    const p = pendingResultRef.current;
+    if (!p) return;
+    pendingResultRef.current = null;
+    setLastPayout(p.payout);
     setShowResult(true);
-    if (payout > 0) setShowCoins(true);
+    if (p.payout > 0) setShowCoins(true);
+  }, [settleTick]);
+
+  // Auto-hide the result overlay a few seconds after it shows.
+  useEffect(() => {
+    if (!showResult) return;
     const hide = setTimeout(() => { setShowResult(false); setShowCoins(false); }, 4500);
     return () => clearTimeout(hide);
-  }, [currentDice, isCurrent, roundId]);
+  }, [showResult]);
 
   useEffect(() => {
     if (phase === "betting") {
       setSelectedColor(null);
       myBetRef.current = null;
+      pendingResultRef.current = null;
       setShowResult(false);
       setShowCoins(false);
     }
@@ -250,7 +262,7 @@ export default function ColorGamePage() {
         {/* Dice — showcase window in the lid, dice drop & scatter into the tray */}
         <div className="absolute z-10"
           style={{ left: "30%", top: "6%", width: "23%", height: "72%" }}>
-          <ColorDice results={dice} phase={phase} onSettled={() => setSettledRound(roundId)} />
+          <ColorDice results={dice} phase={phase} onSettled={() => setSettleTick((x) => x + 1)} />
         </div>
 
         {/* History dots — inside wooden history bar */}
