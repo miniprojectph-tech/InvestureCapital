@@ -85,6 +85,10 @@ export default function ColorGamePage() {
   const [showCoins, setShowCoins] = useState(false);
   const resolvedRef = useRef<string>("");
   const myBetRef = useRef<{ color: DieColor; amount: number } | null>(null);
+  // Reveal is scheduled once per round (ref-guarded) so re-renders / live
+  // updates can't cancel and re-arm the timer, which would stop it firing.
+  const revealRoundRef = useRef<string>("");
+  const revealTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // The client places bets so it knows its own; RTDB only carries aggregate totals.
   const myBetsRef = useRef<{ roundId: string; bets: Partial<Record<DieColor, number>> }>({ roundId: "", bets: {} });
 
@@ -121,10 +125,12 @@ export default function ColorGamePage() {
   // stop — no dependency on a settle signal that can race the result.
   useEffect(() => {
     if (!currentDice || !isCurrent) return;
+    if (revealRoundRef.current === roundId) return; // already scheduled this round
     const mine = myBetsRef.current;
     if (mine.roundId !== roundId) return;
     const entries = Object.entries(mine.bets) as [DieColor, number][];
     if (entries.length === 0) return;
+    revealRoundRef.current = roundId;
 
     // Base win (2x/3x/4x) shown in the overlay. Any jackpot share is credited
     // server-side and reflected in the live balance — kept out of this estimate.
@@ -139,12 +145,13 @@ export default function ColorGamePage() {
     }
     myBetRef.current = { color: entries[0][0], amount: totalBet };
 
-    const reveal = setTimeout(() => {
+    // Fire once — deliberately not cleared on re-render, so live-node churn
+    // can't cancel it. Reveals ~as the dice settle (~5.5s measured).
+    revealTimerRef.current = setTimeout(() => {
       setLastPayout(payout);
       setShowResult(true);
       if (payout > 0) setShowCoins(true);
     }, 6000);
-    return () => clearTimeout(reveal);
   }, [currentDice, isCurrent, roundId]);
 
   // Auto-hide the result overlay a few seconds after it shows.
@@ -156,6 +163,7 @@ export default function ColorGamePage() {
 
   useEffect(() => {
     if (phase === "betting") {
+      if (revealTimerRef.current) { clearTimeout(revealTimerRef.current); revealTimerRef.current = null; }
       setSelectedColor(null);
       myBetRef.current = null;
       setShowResult(false);
