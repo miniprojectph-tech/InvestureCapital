@@ -181,6 +181,13 @@ export default function ColorGamePage() {
 
   return (
     <div className="fixed inset-0 select-none overflow-hidden bg-[#1a0a2e]">
+      {/* TEMP DEBUG — remove once the result banner is confirmed */}
+      <div style={{ position: "fixed", top: 0, left: 0, zIndex: 9999, background: "rgba(0,0,0,0.82)", color: "#22ff88", font: "11px/1.35 monospace", padding: "5px 8px", whiteSpace: "pre", pointerEvents: "none" }}>
+        {`phase=${phase}  rid=…${String(roundId).slice(-4)}  isCurrent=${isCurrent}\n`}
+        {`dice=${currentDice ? currentDice.join(",") : "none"}\n`}
+        {`myBet rid=…${String(myBetsRef.current.roundId).slice(-4)}  bets=${JSON.stringify(myBetsRef.current.bets)}\n`}
+        {`myResult=${myResult ? `${myResult.color}/${myResult.payout}` : "null"}  showResult=${showResult}`}
+      </div>
       {/* Cover-container: sized to mimic background-size:cover + center.
           All overlays inside use % of the IMAGE, not the viewport,
           so positions stay consistent across all screen aspect ratios. */}
