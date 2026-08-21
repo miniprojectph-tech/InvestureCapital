@@ -262,7 +262,7 @@ export default function ColorGamePage() {
         {/* Dice — showcase window in the lid, dice drop & scatter into the tray */}
         <div className="absolute z-10"
           style={{ left: "30%", top: "6%", width: "23%", height: "72%" }}>
-          <ColorDice results={dice} phase={phase} onSettled={() => setSettleTick((x) => x + 1)} />
+          <ColorDice results={currentDice} phase={phase} onSettled={() => setSettleTick((x) => x + 1)} />
         </div>
 
         {/* History dots — inside wooden history bar */}

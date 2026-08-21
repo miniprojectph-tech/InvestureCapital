@@ -367,8 +367,11 @@ export function ColorDice({ results, phase, onSettled }: Props) {
   useEffect(() => {
     if (phase !== "rolling" && phase !== "result") return;
     if (hasRolled.current) return;
-    if (results || phase === "result") { hasRolled.current = true; fns.current.roll(); return; }
-    const t = setTimeout(() => { if (!hasRolled.current) { hasRolled.current = true; fns.current.roll(); } }, 1000);
+    // Only roll once THIS round's real result is in hand, so the dice can't
+    // tumble with the previous round's (stale) colours. Fall back to a roll
+    // after a grace period if the server result is delayed.
+    if (results) { hasRolled.current = true; fns.current.roll(); return; }
+    const t = setTimeout(() => { if (!hasRolled.current) { hasRolled.current = true; fns.current.roll(); } }, 2500);
     return () => clearTimeout(t);
   }, [phase, results]);
 
