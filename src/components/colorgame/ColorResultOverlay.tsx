@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { COLOR_HEX, COLOR_LABELS, type DieColor } from "@/lib/colorgame";
+import { COLOR_HEX, type DieColor } from "@/lib/colorgame";
 
 type Props = {
   visible: boolean;
   betColor: DieColor | null;
   betAmount: number;
+  betColors?: DieColor[];
   dice: [DieColor, DieColor, DieColor] | undefined;
   payout: number;
   jackpotTriggered?: boolean;
@@ -17,6 +18,7 @@ export function ColorResultOverlay({
   visible,
   betColor,
   betAmount,
+  betColors,
   dice,
   payout,
   jackpotTriggered,
@@ -34,9 +36,9 @@ export function ColorResultOverlay({
 
   if (!show || !dice || !betColor) return null;
 
-  const matches = dice.filter((d) => d === betColor).length;
   const isWin = payout > 0;
-  const mult = matches === 3 ? 4 : matches === 2 ? 3 : matches === 1 ? 2 : 0;
+  // Colours the player backed this round — the matching dice get highlighted.
+  const betSet = betColors && betColors.length ? betColors : [betColor];
 
   const card: React.CSSProperties = isWin
     ? {
@@ -153,37 +155,37 @@ export function ColorResultOverlay({
           </div>
         )}
 
-        {/* Footer: color chip + matches */}
+        {/* Footer: the three dice that rolled — your hits are outlined in white */}
         <div
           style={{
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            gap: ".5em",
-            marginTop: "clamp(8px,1.6vmin,18px)",
+            gap: "clamp(6px,1.5vmin,16px)",
+            marginTop: "clamp(10px,1.8vmin,20px)",
           }}
         >
-          <span
-            style={{
-              width: "clamp(16px,2.8vmin,30px)",
-              height: "clamp(16px,2.8vmin,30px)",
-              borderRadius: "clamp(4px,0.9vmin,8px)",
-              background: COLOR_HEX[betColor],
-              border: "2px solid rgba(255,255,255,.85)",
-              boxShadow: "0 2px 4px rgba(0,0,0,.3)",
-            }}
-          />
-          <span
-            style={{
-              fontWeight: 800,
-              fontSize: "clamp(14px,2.6vmin,28px)",
-              color: isWin ? "#7A3B00" : "#B7AAD6",
-            }}
-          >
-            {isWin
-              ? `${COLOR_LABELS[betColor]} ×${mult}`
-              : `${COLOR_LABELS[betColor]} — no hit`}
-          </span>
+          {dice.map((d, i) => {
+            const hit = betSet.includes(d);
+            return (
+              <span
+                key={i}
+                style={{
+                  width: "clamp(26px,4.6vmin,52px)",
+                  height: "clamp(26px,4.6vmin,52px)",
+                  borderRadius: "clamp(6px,1.2vmin,12px)",
+                  background: COLOR_HEX[d],
+                  border: hit
+                    ? "clamp(2px,0.55vmin,5px) solid #FFFFFF"
+                    : `2px solid ${isWin ? "rgba(122,59,0,.4)" : "rgba(255,255,255,.45)"}`,
+                  boxShadow: hit
+                    ? "0 0 0 clamp(1px,0.3vmin,3px) rgba(0,0,0,.28), 0 0 clamp(6px,1.5vmin,16px) rgba(255,255,255,.75)"
+                    : "0 2px 5px rgba(0,0,0,.3)",
+                  opacity: hit ? 1 : 0.88,
+                }}
+              />
+            );
+          })}
         </div>
       </div>
     </div>

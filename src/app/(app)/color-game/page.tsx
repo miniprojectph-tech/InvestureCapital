@@ -210,15 +210,15 @@ export default function ColorGamePage() {
           </span>
         </div>
 
-        {/* Timer — top right */}
-        <div className="absolute z-20" style={{ right: "1.5%", top: "2%", width: "4%", height: "8%" }}>
+        {/* Timer — top right (enlarged for readability) */}
+        <div className="absolute z-20" style={{ right: "1.5%", top: "1.5%", width: "6.5%", height: "12%" }}>
           <ColorRoundTimer phase={phase} remaining={timer.remaining} />
         </div>
 
-        {/* Online count */}
+        {/* Online count — left of the bigger timer */}
         <div className="absolute z-20 flex items-center justify-center"
-          style={{ right: "5.5%", top: "3%", width: "4%", height: "4%" }}>
-          <span className="text-white/50 font-medium" style={{ fontSize: "clamp(8px, 0.65vw, 12px)" }}>{totalBettors} online</span>
+          style={{ right: "9.5%", top: "2.5%", width: "5%", height: "4%" }}>
+          <span className="text-white/60 font-semibold" style={{ fontSize: "clamp(9px, 0.75vw, 14px)" }}>{totalBettors} online</span>
         </div>
 
         {/* Jackpot digits — seated in the 6 dark tiles of the pink banner.
@@ -294,6 +294,7 @@ export default function ColorGamePage() {
           visible={showResult}
           betColor={myResult?.color ?? null}
           betAmount={myResult?.amount ?? 0}
+          betColors={myResult ? (Object.keys(myBetsRef.current.bets) as DieColor[]) : []}
           dice={dice}
           payout={myResult?.payout ?? 0}
           jackpotTriggered={live?.jackpotTriggered}

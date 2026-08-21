@@ -39,14 +39,14 @@ export function ColorRoundTimer({ phase, remaining }: Props) {
 
   return (
     <div className="flex flex-col items-center">
-      <div className="relative" style={{ width: "min(3.5vw, 5vh)", height: "min(3.5vw, 5vh)" }}>
+      <div className="relative" style={{ width: "min(6vw, 8.5vh)", height: "min(6vw, 8.5vh)" }}>
         <svg className="w-full h-full -rotate-90" viewBox="0 0 40 40">
-          <circle cx="20" cy="20" r={r} fill="rgba(0,0,0,0.4)" stroke="rgba(255,255,255,0.15)" strokeWidth="3" />
+          <circle cx="20" cy="20" r={r} fill="rgba(0,0,0,0.45)" stroke="rgba(255,255,255,0.18)" strokeWidth="4" />
           <circle
             cx="20" cy="20" r={r}
             fill="none"
             stroke={color}
-            strokeWidth="3"
+            strokeWidth="4"
             strokeLinecap="round"
             strokeDasharray={circ}
             strokeDashoffset={offset}
@@ -54,12 +54,12 @@ export function ColorRoundTimer({ phase, remaining }: Props) {
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="font-mono font-black" style={{ fontSize: "min(1.2vw, 1.8vh)", color }}>
+          <span className="font-mono font-black" style={{ fontSize: "min(2.4vw, 3.4vh)", color, textShadow: "0 2px 4px rgba(0,0,0,0.5)" }}>
             {seconds}
           </span>
         </div>
       </div>
-      <span className="font-bold tracking-wider" style={{ fontSize: "min(0.5vw, 0.8vh)", color }}>
+      <span className="font-black tracking-wider" style={{ fontSize: "min(0.95vw, 1.35vh)", color, textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>
         {PHASE_LABELS[phase]}
       </span>
     </div>
