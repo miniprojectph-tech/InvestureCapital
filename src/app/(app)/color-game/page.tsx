@@ -11,6 +11,7 @@ import {
   useColorLeaderboard,
   placeColorBet,
   resolveColorRound,
+  COLOR_HEX,
   type DieColor,
 } from "@/lib/colorgame";
 import { ColorDice } from "@/components/colorgame/ColorDice";
@@ -253,9 +254,27 @@ export default function ColorGamePage() {
           <ColorDice results={currentDice} phase={phase} />
         </div>
 
-        {/* History dots — inside wooden history bar */}
+        {/* Jackpot combination — 3 squares of the admin-set jackpot color,
+            in the banner band under the jackpot digits. Hit 3 of this to win. */}
+        <div className="absolute z-10 flex items-center justify-center"
+          style={{ left: "63.4%", top: "21.4%", width: "16%", height: "3%", gap: "min(0.6vw, 0.9vh)" }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i}
+              style={{
+                width: "min(1.6vw, 2.2vh)",
+                height: "min(1.6vw, 2.2vh)",
+                borderRadius: "3px",
+                background: COLOR_HEX[gs.jackpotColor],
+                border: "1.5px solid rgba(255,255,255,0.75)",
+                boxShadow: "0 1px 3px rgba(0,0,0,0.45)",
+              }}
+            />
+          ))}
+        </div>
+
+        {/* History — inside the wooden HISTORY board slots */}
         <div className="absolute z-10"
-          style={{ left: "53%", top: "21%", width: "28%", height: "4.5%" }}>
+          style={{ left: "66.6%", top: "35.4%", width: "19.5%", height: "5%" }}>
           <ColorHistoryStrip history={gs.history} />
         </div>
 

@@ -39,6 +39,7 @@ export type ColorGameState = {
   jackpotPool: number;
   totalRounds: number;
   totalWagered: number;
+  jackpotColor: DieColor;
   history: Array<{ roundId: string; dice: [DieColor, DieColor, DieColor]; at: number }>;
 };
 
@@ -171,19 +172,20 @@ export function useCurrentRound() {
 
 export function useColorGameState() {
   const { user } = useAuth();
-  const [gs, setGs] = useState<ColorGameState>({ jackpotPool: 0, totalRounds: 0, totalWagered: 0, history: [] });
+  const [gs, setGs] = useState<ColorGameState>({ jackpotPool: 0, totalRounds: 0, totalWagered: 0, jackpotColor: "blue", history: [] });
 
   useEffect(() => {
     if (!user) return;
     const { rtdb } = getFirebase();
     if (!rtdb) return;
 
-    let state: { jackpotPool?: number; totalRounds?: number; totalWagered?: number } = {};
+    let state: { jackpotPool?: number; totalRounds?: number; totalWagered?: number; jackpotColor?: DieColor } = {};
     let history: ColorGameState["history"] = [];
     const merge = () => setGs({
       jackpotPool: state.jackpotPool ?? 0,
       totalRounds: state.totalRounds ?? 0,
       totalWagered: state.totalWagered ?? 0,
+      jackpotColor: state.jackpotColor ?? "blue",
       history,
     });
 
@@ -251,4 +253,8 @@ export function resolveColorRound(roundId: string) {
 
 export function adminAdjustJackpot(amount: number) {
   return gameCall<{ ok: boolean; newJackpot: number }>("adminAdjustColorJackpot", { amount });
+}
+
+export function adminSetJackpotColor(color: DieColor) {
+  return gameCall<{ ok: boolean; jackpotColor: DieColor }>("adminSetColorJackpotColor", { color });
 }

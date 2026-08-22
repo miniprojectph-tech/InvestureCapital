@@ -12,7 +12,7 @@ import { db } from "./init";
 export { castLine, claimQuest, claimDailyEnergy, redeemReward, fishOfTheHour, weeklyReef } from "./game";
 
 // Color Game callables.
-export { placeColorBet, resolveColorRound, adminAdjustColorJackpot } from "./colorgame";
+export { placeColorBet, resolveColorRound, adminAdjustColorJackpot, adminSetColorJackpotColor } from "./colorgame";
 
 // Referral system: claim processor + locked-bonus release helper.
 import { onReferralClaim, releaseLockedReferrals } from "./referrals";

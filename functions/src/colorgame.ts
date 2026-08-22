@@ -358,3 +358,29 @@ export const adminAdjustColorJackpot = onCall({ region: GAME_REGION }, async (re
 
   return { ok: true, newJackpot: Math.max(0, amount) };
 });
+
+// ── Admin: set the jackpot color (the combination players must hit) ──
+// Kept in a separate config doc so round resolution (which overwrites
+// color_game/state) can't wipe it; mirrored to RTDB for the clients.
+export const adminSetColorJackpotColor = onCall({ region: GAME_REGION }, async (request) => {
+  const uid = requireUid(request);
+  const callerSnap = await db.doc(`users/${uid}`).get();
+  if (!callerSnap.exists || callerSnap.data()?.isAdmin !== true) {
+    throw new HttpsError("permission-denied", "Admin role required.");
+  }
+
+  const { color } = request.data as { color: string };
+  const valid = ["red", "blue", "yellow", "pink", "white", "green"];
+  if (!valid.includes(color)) {
+    throw new HttpsError("invalid-argument", "Invalid color.");
+  }
+
+  await gameDb.doc("color_game/config").set({ jackpotColor: color }, { merge: true });
+  try {
+    await getDatabase().ref("color/state/jackpotColor").set(color);
+  } catch (e) {
+    console.error("RTDB jackpotColor mirror failed", e);
+  }
+
+  return { ok: true, jackpotColor: color };
+});

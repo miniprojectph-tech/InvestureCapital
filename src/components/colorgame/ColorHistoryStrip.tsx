@@ -13,26 +13,30 @@ type Props = {
 };
 
 export function ColorHistoryStrip({ history }: Props) {
-  const recent = history.slice(0, 7);
+  // One recent round per slot (5 slots on the wooden board), newest on the left.
+  const recent = history.slice(0, 5);
 
   return (
-    <div className="w-full h-full flex items-center justify-end gap-[2%] pr-[3%]">
-      {recent.map((entry, i) => (
-        <div key={entry.roundId} className="flex gap-[2px]" style={{ opacity: 1 - i * 0.08 }}>
-          {entry.dice.map((color, di) => (
-            <div
-              key={di}
-              className="rounded-[2px]"
-              style={{
-                width: "min(1vw, 1.5vh)",
-                height: "min(1vw, 1.5vh)",
-                backgroundColor: COLOR_HEX[color],
-                boxShadow: `0 0 3px ${COLOR_HEX[color]}66`,
-              }}
-            />
-          ))}
-        </div>
-      ))}
+    <div className="w-full h-full grid grid-cols-5 items-center">
+      {Array.from({ length: 5 }).map((_, slot) => {
+        const entry = recent[slot];
+        return (
+          <div key={slot} className="flex items-center justify-center gap-[2px]">
+            {entry?.dice.map((color, di) => (
+              <div
+                key={di}
+                className="rounded-[2px]"
+                style={{
+                  width: "min(0.8vw, 1.1vh)",
+                  height: "min(0.8vw, 1.1vh)",
+                  backgroundColor: COLOR_HEX[color],
+                  border: "1px solid rgba(0,0,0,0.15)",
+                }}
+              />
+            ))}
+          </div>
+        );
+      })}
     </div>
   );
 }

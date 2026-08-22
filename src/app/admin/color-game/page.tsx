@@ -11,6 +11,8 @@ import {
   useColorGameState,
   useColorLeaderboard,
   adminAdjustJackpot,
+  adminSetJackpotColor,
+  ALL_COLORS,
   COLOR_HEX,
   COLOR_LABELS,
   type DieColor,
@@ -35,6 +37,7 @@ export default function AdminColorGamePage() {
   const [loadingRounds, setLoadingRounds] = useState(true);
   const [jackpotInput, setJackpotInput] = useState("");
   const [adjusting, setAdjusting] = useState(false);
+  const [settingColor, setSettingColor] = useState(false);
   const [tab, setTab] = useState<"dashboard" | "rounds" | "leaderboard">("dashboard");
 
   useEffect(() => {
@@ -74,6 +77,14 @@ export default function AdminColorGamePage() {
       setJackpotInput("");
     } catch { /* ignore */ }
     setAdjusting(false);
+  };
+
+  const handleSetColor = async (color: DieColor) => {
+    setSettingColor(true);
+    try {
+      await adminSetJackpotColor(color);
+    } catch { /* ignore */ }
+    setSettingColor(false);
   };
 
   function fmtDate(ts: number) {
@@ -133,6 +144,31 @@ export default function AdminColorGamePage() {
               >
                 {adjusting ? "..." : "Set"}
               </button>
+            </div>
+
+            <div className="mt-3 pt-3 border-t border-border">
+              <p className="text-[11px] text-text-subtle m-0 mb-2">
+                Jackpot combination — players must hit 3 of this color to win the jackpot
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {ALL_COLORS.map((c) => {
+                  const active = gs.jackpotColor === c;
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => handleSetColor(c)}
+                      disabled={settingColor}
+                      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-colors disabled:opacity-50 ${
+                        active ? "border-gold bg-gold/10 text-text" : "border-border text-text-muted hover:border-gold/40"
+                      }`}
+                    >
+                      <span className="w-4 h-4 rounded" style={{ background: COLOR_HEX[c], border: "1px solid rgba(255,255,255,0.5)" }} />
+                      {COLOR_LABELS[c]}
+                      {active && <span className="text-gold">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </Card>
 
