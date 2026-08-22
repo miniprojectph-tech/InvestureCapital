@@ -32,6 +32,16 @@ import {
   type GameAccessRequirement,
 } from "@/lib/settings";
 import { usePlans } from "@/lib/plans";
+import { PlayerPointsPanel } from "@/components/admin/PlayerPointsPanel";
+
+type SettingsTab = "access" | "reef" | "assets" | "fish" | "players";
+const SETTINGS_TABS: { key: SettingsTab; label: string }[] = [
+  { key: "access", label: "Access & general" },
+  { key: "reef", label: "Reef economy" },
+  { key: "assets", label: "Assets" },
+  { key: "fish", label: "Fish" },
+  { key: "players", label: "Players & points" },
+];
 
 function assetKind(url?: string): "video" | "audio" | "image" {
   if (!url) return "image";
@@ -197,6 +207,7 @@ export default function AdminGamesPage() {
   // Fish editor
   const [editing, setEditing] = useState<Fish | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [tab, setTab] = useState<SettingsTab>("access");
 
   useEffect(() => {
     if (!loading && !draft) setDraft(config);
@@ -333,6 +344,24 @@ export default function AdminGamesPage() {
         </div>
       )}
 
+      {/* Tabs */}
+      <div className="flex flex-wrap gap-1 mb-4 border-b border-border">
+        {SETTINGS_TABS.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={cn(
+              "px-3 py-2 text-[12px] font-medium -mb-px border-b-2 transition-colors",
+              tab === t.key ? "border-gold text-gold" : "border-transparent text-text-muted hover:text-text"
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "access" && (
+        <>
       {/* Community Games access gate */}
       <Card className="mb-3">
         <CardHeader
@@ -457,8 +486,10 @@ export default function AdminGamesPage() {
           </div>
         )}
       </Card>
+        </>
+      )}
 
-      {/* Economy config */}
+      {tab === "reef" && (
       <Card className="mb-3">
         <CardHeader title="Reef · Economy" subtitle="Energy, rarities, streak, prizes" />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
@@ -599,8 +630,9 @@ export default function AdminGamesPage() {
           </button>
         </div>
       </Card>
+      )}
 
-      {/* Game assets */}
+      {tab === "assets" && (
       <Card className="mb-3">
         <CardHeader
           title="Game assets"
@@ -625,8 +657,9 @@ export default function AdminGamesPage() {
           </div>
         ))}
       </Card>
+      )}
 
-      {/* Fish catalog */}
+      {tab === "fish" && (
       <Card>
         <CardHeader
           title={`Fish catalog (${fish.length})`}
@@ -689,6 +722,9 @@ export default function AdminGamesPage() {
           </div>
         )}
       </Card>
+      )}
+
+      {tab === "players" && <PlayerPointsPanel />}
 
       <FishEditor
         fish={editing}
