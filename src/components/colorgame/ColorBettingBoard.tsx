@@ -34,7 +34,6 @@ export function ColorBettingBoard({ selectedColor, onSelect, disabled, betAmount
       {TILE_ORDER.map((color) => {
         const isSelected = selectedColor === color;
         const isWinner = matchCounts ? matchCounts[color] > 0 : false;
-        const matches = matchCounts?.[color] ?? 0;
         const bet = betAmounts[color] ?? 0;
 
         return (
@@ -67,18 +66,6 @@ export function ColorBettingBoard({ selectedColor, onSelect, disabled, betAmount
               >
                 {fmtAmt(bet)}
               </span>
-            )}
-            {isWinner && matches > 0 && (
-              <div
-                className="absolute -top-1 -right-1 rounded-full flex items-center justify-center font-black text-black bg-yellow-400 shadow-lg animate-bounce"
-                style={{
-                  width: "min(2vw, 3vh)",
-                  height: "min(2vw, 3vh)",
-                  fontSize: "min(0.8vw, 1.2vh)",
-                }}
-              >
-                {matches}x
-              </div>
             )}
           </button>
         );
