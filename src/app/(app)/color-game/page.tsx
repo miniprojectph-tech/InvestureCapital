@@ -202,11 +202,23 @@ export default function ColorGamePage() {
           style={{ left: "1%", top: "2%", width: "4%", height: "8%" }}
         />
 
-        {/* GP balance — below coin icons */}
+        {/* GP balance — pill under the coin icon */}
         <div className="absolute z-20 flex items-center justify-center"
-          style={{ left: "1%", top: "11%", width: "5.5%", height: "4%" }}>
-          <span className="font-mono font-bold text-yellow-300 drop-shadow-lg" style={{ fontSize: "clamp(10px, 1vw, 16px)" }}>
-            {balance}
+          style={{ left: "0.5%", top: "23%", width: "8.5%", height: "5.5%" }}>
+          <span
+            className="font-mono font-black text-yellow-300"
+            style={{
+              fontSize: "clamp(13px, 1.6vw, 28px)",
+              lineHeight: 1,
+              padding: "0.18em 0.7em",
+              borderRadius: "999px",
+              background: "rgba(20,6,40,0.6)",
+              border: "1.5px solid rgba(255,215,0,0.55)",
+              textShadow: "0 2px 4px rgba(0,0,0,0.85)",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {balance.toLocaleString()}
           </span>
         </div>
 
