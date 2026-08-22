@@ -18,8 +18,33 @@ const MAX_HISTORY = 20;
 
 const roundRef = (id: string) => gameDb.doc(`color_rounds/${id}`);
 const gameStateRef = () => gameDb.doc(`color_game/state`);
+const configRef = () => gameDb.doc(`color_game/config`);
 const leaderRef = (uid: string) => gameDb.doc(`color_game_leaderboard/${uid}`);
 const userStateRef = (uid: string) => db.doc(`users/${uid}/game/state`);
+
+// Admin-controlled jackpot settings (kept separate from color_game/state,
+// which round-resolve overwrites). The jackpot fires only when it's active
+// AND the designated player has bet the jackpot color that round.
+type JackpotConfig = {
+  jackpotColor: DieColor;
+  jackpotActive: boolean;
+  jackpotTargetUid: string;
+  jackpotTargetName: string;
+  jackpotDefault: number;      // pool resets to this floor after a win
+  jackpotContribution: number; // fraction of each bet added to the pool
+};
+const DEFAULT_JACKPOT_CONFIG: JackpotConfig = {
+  jackpotColor: "blue",
+  jackpotActive: false,
+  jackpotTargetUid: "",
+  jackpotTargetName: "",
+  jackpotDefault: 100_000,
+  jackpotContribution: 0.02,
+};
+async function readJackpotConfig(): Promise<JackpotConfig> {
+  const snap = await configRef().get();
+  return { ...DEFAULT_JACKPOT_CONFIG, ...(snap.exists ? (snap.data() as Partial<JackpotConfig>) : {}) };
+}
 
 function requireUid(request: { auth?: { uid?: string } }): string {
   const uid = request.auth?.uid;
@@ -76,6 +101,8 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
   }
 
   const name = await playerName(uid);
+  const cfg = await readJackpotConfig();
+  const contribution = Math.round(amount * cfg.jackpotContribution);
 
   // Deduct GP from user's game state (default db, us-central)
   await db.runTransaction(async (tx) => {
@@ -130,7 +157,7 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
     tx.set(roundRef(rid), round, { merge: true });
     tx.set(gameStateRef(), {
       ...gs,
-      jackpotPool: gs.jackpotPool + Math.round(amount * DEFAULT_COLOR_CONFIG.jackpotContribution),
+      jackpotPool: gs.jackpotPool + contribution,
       totalWagered: (gs.totalWagered ?? 0) + amount,
     }, { merge: true });
 
@@ -139,11 +166,10 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
 
   // Mirror the live, high-churn state to Realtime Database (what all clients read).
   try {
-    const jackpotAdd = Math.round(amount * DEFAULT_COLOR_CONFIG.jackpotContribution);
     const updates: Record<string, unknown> = {
       [`color/live/${rid}/totals/${color}`]: ServerValue.increment(amount),
       [`color/live/${rid}/roundId`]: rid,
-      [`color/state/jackpotPool`]: ServerValue.increment(jackpotAdd),
+      [`color/state/jackpotPool`]: ServerValue.increment(contribution),
       [`color/state/totalWagered`]: ServerValue.increment(amount),
     };
     if (isNewKey) updates[`color/live/${rid}/bettors`] = ServerValue.increment(1);
@@ -170,6 +196,8 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
     throw new HttpsError("failed-precondition", "Betting window still open.");
   }
 
+  const cfg = await readJackpotConfig();
+
   // Resolve on gameDb
   const result = await gameDb.runTransaction(async (tx) => {
     const rSnap = await tx.get(roundRef(roundId));
@@ -188,10 +216,18 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       };
     }
 
-    const dice = rollDice();
     const bets = round.bets;
     const betEntries = Object.values(bets);
     const totalPool = betEntries.reduce((s, b) => s + b.amount, 0);
+
+    // The jackpot fires only when it's armed AND the designated player has bet
+    // the jackpot color this round — then we force 3 of that color so they win.
+    // (A random natural triple does NOT trigger the jackpot; it just pays 4x.)
+    const targetKey = `${cfg.jackpotTargetUid}_${cfg.jackpotColor}`;
+    const fireJackpot = cfg.jackpotActive && !!cfg.jackpotTargetUid && !!bets[targetKey];
+    const dice: [DieColor, DieColor, DieColor] = fireJackpot
+      ? [cfg.jackpotColor, cfg.jackpotColor, cfg.jackpotColor]
+      : rollDice();
 
     // Firestore requires ALL reads before ANY writes. Read the game-state doc
     // and every bettor's leaderboard row up front, then compute + write below.
@@ -207,21 +243,13 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       }
     }
 
-    // Check jackpot: all 3 dice same color
-    const isTriple = dice[0] === dice[1] && dice[1] === dice[2];
-    let jackpotTriggered = false;
-    let jackpotColor: DieColor | undefined;
-    let jackpotAmount = 0;
-
-    if (isTriple) {
-      const tripleColor = dice[0];
-      const jackpotWinners = betEntries.filter((b) => b.color === tripleColor);
-      if (jackpotWinners.length > 0) {
-        jackpotTriggered = true;
-        jackpotColor = tripleColor;
-        jackpotAmount = gs.jackpotPool;
-      }
-    }
+    const jackpotTriggered = fireJackpot;
+    const jackpotColor: DieColor | null = fireJackpot ? cfg.jackpotColor : null;
+    const jackpotAmount = fireJackpot ? gs.jackpotPool : 0;
+    // Total staked on the jackpot color this round — the pool is split by this.
+    const totalColorBet = fireJackpot
+      ? betEntries.filter((b) => b.color === cfg.jackpotColor).reduce((s, b) => s + b.amount, 0)
+      : 0;
 
     // Compute payouts. A player can bet several colours (one bet entry each,
     // all sharing their uid), so ACCUMULATE per uid — indexing by uid alone
@@ -236,9 +264,9 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       else if (matches === 2) payout = b.amount * 3;
       else if (matches === 3) payout = b.amount * 4;
 
-      if (jackpotTriggered && b.color === jackpotColor) {
-        const share = Math.floor(jackpotAmount / betEntries.filter((x) => x.color === jackpotColor).length);
-        payout += share;
+      // Jackpot share — proportional to this player's bet on the jackpot color.
+      if (fireJackpot && b.color === cfg.jackpotColor && totalColorBet > 0) {
+        payout += Math.floor(jackpotAmount * (b.amount / totalColorBet));
       }
       payouts[b.uid] = (payouts[b.uid] ?? 0) + payout;
       totalBetByUid[b.uid] = (totalBetByUid[b.uid] ?? 0) + b.amount;
@@ -261,11 +289,16 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
     if (history.length > MAX_HISTORY) history.length = MAX_HISTORY;
 
     tx.set(gameStateRef(), {
-      jackpotPool: jackpotTriggered ? 0 : gs.jackpotPool,
+      jackpotPool: fireJackpot ? cfg.jackpotDefault : gs.jackpotPool,
       totalRounds: (gs.totalRounds ?? 0) + 1,
       totalWagered: gs.totalWagered ?? 0,
       history,
     });
+
+    // Auto-deactivate the jackpot once it has fired.
+    if (fireJackpot) {
+      tx.set(configRef(), { jackpotActive: false }, { merge: true });
+    }
 
     // Update leaderboard — once per player (not per bet entry), using the
     // aggregated payout and total bet so multi-colour bettors are counted once.
@@ -289,7 +322,7 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
     return {
       alreadyResolved: false, noBets: false, dice, payouts, jackpotTriggered,
       jackpotColor: jackpotColor ?? null, jackpotAmount: jackpotTriggered ? jackpotAmount : 0,
-      newJackpotPool: jackpotTriggered ? 0 : gs.jackpotPool,
+      newJackpotPool: fireJackpot ? cfg.jackpotDefault : gs.jackpotPool,
     };
   });
 
@@ -305,7 +338,7 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       liveUpd[`color/live/${roundId}/jackpotColor`] = result.jackpotColor ?? null;
       liveUpd[`color/live/${roundId}/jackpotAmount`] = result.jackpotAmount ?? 0;
       liveUpd[`color/state/totalRounds`] = ServerValue.increment(1);
-      if (result.jackpotTriggered) liveUpd[`color/state/jackpotPool`] = 0;
+      if (result.jackpotTriggered) liveUpd[`color/state/jackpotPool`] = result.newJackpotPool ?? 0;
       liveUpd[`color/history/${roundId}`] = { dice: result.dice, at: now };
     }
     await rtdb.ref().update(liveUpd);
@@ -383,4 +416,28 @@ export const adminSetColorJackpotColor = onCall({ region: GAME_REGION }, async (
   }
 
   return { ok: true, jackpotColor: color };
+});
+
+// ── Admin: arm/configure the jackpot (designated winner, activation, floor, %) ──
+export const adminSetColorJackpotConfig = onCall({ region: GAME_REGION }, async (request) => {
+  const uid = requireUid(request);
+  const callerSnap = await db.doc(`users/${uid}`).get();
+  if (!callerSnap.exists || callerSnap.data()?.isAdmin !== true) {
+    throw new HttpsError("permission-denied", "Admin role required.");
+  }
+
+  const patch = (request.data ?? {}) as Partial<JackpotConfig>;
+  const clean: Partial<JackpotConfig> = {};
+  if (typeof patch.jackpotActive === "boolean") clean.jackpotActive = patch.jackpotActive;
+  if (typeof patch.jackpotTargetUid === "string") clean.jackpotTargetUid = patch.jackpotTargetUid;
+  if (typeof patch.jackpotTargetName === "string") clean.jackpotTargetName = patch.jackpotTargetName;
+  if (typeof patch.jackpotDefault === "number" && patch.jackpotDefault >= 0) {
+    clean.jackpotDefault = Math.round(patch.jackpotDefault);
+  }
+  if (typeof patch.jackpotContribution === "number" && patch.jackpotContribution >= 0 && patch.jackpotContribution <= 1) {
+    clean.jackpotContribution = patch.jackpotContribution;
+  }
+
+  await configRef().set(clean, { merge: true });
+  return { ok: true, ...clean };
 });

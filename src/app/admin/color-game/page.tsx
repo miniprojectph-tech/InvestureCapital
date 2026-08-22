@@ -10,14 +10,17 @@ import { getFirebase } from "@/lib/firebase";
 import {
   useColorGameState,
   useColorLeaderboard,
+  useColorJackpotConfig,
   adminAdjustJackpot,
   adminSetJackpotColor,
+  adminSetJackpotConfig,
   ALL_COLORS,
   COLOR_HEX,
   COLOR_LABELS,
   type DieColor,
   type ColorGameState,
 } from "@/lib/colorgame";
+import { listInvestors, type InvestorRow } from "@/lib/adminQueries";
 import { collection, getDocs, query, orderBy, limit, type Firestore } from "firebase/firestore";
 
 type RecentRound = {
@@ -32,7 +35,13 @@ type RecentRound = {
 export default function AdminColorGamePage() {
   const { user, demoMode } = useAuth();
   const gs = useColorGameState();
+  const cfg = useColorJackpotConfig();
   const leaders = useColorLeaderboard(10);
+  const [investors, setInvestors] = useState<InvestorRow[]>([]);
+  const [playerSearch, setPlayerSearch] = useState("");
+  const [floorInput, setFloorInput] = useState("");
+  const [contribInput, setContribInput] = useState("");
+  const [savingCfg, setSavingCfg] = useState(false);
   const [recentRounds, setRecentRounds] = useState<RecentRound[]>([]);
   const [loadingRounds, setLoadingRounds] = useState(true);
   const [jackpotInput, setJackpotInput] = useState("");
@@ -86,6 +95,27 @@ export default function AdminColorGamePage() {
     } catch { /* ignore */ }
     setSettingColor(false);
   };
+
+  useEffect(() => {
+    const { db } = getFirebase();
+    if (!db || demoMode) return;
+    listInvestors(db, 500).then(setInvestors).catch(() => {});
+  }, [demoMode]);
+
+  const applyCfg = async (patch: Parameters<typeof adminSetJackpotConfig>[0]) => {
+    setSavingCfg(true);
+    try {
+      await adminSetJackpotConfig(patch);
+    } catch { /* ignore */ }
+    setSavingCfg(false);
+  };
+
+  const playerMatches = playerSearch.trim()
+    ? investors.filter((p) => {
+        const q = playerSearch.toLowerCase();
+        return p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q);
+      }).slice(0, 6)
+    : [];
 
   function fmtDate(ts: number) {
     if (!ts) return "—";
@@ -168,6 +198,93 @@ export default function AdminColorGamePage() {
                     </button>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* Designated winner + activation */}
+            <div className="mt-3 pt-3 border-t border-border">
+              <p className="text-[11px] text-text-subtle m-0 mb-2">
+                Designated winner — when active, this player wins the jackpot the next time they bet the jackpot color (then it auto-deactivates)
+              </p>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <span className="text-[11px] text-text-muted">Status:</span>
+                <span className={`text-[11px] font-medium ${cfg.jackpotActive ? "text-green" : "text-text-subtle"}`}>
+                  {cfg.jackpotActive ? `Armed for ${cfg.jackpotTargetName || "—"}` : "Inactive"}
+                </span>
+                <button
+                  onClick={() => applyCfg({ jackpotActive: !cfg.jackpotActive })}
+                  disabled={savingCfg || (!cfg.jackpotTargetUid && !cfg.jackpotActive)}
+                  className={`px-3 py-1 rounded-md text-[10px] font-medium disabled:opacity-50 ${cfg.jackpotActive ? "bg-red/15 text-red" : "bg-green/15 text-green"}`}
+                >
+                  {cfg.jackpotActive ? "Deactivate" : "Activate"}
+                </button>
+              </div>
+              <input
+                value={playerSearch}
+                onChange={(e) => setPlayerSearch(e.target.value)}
+                placeholder="Search player by name or email…"
+                className="w-full max-w-sm px-2 py-1.5 rounded-md bg-card-elev text-[11px] text-text border border-border outline-none"
+              />
+              {playerMatches.length > 0 && (
+                <div className="mt-1 max-w-sm border border-border rounded-md overflow-hidden">
+                  {playerMatches.map((p) => (
+                    <button
+                      key={p.uid}
+                      onClick={() => { applyCfg({ jackpotTargetUid: p.uid, jackpotTargetName: p.name || p.email || "Player" }); setPlayerSearch(""); }}
+                      className="w-full text-left px-2 py-1.5 text-[11px] hover:bg-card-elev flex items-center justify-between"
+                    >
+                      <span>{p.name || "—"} <span className="text-text-subtle">· {p.email}</span></span>
+                      {cfg.jackpotTargetUid === p.uid && <span className="text-gold">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <p className="text-[10px] text-text-subtle m-0 mt-1">
+                Selected winner: <span className="font-medium text-text">{cfg.jackpotTargetName || "none"}</span>
+              </p>
+            </div>
+
+            {/* Floor + contribution */}
+            <div className="mt-3 pt-3 border-t border-border grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] text-text-muted mb-1">Default floor — pool resets to this on a win</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={floorInput}
+                    onChange={(e) => setFloorInput(e.target.value)}
+                    placeholder={String(cfg.jackpotDefault)}
+                    className="w-28 px-2 py-1 rounded-md bg-card-elev text-[11px] text-text border border-border outline-none"
+                  />
+                  <button
+                    onClick={() => { const v = parseInt(floorInput, 10); if (!isNaN(v) && v >= 0) { applyCfg({ jackpotDefault: v }); setFloorInput(""); } }}
+                    disabled={savingCfg || !floorInput}
+                    className="px-3 py-1 rounded-md bg-gold/15 text-gold text-[10px] font-medium disabled:opacity-50"
+                  >
+                    Set
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] text-text-muted mb-1">Contribution — % of each bet added to the pool</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={contribInput}
+                    onChange={(e) => setContribInput(e.target.value)}
+                    placeholder={(cfg.jackpotContribution * 100).toFixed(1)}
+                    className="w-24 px-2 py-1 rounded-md bg-card-elev text-[11px] text-text border border-border outline-none"
+                  />
+                  <span className="text-[11px] text-text-subtle">%</span>
+                  <button
+                    onClick={() => { const v = parseFloat(contribInput); if (!isNaN(v) && v >= 0 && v <= 100) { applyCfg({ jackpotContribution: v / 100 }); setContribInput(""); } }}
+                    disabled={savingCfg || !contribInput}
+                    className="px-3 py-1 rounded-md bg-gold/15 text-gold text-[10px] font-medium disabled:opacity-50"
+                  >
+                    Set
+                  </button>
+                </div>
               </div>
             </div>
           </Card>

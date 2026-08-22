@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { collection, query as fsQuery, orderBy, limit, onSnapshot, type Firestore } from "firebase/firestore";
+import { collection, doc, query as fsQuery, orderBy, limit, onSnapshot, type Firestore } from "firebase/firestore";
 import { ref, onValue, query as rtdbQuery, orderByKey, limitToLast } from "firebase/database";
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
@@ -257,4 +257,44 @@ export function adminAdjustJackpot(amount: number) {
 
 export function adminSetJackpotColor(color: DieColor) {
   return gameCall<{ ok: boolean; jackpotColor: DieColor }>("adminSetColorJackpotColor", { color });
+}
+
+// ── Jackpot config (admin arming) ──
+
+export type ColorJackpotConfig = {
+  jackpotColor: DieColor;
+  jackpotActive: boolean;
+  jackpotTargetUid: string;
+  jackpotTargetName: string;
+  jackpotDefault: number;
+  jackpotContribution: number;
+};
+
+const DEFAULT_JACKPOT_CFG: ColorJackpotConfig = {
+  jackpotColor: "blue",
+  jackpotActive: false,
+  jackpotTargetUid: "",
+  jackpotTargetName: "",
+  jackpotDefault: 100_000,
+  jackpotContribution: 0.02,
+};
+
+export function useColorJackpotConfig() {
+  const { user } = useAuth();
+  const [config, setConfig] = useState<ColorJackpotConfig>(DEFAULT_JACKPOT_CFG);
+
+  useEffect(() => {
+    if (!user) return;
+    const { gameDb } = getFirebase();
+    if (!gameDb) return;
+    return onSnapshot(doc(gameDb as Firestore, "color_game", "config"), (snap) => {
+      setConfig({ ...DEFAULT_JACKPOT_CFG, ...(snap.exists() ? (snap.data() as Partial<ColorJackpotConfig>) : {}) });
+    });
+  }, [user]);
+
+  return config;
+}
+
+export function adminSetJackpotConfig(patch: Partial<ColorJackpotConfig>) {
+  return gameCall<{ ok: boolean }>("adminSetColorJackpotConfig", patch);
 }
