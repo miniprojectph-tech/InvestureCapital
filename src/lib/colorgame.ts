@@ -191,7 +191,7 @@ export function useColorGameState() {
 
     const u1 = onValue(ref(rtdb, "color/state"), (s) => { state = s.val() ?? {}; merge(); });
     const u2 = onValue(
-      rtdbQuery(ref(rtdb, "color/history"), orderByKey(), limitToLast(7)),
+      rtdbQuery(ref(rtdb, "color/history"), orderByKey(), limitToLast(10)),
       (s) => {
         const val = (s.val() as Record<string, { dice: [DieColor, DieColor, DieColor]; at: number }> | null) ?? {};
         history = Object.entries(val)

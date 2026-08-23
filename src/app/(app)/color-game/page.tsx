@@ -19,6 +19,7 @@ import { ColorBettingBoard } from "@/components/colorgame/ColorBettingBoard";
 import { ColorBetControls } from "@/components/colorgame/ColorBetControls";
 import { ColorJackpotDisplay } from "@/components/colorgame/ColorJackpotDisplay";
 import { ColorHistoryStrip } from "@/components/colorgame/ColorHistoryStrip";
+import { ColorHistoryModal } from "@/components/colorgame/ColorHistoryModal";
 import { ColorRankingBoard } from "@/components/colorgame/ColorRankingBoard";
 import { ColorRoundTimer } from "@/components/colorgame/ColorRoundTimer";
 import { ColorCoinParticles } from "@/components/colorgame/ColorCoinParticles";
@@ -82,6 +83,7 @@ export default function ColorGamePage() {
   const [placing, setPlacing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCoins, setShowCoins] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   // The client places bets so it knows its own; RTDB only carries aggregate totals.
   const myBetsRef = useRef<{ roundId: string; bets: Partial<Record<DieColor, number>> }>({ roundId: "", bets: {} });
 
@@ -275,7 +277,7 @@ export default function ColorGamePage() {
         {/* History — inside the wooden HISTORY board slots */}
         <div className="absolute z-10"
           style={{ left: "66.6%", top: "35.4%", width: "19.5%", height: "5%" }}>
-          <ColorHistoryStrip history={gs.history} />
+          <ColorHistoryStrip history={gs.history} onExpand={() => setShowHistory(true)} />
         </div>
 
         {/* Color tiles 3x2 — over the painted tiles (measured tile block:
@@ -332,6 +334,10 @@ export default function ColorGamePage() {
           jackpotAmount={live?.jackpotAmount ?? undefined}
         />
       </div>
+
+      {showHistory && (
+        <ColorHistoryModal history={gs.history} onClose={() => setShowHistory(false)} />
+      )}
     </div>
   );
 }
