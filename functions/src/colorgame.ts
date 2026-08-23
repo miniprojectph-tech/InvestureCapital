@@ -46,6 +46,17 @@ async function readJackpotConfig(): Promise<JackpotConfig> {
   return { ...DEFAULT_JACKPOT_CONFIG, ...(snap.exists ? (snap.data() as Partial<JackpotConfig>) : {}) };
 }
 
+// Mirror the whole config to RTDB — the client reads it from there because
+// Firestore realtime listeners on the named game DB don't deliver in this app.
+async function mirrorConfigToRtdb(): Promise<void> {
+  try {
+    const cfg = await readJackpotConfig();
+    await getDatabase().ref("color/config").set(cfg);
+  } catch (e) {
+    console.error("config RTDB mirror failed", e);
+  }
+}
+
 function requireUid(request: { auth?: { uid?: string } }): string {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
@@ -346,6 +357,9 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
     console.error("RTDB resolve mirror failed", e);
   }
 
+  // Jackpot auto-deactivated this round — reflect the config change to clients.
+  if (result.jackpotTriggered) await mirrorConfigToRtdb();
+
   if (result.alreadyResolved || result.noBets) {
     return { ok: true, dice: result.dice, payouts: result.payouts, cached: true };
   }
@@ -414,6 +428,7 @@ export const adminSetColorJackpotColor = onCall({ region: GAME_REGION }, async (
   } catch (e) {
     console.error("RTDB jackpotColor mirror failed", e);
   }
+  await mirrorConfigToRtdb();
 
   return { ok: true, jackpotColor: color };
 });
@@ -439,5 +454,6 @@ export const adminSetColorJackpotConfig = onCall({ region: GAME_REGION }, async 
   }
 
   await configRef().set(clean, { merge: true });
+  await mirrorConfigToRtdb();
   return { ok: true, ...clean };
 });

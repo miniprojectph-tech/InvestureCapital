@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { collection, doc, query as fsQuery, orderBy, limit, onSnapshot, type Firestore } from "firebase/firestore";
+import { collection, query as fsQuery, orderBy, limit, onSnapshot, type Firestore } from "firebase/firestore";
 import { ref, onValue, query as rtdbQuery, orderByKey, limitToLast } from "firebase/database";
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
@@ -285,10 +285,12 @@ export function useColorJackpotConfig() {
 
   useEffect(() => {
     if (!user) return;
-    const { gameDb } = getFirebase();
-    if (!gameDb) return;
-    return onSnapshot(doc(gameDb as Firestore, "color_game", "config"), (snap) => {
-      setConfig({ ...DEFAULT_JACKPOT_CFG, ...(snap.exists() ? (snap.data() as Partial<ColorJackpotConfig>) : {}) });
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    // Read from RTDB — Firestore realtime listeners on the named game DB don't
+    // deliver in this app, so the server mirrors the config here.
+    return onValue(ref(rtdb, "color/config"), (snap) => {
+      setConfig({ ...DEFAULT_JACKPOT_CFG, ...((snap.val() as Partial<ColorJackpotConfig>) ?? {}) });
     });
   }, [user]);
 
