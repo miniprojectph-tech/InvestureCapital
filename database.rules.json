@@ -2,7 +2,10 @@
   "rules": {
     "color": {
       ".read": "auth != null",
-      ".write": false
+      ".write": false,
+      "history": {
+        ".indexOn": ["at"]
+      }
     }
   }
 }

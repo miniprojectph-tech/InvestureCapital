@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { collection, query as fsQuery, orderBy, limit, onSnapshot, type Firestore } from "firebase/firestore";
-import { ref, onValue, query as rtdbQuery, orderByKey, limitToLast } from "firebase/database";
+import { ref, onValue, query as rtdbQuery, orderByChild, limitToLast } from "firebase/database";
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
@@ -191,7 +191,7 @@ export function useColorGameState() {
 
     const u1 = onValue(ref(rtdb, "color/state"), (s) => { state = s.val() ?? {}; merge(); });
     const u2 = onValue(
-      rtdbQuery(ref(rtdb, "color/history"), orderByKey(), limitToLast(10)),
+      rtdbQuery(ref(rtdb, "color/history"), orderByChild("at"), limitToLast(10)),
       (s) => {
         const val = (s.val() as Record<string, { dice: [DieColor, DieColor, DieColor]; at: number }> | null) ?? {};
         history = Object.entries(val)
