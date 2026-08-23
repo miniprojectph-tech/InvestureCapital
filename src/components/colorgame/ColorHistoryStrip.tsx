@@ -15,9 +15,9 @@ type Props = {
 };
 
 export function ColorHistoryStrip({ history, onExpand }: Props) {
-  // Middle 3 slots show the latest rounds (newest on the left); the first and
-  // last slots are "see all history" buttons.
-  const recent = history.slice(0, 3);
+  // Middle 3 slots show the LATEST round — one die per slot (die1, die2, die3).
+  // The first and last slots are "see all history" buttons.
+  const latest = history[0];
 
   const ExpandBtn = () => (
     <button
@@ -36,21 +36,21 @@ export function ColorHistoryStrip({ history, onExpand }: Props) {
     <div className="w-full h-full grid grid-cols-5 items-center">
       <ExpandBtn />
       {[0, 1, 2].map((i) => {
-        const entry = recent[i];
+        const color = latest?.dice[i];
         return (
-          <div key={i} className="flex items-center justify-center gap-[2px]">
-            {entry?.dice.map((color, di) => (
+          <div key={i} className="flex items-center justify-center w-full h-full">
+            {color && (
               <div
-                key={di}
-                className="rounded-[2px]"
                 style={{
-                  width: "min(0.8vw, 1.1vh)",
-                  height: "min(0.8vw, 1.1vh)",
+                  height: "78%",
+                  aspectRatio: "1",
+                  borderRadius: "22%",
                   backgroundColor: COLOR_HEX[color],
-                  border: "1px solid rgba(0,0,0,0.15)",
+                  border: "1px solid rgba(0,0,0,0.2)",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.35)",
                 }}
               />
-            ))}
+            )}
           </div>
         );
       })}
