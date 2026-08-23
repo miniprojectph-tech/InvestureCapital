@@ -42,7 +42,7 @@ export function ColorHistoryStrip({ history, onExpand }: Props) {
             {color && (
               <div
                 style={{
-                  height: "78%",
+                  height: "88%",
                   aspectRatio: "1",
                   borderRadius: "22%",
                   backgroundColor: COLOR_HEX[color],

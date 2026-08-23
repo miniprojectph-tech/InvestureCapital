@@ -274,9 +274,9 @@ export default function ColorGamePage() {
           ))}
         </div>
 
-        {/* History — inside the wooden HISTORY board slots */}
+        {/* History — inside the wooden HISTORY board slots (measured to the art) */}
         <div className="absolute z-10"
-          style={{ left: "66.6%", top: "35.4%", width: "19.5%", height: "5%" }}>
+          style={{ left: "67.02%", top: "35.42%", width: "16.84%", height: "4.86%" }}>
           <ColorHistoryStrip history={gs.history} onExpand={() => setShowHistory(true)} />
         </div>
 
