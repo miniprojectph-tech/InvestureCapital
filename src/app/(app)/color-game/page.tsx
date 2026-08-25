@@ -244,9 +244,9 @@ export default function ColorGamePage() {
           <ColorJackpotDisplay amount={gs.jackpotPool} triggered={live?.jackpotTriggered} />
         </div>
 
-        {/* Ranking rows — inside wooden easel cream area */}
+        {/* Ranking rows — measured to the 6 cream slots of the wooden easel */}
         <div className="absolute z-10"
-          style={{ left: "3.5%", top: "17%", width: "14%", height: "56%" }}>
+          style={{ left: "9.83%", top: "26.66%", width: "15.6%", height: "44.88%" }}>
           <ColorRankingBoard leaders={leaders} />
         </div>
 
