@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { Menu, TrendingUp } from "lucide-react";
+import { TrendingUp } from "lucide-react";
 import { CryptoTicker } from "./CryptoTicker";
 import { Sidebar } from "./Sidebar";
+import { MobileLauncher } from "./MobileLauncher";
 import type { NavGroup } from "@/lib/nav";
 
 type AppShellProps = {
@@ -14,7 +14,6 @@ type AppShellProps = {
 };
 
 export function AppShell({ nav, badge, children }: AppShellProps) {
-  const [mobileOpen, setMobileOpen] = useState(false);
   const pathname = usePathname();
 
   // Full-screen games run with their own chrome — no app sidebar/ticker.
@@ -44,15 +43,8 @@ export function AppShell({ nav, badge, children }: AppShellProps) {
         <CryptoTicker />
       </div>
 
-      {/* Mobile top bar with hamburger + logo */}
-      <div className="md:hidden flex items-center justify-between px-1 py-2 mb-2">
-        <button
-          onClick={() => setMobileOpen(true)}
-          className="p-2 -ml-2 text-text hover:bg-card-elev rounded-md"
-          aria-label="Open menu"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
+      {/* Mobile top bar — centered logo (nav lives in the floating launcher) */}
+      <div className="md:hidden flex items-center justify-center px-1 py-2 mb-2">
         <div className="flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-gold" strokeWidth={2.25} />
           <span className="font-medium text-[13px]">Investure</span>
@@ -62,18 +54,14 @@ export function AppShell({ nav, badge, children }: AppShellProps) {
             </span>
           )}
         </div>
-        <div className="w-9" /> {/* spacer to balance the hamburger */}
       </div>
 
       <div className="flex gap-3 flex-1 min-h-0">
-        <Sidebar
-          groups={nav}
-          badge={badge}
-          mobileOpen={mobileOpen}
-          onClose={() => setMobileOpen(false)}
-        />
-        <main className="flex-1 min-w-0 md:overflow-y-auto md:pr-1">{children}</main>
+        <Sidebar groups={nav} badge={badge} mobileOpen={false} onClose={() => {}} />
+        <main className="flex-1 min-w-0 md:overflow-y-auto md:pr-1 max-md:pb-24">{children}</main>
       </div>
+
+      <MobileLauncher nav={nav} badge={badge} />
     </div>
   );
 }
