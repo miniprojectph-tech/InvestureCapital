@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ArrowRight, RefreshCw, Loader2, Sparkles } from "lucide-react";
+import { ArrowRight, RefreshCw, Loader2, Sparkles, Check } from "lucide-react";
 import { cn, formatPHP } from "@/lib/utils";
 import {
   type Plan,
@@ -115,10 +115,36 @@ export function PlansCalculator() {
 
   return (
     <div className="bg-card border border-border rounded-2xl overflow-hidden flex flex-col">
-      {/* Tabs row — plan chips (scroll on mobile) + Single/Monthly toggle,
-          which drops below the chips on small screens so nothing crams. */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 py-2.5 border-b border-border">
-        <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+      {/* Plan selector — selectable cards + Single/Monthly toggle */}
+      <div className="px-3 py-3 border-b border-border">
+        <div className="flex items-center justify-between mb-2.5">
+          <p className="text-[10px] uppercase tracking-[0.16em] text-text-subtle m-0">Choose your plan</p>
+          <div className="flex items-center gap-0.5 bg-canvas border border-border rounded-full p-0.5 shrink-0">
+            <button
+              onClick={() => setMode("single")}
+              className={cn(
+                "text-[10px] px-2.5 py-1 rounded-full transition",
+                mode === "single" ? "bg-gold text-gold-dark font-medium" : "text-text-muted hover:text-text"
+              )}
+            >
+              Single
+            </button>
+            <button
+              onClick={() => setMode("monthly")}
+              className={cn(
+                "text-[10px] px-2.5 py-1 rounded-full transition",
+                mode === "monthly" ? "bg-gold text-gold-dark font-medium" : "text-text-muted hover:text-text"
+              )}
+            >
+              Monthly
+            </button>
+          </div>
+        </div>
+
+        <div
+          className="grid gap-2"
+          style={{ gridTemplateColumns: `repeat(${plans.length <= 3 ? plans.length : 2}, minmax(0, 1fr))` }}
+        >
           {plans.map((p) => {
             const active = p.id === selected.id;
             return (
@@ -126,48 +152,48 @@ export function PlansCalculator() {
                 key={p.id}
                 onClick={() => setSelectedId(p.id)}
                 className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-[11px] transition shrink-0 whitespace-nowrap",
+                  "relative text-left rounded-xl border p-3 transition-all",
                   active
-                    ? "bg-card-elev text-text font-medium"
-                    : "text-text-muted hover:text-text"
+                    ? "border-green bg-green/[0.07]"
+                    : "border-border bg-canvas hover:border-text-subtle/50 hover:bg-card-elev/40"
                 )}
+                style={active ? { boxShadow: "0 0 0 1px rgba(61,213,152,0.5), 0 6px 20px rgba(61,213,152,0.14)" } : undefined}
               >
-                <span
-                  className={cn(
-                    "w-2.5 h-2.5 rounded-full ring-2 transition shrink-0",
-                    active ? "bg-green ring-green/30" : "bg-transparent ring-text-subtle/40"
+                <div className="flex items-center justify-between h-4 mb-1">
+                  {p.featured ? (
+                    <span className="inline-flex items-center gap-0.5 text-[8px] font-semibold px-1.5 py-0.5 rounded-full bg-gold/15 text-gold">
+                      <Sparkles className="w-2 h-2" /> Popular
+                    </span>
+                  ) : (
+                    <span />
                   )}
-                />
-                {p.name}
-                {p.featured && <Sparkles className="w-2.5 h-2.5 text-gold shrink-0" />}
+                  {active && (
+                    <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green shrink-0">
+                      <Check className="w-2.5 h-2.5 text-gold-dark" strokeWidth={3} />
+                    </span>
+                  )}
+                </div>
+                <p className={cn("text-[11px] font-semibold m-0 mb-1.5 truncate", active ? "text-text" : "text-text-muted")}>
+                  {p.name}
+                </p>
+                <div className="flex items-baseline gap-0.5">
+                  <span
+                    className={active ? "text-green" : "text-text"}
+                    style={{ fontFamily: "var(--font-display)", fontSize: "22px", fontWeight: 600, lineHeight: 1 }}
+                  >
+                    {p.dailyRate}%
+                  </span>
+                  <span className="text-[9px] text-text-subtle">/day</span>
+                </div>
+                <div className="mt-2 flex flex-col gap-0.5">
+                  <span className="text-[9px] text-text-muted">{p.durationDays} days</span>
+                  <span className="text-[9px] text-text-subtle tabular-nums">
+                    {formatPHP(p.minInvestment, { short: true })}–{formatPHP(p.maxInvestment, { short: true })}
+                  </span>
+                </div>
               </button>
             );
           })}
-        </div>
-
-        <div className="flex items-center gap-0.5 bg-canvas border border-border rounded-full p-0.5 shrink-0 self-start sm:self-auto">
-          <button
-            onClick={() => setMode("single")}
-            className={cn(
-              "text-[10px] px-2.5 py-1 rounded-full transition",
-              mode === "single"
-                ? "bg-gold text-gold-dark font-medium"
-                : "text-text-muted hover:text-text"
-            )}
-          >
-            Single
-          </button>
-          <button
-            onClick={() => setMode("monthly")}
-            className={cn(
-              "text-[10px] px-2.5 py-1 rounded-full transition",
-              mode === "monthly"
-                ? "bg-gold text-gold-dark font-medium"
-                : "text-text-muted hover:text-text"
-            )}
-          >
-            Monthly
-          </button>
         </div>
       </div>
 
