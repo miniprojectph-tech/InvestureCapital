@@ -313,13 +313,14 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
 
     // Update leaderboard — once per player (not per bet entry), using the
     // aggregated payout and total bet so multi-colour bettors are counted once.
+    const leaderUpdates: Record<string, ColorLeaderboardEntry> = {};
     for (const uid of Object.keys(payouts)) {
       const lSnap = leaderSnaps.get(uid);
       const existing = lSnap?.exists ? (lSnap.data() as ColorLeaderboardEntry) : null;
       const won = payouts[uid] ?? 0;
       const bet = totalBetByUid[uid] ?? 0;
       const netWin = won > 0 ? won - bet : 0;
-      tx.set(leaderRef(uid), {
+      const entry: ColorLeaderboardEntry = {
         uid,
         name: nameByUid[uid],
         totalWon: (existing?.totalWon ?? 0) + netWin,
@@ -327,13 +328,16 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
         roundsPlayed: (existing?.roundsPlayed ?? 0) + 1,
         biggestWin: Math.max(existing?.biggestWin ?? 0, netWin),
         updatedAt: now,
-      });
+      };
+      tx.set(leaderRef(uid), entry);
+      leaderUpdates[uid] = entry;
     }
 
     return {
       alreadyResolved: false, noBets: false, dice, payouts, jackpotTriggered,
       jackpotColor: jackpotColor ?? null, jackpotAmount: jackpotTriggered ? jackpotAmount : 0,
       newJackpotPool: fireJackpot ? cfg.jackpotDefault : gs.jackpotPool,
+      leaderUpdates,
     };
   });
 
@@ -351,6 +355,12 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       liveUpd[`color/state/totalRounds`] = ServerValue.increment(1);
       if (result.jackpotTriggered) liveUpd[`color/state/jackpotPool`] = result.newJackpotPool ?? 0;
       liveUpd[`color/history/${roundId}`] = { dice: result.dice, at: now };
+      // Mirror leaderboard rows to RTDB (Firestore listeners on the named game
+      // DB don't deliver, so clients read the ranking from here).
+      const leaderUpdates = (result as { leaderUpdates?: Record<string, ColorLeaderboardEntry> }).leaderUpdates ?? {};
+      for (const [uid, e] of Object.entries(leaderUpdates)) {
+        liveUpd[`color/leaderboard/${uid}`] = e;
+      }
     }
     await rtdb.ref().update(liveUpd);
   } catch (e) {

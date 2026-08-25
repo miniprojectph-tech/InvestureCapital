@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { collection, query as fsQuery, orderBy, limit, onSnapshot, type Firestore } from "firebase/firestore";
 import { ref, onValue, query as rtdbQuery, orderByChild, limitToLast } from "firebase/database";
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
@@ -212,16 +211,13 @@ export function useColorLeaderboard(max = 20) {
 
   useEffect(() => {
     if (!user) return;
-    const { gameDb } = getFirebase();
-    if (!gameDb) return;
-
-    const q = fsQuery(
-      collection(gameDb as Firestore, "color_game_leaderboard"),
-      orderBy("totalWon", "desc"),
-      limit(max),
-    );
-    return onSnapshot(q, (snap) => {
-      setLeaders(snap.docs.map((d) => d.data() as ColorLeaderboardEntry));
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    // Read the ranking from RTDB — Firestore realtime listeners on the named
+    // game DB don't deliver in this app, so the server mirrors it here.
+    return onValue(ref(rtdb, "color/leaderboard"), (snap) => {
+      const val = (snap.val() as Record<string, ColorLeaderboardEntry> | null) ?? {};
+      setLeaders(Object.values(val).sort((a, b) => b.totalWon - a.totalWon).slice(0, max));
     });
   }, [user, max]);
 
