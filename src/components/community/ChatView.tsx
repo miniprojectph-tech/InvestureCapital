@@ -26,6 +26,7 @@ import {
   uploadChatImage,
   uploadChatVideo,
   youtubeId,
+  containsLink,
   formatChatTime,
   formatChatDay,
 } from "@/lib/community";
@@ -41,6 +42,8 @@ type Props = {
   sendDisabledReason?: string;
   allowVideo?: boolean;
   keepOriginal?: boolean;
+  /** Reject messages containing links before they reach the (also enforcing) rules. */
+  blockLinks?: boolean;
   maxText?: number;
   onSend: (payload: SendPayload) => Promise<void>;
   onDelete?: (item: ChatItem) => Promise<void>;
@@ -96,6 +99,7 @@ export function ChatView({
   sendDisabledReason,
   allowVideo = false,
   keepOriginal = false,
+  blockLinks = false,
   maxText = MAX_TEXT,
   onSend,
   onDelete,
@@ -158,6 +162,10 @@ export function ChatView({
   async function submit() {
     const body = text.trim();
     if (sending || (!body && !pending)) return;
+    if (blockLinks && containsLink(body)) {
+      setError("Only admins can share links in the Community Room.");
+      return;
+    }
     setSending(true);
     setError(null);
     try {

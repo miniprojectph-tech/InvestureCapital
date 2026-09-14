@@ -98,6 +98,7 @@ export default function CommunityPage() {
           sendDisabledReason={muted ? "You've been muted in the Community Room. Message the admin if you think this is a mistake." : undefined}
           allowVideo={user.isAdmin}
           keepOriginal={user.isAdmin}
+          blockLinks={!user.isAdmin}
           onSend={(p) => sendRoomMessage(sender, p)}
           {...moderation}
         />

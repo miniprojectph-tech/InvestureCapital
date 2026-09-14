@@ -519,6 +519,14 @@ export async function uploadChatVideo(storage: FirebaseStorage, uid: string, fil
 
 const YT_RE = /(?:youtube\.com\/(?:watch\?(?:.*&)?v=|shorts\/|embed\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/;
 
+// Mirrors the link check in database.rules.json — members can't post links in
+// the public room; this gives them a friendly error before the rules reject it.
+const LINK_RE = /(https?:\/\/|www\.|[a-z0-9-]+\.(com|net|org|io|me|ly|co|ph|app|xyz|link|site|online|shop|gl|to|tv|info|biz))/i;
+
+export function containsLink(text: string | undefined): boolean {
+  return !!text && LINK_RE.test(text);
+}
+
 export function youtubeId(text: string | undefined): string | null {
   if (!text) return null;
   const m = text.match(YT_RE);
