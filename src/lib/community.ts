@@ -7,6 +7,7 @@ import {
   query as rtdbQuery,
   orderByChild,
   limitToLast,
+  startAt,
   push,
   update,
   remove,
@@ -85,16 +86,37 @@ type RawInbox = { from: string; name: string; kind: ChatKind; text?: string; med
 
 // ===== Hooks =====
 
-export function useCommunityRoom(max = 100) {
+/**
+ * Live room messages. Members only see messages posted on or after the day
+ * they signed up (enforced by rules via `members/{uid}/joinedAt`); pass
+ * `all = true` for staff, who may read the full history.
+ */
+export function useCommunityRoom(max = 100, all = false) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [since, setSince] = useState<number | null>(null);
 
+  // Resolve the member's join date (server-mirrored) before querying.
   useEffect(() => {
     if (!user) return;
+    if (all) { setSince(0); return; }
     const { rtdb } = getFirebase();
     if (!rtdb) { setLoading(false); return; }
-    const q = rtdbQuery(ref(rtdb, "community/room"), orderByChild("at"), limitToLast(max));
+    return onValue(ref(rtdb, `members/${user.uid}/joinedAt`), (s) => {
+      const v = s.val();
+      if (typeof v === "number") setSince(v);
+      else ensureCommunityMember(); // first visit — the mirror write re-fires this listener
+    });
+  }, [user, all]);
+
+  useEffect(() => {
+    if (!user || since === null) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) { setLoading(false); return; }
+    const q = all
+      ? rtdbQuery(ref(rtdb, "community/room"), orderByChild("at"), limitToLast(max))
+      : rtdbQuery(ref(rtdb, "community/room"), orderByChild("at"), startAt(since), limitToLast(max));
     return onValue(
       q,
       (snap) => {
@@ -118,9 +140,18 @@ export function useCommunityRoom(max = 100) {
       },
       () => setLoading(false),
     );
-  }, [user, max]);
+  }, [user, max, all, since]);
 
   return { messages, loading };
+}
+
+/** Mirrors the member's sign-up date into RTDB so the room can hide older history. */
+export function ensureCommunityMember(): Promise<number | null> {
+  const { functions } = getFirebase();
+  if (!functions) return Promise.resolve(null);
+  return httpsCallable<unknown, { ok: boolean; joinedAt: number }>(functions, "ensureCommunityMember")({})
+    .then((r) => r.data.joinedAt)
+    .catch(() => null);
 }
 
 /** The signed-in user's chat-moderator grant, if any. */

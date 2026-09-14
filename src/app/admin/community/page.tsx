@@ -29,7 +29,7 @@ export default function AdminCommunityPage() {
   const [adminReady, setAdminReady] = useState(false);
 
   const mutedUsers = useMutedUsers(adminReady);
-  const { messages: room } = useCommunityRoom(100);
+  const { messages: room } = useCommunityRoom(100, true);
   const pinned = usePinnedMessage(room);
 
   useEffect(() => {

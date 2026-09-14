@@ -24,6 +24,24 @@ export const ensureCommunityAdmin = onCall(async (request) => {
   return { ok: true, isAdmin };
 });
 
+/**
+ * Mirror the member's sign-up date into RTDB (`members/{uid}/joinedAt`) so the
+ * room rules can hide messages posted before they joined. Server-written so a
+ * member can't backdate themselves; never overwrites an existing value.
+ */
+export const ensureCommunityMember = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const uid = request.auth.uid;
+  const ref = getDatabase().ref(`members/${uid}/joinedAt`);
+  const existing = (await ref.once("value")).val();
+  if (typeof existing === "number") return { ok: true, joinedAt: existing };
+  const snap = await db.collection("users").doc(uid).get();
+  const joinedAt = snap.data()?.profile?.joinedAt;
+  const value = typeof joinedAt === "number" && joinedAt > 0 ? joinedAt : Date.now();
+  await ref.set(value);
+  return { ok: true, joinedAt: value };
+});
+
 export const pruneCommunityRoom = onSchedule("every 24 hours", async () => {
   const rtdb = getDatabase();
   const snap = await rtdb.ref("community/room").orderByChild("at").once("value");

@@ -31,10 +31,11 @@ export default function CommunityPage() {
   const { user, demoMode } = useAuth();
   const [tab, setTab] = useState<Tab>("room");
 
-  const { messages: room, loading: roomLoading } = useCommunityRoom(100);
+  const modRole = useChatModRole();
+  // Staff read the full history; members only from their sign-up date.
+  const { messages: room, loading: roomLoading } = useCommunityRoom(100, !!user?.isAdmin || modRole.isMod);
   const pinned = usePinnedMessage(room);
   const muted = useIsMuted();
-  const modRole = useChatModRole();
 
   const uid = user?.uid ?? null;
   const { messages: inbox, loading: inboxLoading } = useInbox(tab === "admin" ? uid : null);

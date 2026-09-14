@@ -15,7 +15,7 @@ export { castLine, claimQuest, claimDailyEnergy, redeemReward, fishOfTheHour, we
 export { placeColorBet, resolveColorRound, adminAdjustColorJackpot, adminSetColorJackpotColor, adminSetColorJackpotConfig } from "./colorgame";
 
 // Community chat: admin mirror for RTDB rules + room pruning.
-export { ensureCommunityAdmin, pruneCommunityRoom } from "./community";
+export { ensureCommunityAdmin, ensureCommunityMember, pruneCommunityRoom } from "./community";
 
 // Referral system: claim processor + locked-bonus release helper.
 import { onReferralClaim, releaseLockedReferrals } from "./referrals";
