@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Users, ShieldCheck } from "lucide-react";
+import { Users, ShieldCheck, Inbox } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { ChatView } from "@/components/community/ChatView";
+import { InboxPanel } from "@/components/community/InboxPanel";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import {
@@ -12,6 +13,7 @@ import {
   useIsMuted,
   useInbox,
   useInboxMeta,
+  useChatModRole,
   isInboxUnread,
   sendRoomMessage,
   sendInboxMessage,
@@ -23,7 +25,7 @@ import {
   type ChatItem,
 } from "@/lib/community";
 
-type Tab = "room" | "admin";
+type Tab = "room" | "admin" | "inbox";
 
 export default function CommunityPage() {
   const { user, demoMode } = useAuth();
@@ -32,6 +34,7 @@ export default function CommunityPage() {
   const { messages: room, loading: roomLoading } = useCommunityRoom(100);
   const pinned = usePinnedMessage(room);
   const muted = useIsMuted();
+  const modRole = useChatModRole();
 
   const uid = user?.uid ?? null;
   const { messages: inbox, loading: inboxLoading } = useInbox(tab === "admin" ? uid : null);
@@ -55,9 +58,13 @@ export default function CommunityPage() {
   }, [tab, uid, inboxMeta, adminUnread, inbox.length]);
 
   if (!user) return null;
-  const sender = { uid: user.uid, name: user.name, isAdmin: user.isAdmin };
 
-  const moderation = user.isAdmin
+  // Staff = full admin or chat moderator. Inbox access needs the per-mod toggle.
+  const isStaff = user.isAdmin || modRole.isMod;
+  const canInbox = user.isAdmin || (modRole.isMod && modRole.inbox);
+  const sender = { uid: user.uid, name: user.name, isAdmin: user.isAdmin, isMod: modRole.isMod };
+
+  const moderation = isStaff
     ? {
         onDelete: (m: ChatItem) => deleteRoomMessage(m.id),
         onPin: (m: ChatItem) => setPinnedMessage(pinned?.id === m.id ? null : m.id),
@@ -76,16 +83,21 @@ export default function CommunityPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex items-center gap-1 bg-card border border-border rounded-full p-1 mb-3 w-fit">
+      <div className="flex items-center gap-1 bg-card border border-border rounded-full p-1 mb-3 w-fit max-w-full overflow-x-auto">
         <TabButton active={tab === "room"} onClick={() => setTab("room")} icon={<Users className="w-3.5 h-3.5" />}>
           Community Room
         </TabButton>
         <TabButton active={tab === "admin"} onClick={() => setTab("admin")} icon={<ShieldCheck className="w-3.5 h-3.5" />} dot={adminUnread}>
           Message Admin
         </TabButton>
+        {canInbox && (
+          <TabButton active={tab === "inbox"} onClick={() => setTab("inbox")} icon={<Inbox className="w-3.5 h-3.5" />}>
+            Inbox
+          </TabButton>
+        )}
       </div>
 
-      {tab === "room" ? (
+      {tab === "room" && (
         <ChatView
           key="room"
           messages={room}
@@ -96,13 +108,15 @@ export default function CommunityPage() {
           pinned={pinned}
           canSend={!muted && !demoMode}
           sendDisabledReason={muted ? "You've been muted in the Community Room. Message the admin if you think this is a mistake." : undefined}
-          allowVideo={user.isAdmin}
-          keepOriginal={user.isAdmin}
-          blockLinks={!user.isAdmin}
+          allowVideo={isStaff}
+          keepOriginal={isStaff}
+          blockLinks={!isStaff}
           onSend={(p) => sendRoomMessage(sender, p)}
           {...moderation}
         />
-      ) : (
+      )}
+
+      {tab === "admin" && (
         <ChatView
           key="admin"
           messages={inbox}
@@ -112,8 +126,12 @@ export default function CommunityPage() {
           emptyText="This is a private conversation between you and the admin team. Send a message and we'll reply here."
           canSend={!demoMode}
           maxText={1000}
-          onSend={(p) => sendInboxMessage(user.uid, sender, p, { name: user.name, email: user.email })}
+          onSend={(p) => sendInboxMessage(user.uid, { uid: user.uid, name: user.name, isAdmin: false }, p, { name: user.name, email: user.email })}
         />
+      )}
+
+      {tab === "inbox" && canInbox && (
+        <InboxPanel staff={{ uid: user.uid, name: user.isAdmin ? "Admin" : "Moderator", isAdmin: user.isAdmin, isMod: modRole.isMod }} canSend={!demoMode} />
       )}
     </div>
   );
@@ -136,7 +154,7 @@ function TabButton({
     <button
       onClick={onClick}
       className={cn(
-        "relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] transition",
+        "relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] transition whitespace-nowrap",
         active ? "bg-gold text-gold-dark font-medium" : "text-text-muted hover:text-text",
       )}
     >

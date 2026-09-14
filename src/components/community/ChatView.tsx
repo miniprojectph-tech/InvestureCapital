@@ -273,7 +273,7 @@ export function ChatView({
                         <span className="text-[10px] font-medium text-text-muted">{m.name}</span>
                         {m.admin && (
                           <span className="text-[8px] font-semibold uppercase tracking-wider bg-gold/15 text-gold px-1.5 py-px rounded-full">
-                            Admin
+                            {m.mod ? "Mod" : "Admin"}
                           </span>
                         )}
                       </div>

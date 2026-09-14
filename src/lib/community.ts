@@ -50,7 +50,12 @@ export type ChatItem = {
   media?: ChatMedia;
   at: number;
   admin: boolean;
+  /** Posted by a chat moderator (shows a "Mod" tag instead of "Admin"). */
+  mod?: boolean;
 };
+
+/** A member granted chat-only moderator powers by a full admin. */
+export type ChatMod = { uid: string; name: string; at: number; inbox: boolean };
 
 export type InboxMeta = {
   uid: string;
@@ -71,10 +76,11 @@ export const MAX_VIDEO_BYTES = 15 * 1024 * 1024;
 export const MAX_VIDEO_SECONDS = 30;
 export const MAX_GIF_BYTES = 3 * 1024 * 1024;
 
-type Sender = { uid: string; name: string; isAdmin: boolean };
+/** isAdmin = full app admin; isMod = chat-only moderator (see ChatMod). */
+export type Sender = { uid: string; name: string; isAdmin: boolean; isMod?: boolean };
 export type SendPayload = { kind: ChatKind; text?: string; media?: ChatMedia };
 
-type RawRoom = { uid: string; name: string; kind: ChatKind; text?: string; media?: ChatMedia; at: number; admin?: boolean };
+type RawRoom = { uid: string; name: string; kind: ChatKind; text?: string; media?: ChatMedia; at: number; admin?: boolean; mod?: boolean };
 type RawInbox = { from: string; name: string; kind: ChatKind; text?: string; media?: ChatMedia; at: number };
 
 // ===== Hooks =====
@@ -104,6 +110,7 @@ export function useCommunityRoom(max = 100) {
               media: m.media,
               at: m.at,
               admin: !!m.admin,
+              mod: !!m.mod,
             }))
             .sort((a, b) => a.at - b.at),
         );
@@ -114,6 +121,54 @@ export function useCommunityRoom(max = 100) {
   }, [user, max]);
 
   return { messages, loading };
+}
+
+/** The signed-in user's chat-moderator grant, if any. */
+export function useChatModRole(): { isMod: boolean; inbox: boolean } {
+  const { user } = useAuth();
+  const [role, setRole] = useState({ isMod: false, inbox: false });
+  useEffect(() => {
+    if (!user) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, `chatMods/${user.uid}`), (s) => {
+      const v = s.val() as { inbox?: boolean } | null;
+      setRole({ isMod: !!v, inbox: !!v?.inbox });
+    });
+  }, [user]);
+  return role;
+}
+
+/** Admin only — every chat moderator. */
+export function useChatMods(enabled: boolean): ChatMod[] {
+  const { user } = useAuth();
+  const [list, setList] = useState<ChatMod[]>([]);
+  useEffect(() => {
+    if (!user || !enabled) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, "chatMods"), (s) => {
+      const val = (s.val() as Record<string, { name?: string; at?: number; inbox?: boolean }> | null) ?? {};
+      setList(
+        Object.entries(val)
+          .map(([uid, v]) => ({ uid, name: v.name ?? uid, at: v.at ?? 0, inbox: !!v.inbox }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      );
+    });
+  }, [user, enabled]);
+  return list;
+}
+
+export function addChatMod(uid: string, name: string, inbox: boolean) {
+  return set(ref(needRtdb(), `chatMods/${uid}`), { name: name.slice(0, 40), at: serverTimestamp(), inbox });
+}
+
+export function setChatModInbox(uid: string, inbox: boolean) {
+  return set(ref(needRtdb(), `chatMods/${uid}/inbox`), inbox);
+}
+
+export function removeChatMod(uid: string) {
+  return remove(ref(needRtdb(), `chatMods/${uid}`));
 }
 
 /** The admin-pinned room message (fetched directly if it scrolled out of the window). */
@@ -163,12 +218,12 @@ export function useIsMuted(): boolean {
   return muted;
 }
 
-/** Admin only — everyone currently muted in the room. */
-export function useMutedUsers(): MutedUser[] {
+/** Staff only — everyone currently muted in the room. */
+export function useMutedUsers(enabled: boolean): MutedUser[] {
   const { user } = useAuth();
   const [list, setList] = useState<MutedUser[]>([]);
   useEffect(() => {
-    if (!user?.isAdmin) return;
+    if (!user || !enabled) return;
     const { rtdb } = getFirebase();
     if (!rtdb) return;
     return onValue(ref(rtdb, "community/muted"), (s) => {
@@ -179,7 +234,7 @@ export function useMutedUsers(): MutedUser[] {
           .sort((a, b) => b.at - a.at),
       );
     });
-  }, [user]);
+  }, [user, enabled]);
   return list;
 }
 
@@ -236,12 +291,12 @@ export function useInboxMeta(threadUid: string | null): InboxMeta | null {
   return meta;
 }
 
-/** Admin only — every member thread, newest activity first. */
-export function useInboxList(): InboxMeta[] {
+/** Inbox staff only — every member thread, newest activity first. */
+export function useInboxList(enabled: boolean): InboxMeta[] {
   const { user } = useAuth();
   const [list, setList] = useState<InboxMeta[]>([]);
   useEffect(() => {
-    if (!user?.isAdmin) return;
+    if (!user || !enabled) return;
     const { rtdb } = getFirebase();
     if (!rtdb) return;
     return onValue(ref(rtdb, "community/inboxMeta"), (s) => {
@@ -253,7 +308,7 @@ export function useInboxList(): InboxMeta[] {
           .sort((a, b) => b.lastAt - a.lastAt),
       );
     });
-  }, [user]);
+  }, [user, enabled]);
   return list;
 }
 
@@ -290,7 +345,8 @@ export async function sendRoomMessage(sender: Sender, payload: SendPayload): Pro
   };
   if (text) msg.text = text.slice(0, MAX_TEXT);
   if (payload.media) msg.media = payload.media;
-  if (sender.isAdmin) msg.admin = true;
+  if (sender.isAdmin || sender.isMod) msg.admin = true;
+  if (sender.isMod && !sender.isAdmin) msg.mod = true;
   await update(ref(rtdb), {
     [`community/room/${id}`]: msg,
     [`community/lastPost/${sender.uid}`]: serverTimestamp(),
@@ -323,11 +379,12 @@ export async function sendInboxMessage(
   const rtdb = needRtdb();
   const id = push(ref(rtdb, `community/inbox/${threadUid}`)).key;
   if (!id) throw new Error("Couldn't create message");
-  const from = sender.isAdmin ? "admin" : sender.uid;
+  const staff = sender.isAdmin || !!sender.isMod;
+  const from = staff ? "admin" : sender.uid;
   const text = payload.text?.trim();
   const msg: Record<string, unknown> = {
     from,
-    name: (sender.isAdmin ? "Admin" : sender.name).slice(0, 40),
+    name: (sender.isAdmin ? "Admin" : sender.isMod ? "Moderator" : sender.name).slice(0, 40),
     kind: payload.kind,
     at: serverTimestamp(),
   };
@@ -341,8 +398,8 @@ export async function sendInboxMessage(
     [`${metaBase}/lastText`]: previewText(payload),
     [`${metaBase}/lastFrom`]: from,
   };
-  // The member owns the thread's display name; admin replies never overwrite it.
-  if (!sender.isAdmin) {
+  // The member owns the thread's display name; staff replies never overwrite it.
+  if (!staff) {
     upd[`${metaBase}/name`] = sender.name.slice(0, 40);
     if (threadOwner?.email) upd[`${metaBase}/email`] = threadOwner.email;
     upd[`${metaBase}/userReadAt`] = serverTimestamp();
