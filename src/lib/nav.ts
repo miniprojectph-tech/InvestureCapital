@@ -18,7 +18,8 @@ export type IconName =
   | "fish"
   | "share"
   | "spade"
-  | "refresh";
+  | "refresh"
+  | "chat";
 
 export type NavItem = {
   label: string;
@@ -57,6 +58,7 @@ export const investorNav: NavGroup[] = [
   },
   {
     items: [
+      { label: "Community", href: "/community", icon: "chat" },
       { label: "Profile", href: "/profile", icon: "user" },
       { label: "Support", href: "/support", icon: "support" },
     ],
@@ -84,6 +86,7 @@ export const adminNav: NavGroup[] = [
       { label: "Transactions", href: "/admin/transactions", icon: "receipt" },
       { label: "Activity log", href: "/admin/activity", icon: "activity" },
       { label: "Reinvestments", href: "/admin/reinvestments", icon: "refresh" },
+      { label: "Community chat", href: "/admin/community", icon: "chat" },
     ],
   },
   {

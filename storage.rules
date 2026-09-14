@@ -76,6 +76,18 @@ service firebase.storage {
       allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
+    // ===== Community chat media =====
+    // Clients compress images on-device before upload; the 15 MB cap covers
+    // admin originals. Video uploads are admin-only.
+    match /community/{userId}/{file} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId
+        && request.resource.size < 15 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+          || (isAdmin() && request.resource.contentType.matches('video/.*')));
+      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
     // ===== catch-all (keep last) =====
     match /{allPaths=**} {
       allow read: if isSignedIn();

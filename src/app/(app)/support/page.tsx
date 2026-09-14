@@ -140,17 +140,20 @@ export default function SupportPage() {
                   </p>
                 </div>
               </a>
-              <div className="flex items-center gap-3 px-3 py-2.5 bg-canvas border border-border rounded-lg opacity-60">
+              <a
+                href="/community#admin"
+                className="flex items-center gap-3 px-3 py-2.5 bg-canvas border border-border rounded-lg hover:bg-card-elev transition"
+              >
                 <div className="w-7 h-7 rounded-md bg-green/15 flex items-center justify-center">
                   <MessageCircle className="w-3.5 h-3.5 text-green" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[12px] m-0">Live chat</p>
+                  <p className="text-[12px] m-0">Message the admin</p>
                   <p className="text-[10px] text-text-subtle mt-0.5 m-0">
-                    Coming soon
+                    Private chat in the Community tab
                   </p>
                 </div>
-              </div>
+              </a>
             </div>
           </Card>
         </div>

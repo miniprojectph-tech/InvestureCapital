@@ -25,6 +25,7 @@ import {
   Share2,
   Spade,
   RefreshCw,
+  MessageCircle,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -52,6 +53,7 @@ const iconMap: Record<IconName, LucideIcon> = {
   share: Share2,
   spade: Spade,
   refresh: RefreshCw,
+  chat: MessageCircle,
 };
 
 const PETALS = Array.from({ length: 8 }, (_, i) => i);
