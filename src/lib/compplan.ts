@@ -158,6 +158,15 @@ export function formatCountdown(ms: number): string {
   return `${Math.max(1, m)}m`;
 }
 
+export function formatRelativeShort(at: number): string {
+  const diff = Date.now() - at;
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  if (diff < 7 * 86_400_000) return `${Math.floor(diff / 86_400_000)}d ago`;
+  return new Date(at).toLocaleDateString("en-PH", { month: "short", day: "numeric" });
+}
+
 /** Re-renders every `everyMs` so countdowns tick. */
 export function useNow(everyMs = 60_000): number {
   const [now, setNow] = useState(() => Date.now());

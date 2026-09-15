@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import type { NavGroup, IconName } from "@/lib/nav";
 import { cn } from "@/lib/utils";
+import { useNotifications } from "@/lib/compplan";
 
 const iconMap: Record<IconName, LucideIcon> = {
   dashboard: LayoutDashboard,
@@ -66,6 +67,7 @@ function sectionTitle(group: NavGroup, index: number): string {
 export function MobileLauncher({ nav, badge }: { nav: NavGroup[]; badge?: string }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
+  const { unread } = useNotifications(15);
 
   // Close whenever the route changes (tile tapped).
   useEffect(() => {
@@ -240,6 +242,11 @@ export function MobileLauncher({ nav, badge }: { nav: NavGroup[]; badge?: string
               "0 6px 20px rgba(0,0,0,.5), 0 0 0 4px rgba(10,12,18,.6), 0 0 16px rgba(230,180,74,.35)",
           }}
         >
+          {!open && unread > 0 && (
+            <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-red text-white text-[9px] font-semibold flex items-center justify-center ring-2 ring-[#12141c]">
+              {unread > 9 ? "9+" : unread}
+            </span>
+          )}
           <span
             className="text-gold font-semibold leading-none text-center"
             style={{ fontSize: open ? "11px" : "13px" }}

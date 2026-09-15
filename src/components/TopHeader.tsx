@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Bell, ChevronDown, User as UserIcon, LogOut } from "lucide-react";
+import { ChevronDown, User as UserIcon, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { mockUser } from "@/lib/mock-data";
+import { NotificationBell } from "./NotificationBell";
 
 type TopHeaderProps = {
   title: string;
@@ -65,12 +66,7 @@ export function TopHeader({ title, subtitle }: TopHeaderProps) {
             Demo
           </span>
         )}
-        <button className="relative" aria-label="Notifications">
-          <Bell className="w-4 h-4 text-text-muted" strokeWidth={2} />
-          <span className="absolute -top-1 -right-1 w-3 h-3 bg-red rounded-full text-[8px] text-white flex items-center justify-center font-medium">
-            3
-          </span>
-        </button>
+        <NotificationBell />
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen((o) => !o)}
