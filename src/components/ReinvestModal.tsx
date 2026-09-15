@@ -4,28 +4,38 @@ import { useState } from "react";
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
 import { Modal } from "./Modal";
 import { formatPHP, cn } from "@/lib/utils";
-import { usePlans } from "@/lib/plans";
-import type { StoredPlan } from "@/lib/plans";
+import { useCompPlan, projectPlacement, validatePlacementAmount, peso } from "@/lib/compplan";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   availableBalance: number;
-  onSubmit: (plan: StoredPlan, amount: number) => Promise<void>;
+  onSubmit: (amount: number, termMonths: number) => Promise<void>;
 };
 
+/** Place capital straight from the wallet — no payment proof needed. */
 export function ReinvestModal({ open, onClose, availableBalance, onSubmit }: Props) {
-  const { plans } = usePlans({ onlyActive: true });
-  const [selectedPlan, setSelectedPlan] = useState<StoredPlan | null>(null);
+  const { cfg } = useCompPlan();
+  const [months, setMonths] = useState<number | null>(null);
   const [amount, setAmount] = useState("");
   const [stage, setStage] = useState<"form" | "processing" | "done" | "error">("form");
   const [error, setError] = useState<string | null>(null);
+  const [placementId, setPlacementId] = useState<string | null>(null);
+
+  const term = cfg.terms.find((t) => t.months === months) ?? cfg.terms[Math.min(1, cfg.terms.length - 1)];
+  const numAmount = parseInt(amount) || 0;
+  const maxUnits = Math.floor(availableBalance / cfg.increment);
+  const max = maxUnits * cfg.increment;
+  const amountError = numAmount > availableBalance ? "Exceeds your wallet balance" : validatePlacementAmount(cfg, numAmount);
+  const valid = !amountError;
+  const proj = projectPlacement(cfg, valid ? numAmount : cfg.minPlacement, term.months);
 
   function reset() {
-    setSelectedPlan(null);
+    setMonths(null);
     setAmount("");
     setStage("form");
     setError(null);
+    setPlacementId(null);
   }
 
   function handleClose() {
@@ -33,17 +43,12 @@ export function ReinvestModal({ open, onClose, availableBalance, onSubmit }: Pro
     onClose();
   }
 
-  const numAmount = parseFloat(amount) || 0;
-  const min = selectedPlan?.minInvestment ?? 0;
-  const max = Math.min(selectedPlan?.maxInvestment ?? Infinity, availableBalance);
-  const valid = selectedPlan && numAmount >= min && numAmount <= max;
-
   async function handleSubmit() {
-    if (!selectedPlan || !valid) return;
+    if (!valid) return;
     setStage("processing");
     setError(null);
     try {
-      await onSubmit(selectedPlan, numAmount);
+      await onSubmit(numAmount, term.months);
       setStage("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Reinvestment failed");
@@ -56,14 +61,11 @@ export function ReinvestModal({ open, onClose, availableBalance, onSubmit }: Pro
       {stage === "done" ? (
         <div className="text-center py-6 space-y-3">
           <CheckCircle2 className="w-10 h-10 text-green mx-auto" />
-          <p className="text-[14px] font-medium">Reinvestment successful!</p>
+          <p className="text-[14px] font-medium">Placement active</p>
           <p className="text-[12px] text-text-muted">
-            {formatPHP(numAmount)} reinvested into {selectedPlan?.name}
+            {formatPHP(numAmount)} placed for {term.months} month{term.months > 1 ? "s" : ""}{placementId ? ` · ${placementId}` : ""}. First payout in {cfg.cycleDays} days.
           </p>
-          <button
-            onClick={handleClose}
-            className="mt-2 px-6 py-2.5 bg-gold text-gold-dark rounded-lg text-[12px] font-semibold"
-          >
+          <button onClick={handleClose} className="mt-2 px-6 py-2.5 bg-gold text-gold-dark rounded-lg text-[12px] font-semibold">
             Done
           </button>
         </div>
@@ -72,113 +74,88 @@ export function ReinvestModal({ open, onClose, availableBalance, onSubmit }: Pro
           <AlertCircle className="w-10 h-10 text-red mx-auto" />
           <p className="text-[14px] font-medium">Something went wrong</p>
           <p className="text-[12px] text-text-muted">{error}</p>
-          <button
-            onClick={() => setStage("form")}
-            className="mt-2 px-6 py-2.5 border border-border rounded-lg text-[12px]"
-          >
+          <button onClick={() => setStage("form")} className="mt-2 px-6 py-2.5 border border-border rounded-lg text-[12px]">
             Try again
           </button>
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="p-3 bg-canvas border border-border rounded-lg">
-            <p className="text-[10px] text-text-subtle m-0 mb-0.5">Wallet balance</p>
-            <p className="text-[18px] font-mono font-medium m-0">{formatPHP(availableBalance)}</p>
-          </div>
-
-          <div>
-            <label className="block text-[11px] text-text-muted mb-1.5">Select a plan</label>
-            <div className="grid grid-cols-1 gap-1.5">
-              {plans.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    setSelectedPlan(p);
-                    if (!amount) setAmount(String(Math.min(p.minInvestment, availableBalance)));
-                  }}
-                  disabled={availableBalance < p.minInvestment}
-                  className={cn(
-                    "text-left p-3 rounded-lg border transition text-[12px]",
-                    selectedPlan?.id === p.id
-                      ? "border-gold bg-gold/10"
-                      : "border-border hover:border-border-strong",
-                    availableBalance < p.minInvestment && "opacity-40 cursor-not-allowed"
-                  )}
-                >
-                  <span className="font-medium">{p.name}</span>
-                  <span className="text-text-subtle ml-2">
-                    {p.durationDays}d · {p.dailyRate}% daily · min {formatPHP(p.minInvestment)}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {selectedPlan && (
+          <div className="p-3 bg-canvas border border-border rounded-lg flex items-center justify-between">
             <div>
-              <label className="block text-[11px] text-text-muted mb-1.5">
-                Amount (₱{min.toLocaleString()} – ₱{max.toLocaleString()})
-              </label>
-              <input
-                type="number"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder={`Min ₱${min.toLocaleString()}`}
-                className="w-full bg-canvas border border-border rounded-md px-3 py-2.5 text-[14px] font-mono outline-none focus:border-gold/40"
-              />
-              {numAmount > 0 && numAmount < min && (
-                <p className="text-[10px] text-red mt-1 m-0">Below minimum of {formatPHP(min)}</p>
-              )}
-              {numAmount > max && (
-                <p className="text-[10px] text-red mt-1 m-0">Exceeds available balance</p>
-              )}
-              <button
-                onClick={() => setAmount(String(max))}
-                className="text-[10px] text-gold mt-1 hover:underline"
-              >
-                Use max ({formatPHP(max)})
+              <p className="text-[10px] text-text-subtle m-0 mb-0.5">Wallet balance</p>
+              <p className="text-[18px] font-mono font-medium m-0">{formatPHP(availableBalance)}</p>
+            </div>
+            {max >= cfg.minPlacement && (
+              <button onClick={() => setAmount(String(max))} className="text-[10px] text-gold hover:underline">
+                Use max ({formatPHP(max, { short: true })})
               </button>
-            </div>
-          )}
-
-          {selectedPlan && numAmount > 0 && valid && (
-            <div className="p-3 bg-canvas border border-border rounded-lg text-[11px] space-y-1">
-              <div className="flex justify-between">
-                <span className="text-text-muted">Plan</span>
-                <span>{selectedPlan.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-muted">Capital</span>
-                <span className="font-mono">{formatPHP(numAmount)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-muted">Daily earnings</span>
-                <span className="font-mono text-green">
-                  +{formatPHP(numAmount * (selectedPlan.dailyRate / 100))}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-text-muted">Total vault credit</span>
-                <span className="font-mono text-green">
-                  +{formatPHP(numAmount * (selectedPlan.dailyRate / 100) * selectedPlan.durationDays)}
-                </span>
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={handleSubmit}
-            disabled={!valid || stage === "processing"}
-            className="w-full py-3 bg-gold text-gold-dark rounded-lg text-[13px] font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
-          >
-            {stage === "processing" ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Processing…
-              </>
-            ) : (
-              "Confirm reinvestment"
             )}
-          </button>
+          </div>
+
+          {max < cfg.minPlacement ? (
+            <p className="text-[11px] text-text-muted m-0">
+              You need at least {formatPHP(cfg.minPlacement)} in your wallet to place capital.
+            </p>
+          ) : (
+            <>
+              <div>
+                <label className="block text-[11px] text-text-muted mb-1.5">Term</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {cfg.terms.map((t) => (
+                    <button
+                      key={t.months}
+                      onClick={() => setMonths(t.months)}
+                      className={cn(
+                        "text-left p-2.5 rounded-lg border transition",
+                        term.months === t.months ? "border-green bg-green/10" : "border-border hover:border-border-strong",
+                      )}
+                    >
+                      <p className="text-[12px] font-medium m-0">{t.months} mo</p>
+                      <p className="text-[9px] text-text-subtle m-0 mt-0.5">
+                        {t.lockedBonusPerUnit > 0 ? `+${peso(t.lockedBonusPerUnit)} / ₱${cfg.increment.toLocaleString()}` : "No bonus"}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-text-muted mb-1.5">
+                  Amount (steps of ₱{cfg.increment.toLocaleString()}, up to {formatPHP(max)})
+                </label>
+                <input
+                  type="number"
+                  value={amount}
+                  step={cfg.increment}
+                  min={cfg.minPlacement}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder={`Min ₱${cfg.minPlacement.toLocaleString()}`}
+                  className="w-full bg-canvas border border-border rounded-md px-3 py-2.5 text-[14px] font-mono outline-none focus:border-gold/40"
+                />
+                {numAmount > 0 && amountError && <p className="text-[10px] text-red mt-1 m-0">{amountError}</p>}
+              </div>
+
+              {valid && (
+                <div className="p-3 bg-canvas border border-border rounded-lg text-[11px] space-y-1">
+                  <div className="flex justify-between"><span className="text-text-muted">Payout every {cfg.cycleDays} days</span><span className="font-mono text-green">+{peso(proj.perCycle)}</span></div>
+                  <div className="flex justify-between"><span className="text-text-muted">Payouts</span><span className="font-mono">{proj.cycles}</span></div>
+                  <div className="flex justify-between"><span className="text-text-muted">Total income</span><span className="font-mono">{formatPHP(proj.totalIncome)}</span></div>
+                  {proj.lockedBonus > 0 && (
+                    <div className="flex justify-between"><span className="text-vault-muted">Locked-In Bonus (final payout)</span><span className="font-mono text-vault">{formatPHP(proj.lockedBonus)}</span></div>
+                  )}
+                  <div className="flex justify-between border-t border-dashed border-gold/25 pt-1 mt-1"><span className="text-gold-muted">Total return</span><span className="font-mono text-gold font-medium">{formatPHP(proj.total)}</span></div>
+                </div>
+              )}
+
+              <button
+                onClick={handleSubmit}
+                disabled={!valid || stage === "processing"}
+                className="w-full py-3 bg-gold text-gold-dark rounded-lg text-[13px] font-semibold disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {stage === "processing" ? (<><Loader2 className="w-4 h-4 animate-spin" /> Placing…</>) : `Place ${valid ? formatPHP(numAmount, { short: true }) : ""} from wallet`}
+              </button>
+            </>
+          )}
         </div>
       )}
     </Modal>

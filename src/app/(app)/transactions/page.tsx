@@ -12,6 +12,10 @@ import {
   Download,
   ArrowDownToLine,
   Loader2,
+  Lock,
+  Users,
+  Zap,
+  Award,
   type LucideIcon,
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
@@ -35,13 +39,20 @@ type Meta = { label: string; icon: LucideIcon; color: string; bg: string };
 
 const typeMeta: Record<string, Meta> = {
   payout: { label: "Payout", icon: ArrowDownRight, color: "text-green", bg: "bg-green/15" },
-  compound: { label: "Compound", icon: TrendingUp, color: "text-vault", bg: "bg-vault/15" },
+  "capital-return": { label: "Capital returned", icon: CheckCircle2, color: "text-blue", bg: "bg-blue/15" },
+  "locked-bonus": { label: "Locked-In Bonus", icon: Lock, color: "text-vault", bg: "bg-vault/15" },
+  "referral-commission": { label: "Referral commission", icon: Users, color: "text-blue", bg: "bg-blue/15" },
+  "fast-start": { label: "Fast-Start Bonus", icon: Zap, color: "text-vault", bg: "bg-vault/15" },
+  leadership: { label: "Leadership Bonus", icon: Award, color: "text-gold", bg: "bg-gold/15" },
+  "placement-activate": { label: "Placement", icon: Plus, color: "text-text-muted", bg: "bg-white/5" },
+  reinvest: { label: "Reinvest", icon: RefreshCw, color: "text-gold", bg: "bg-gold/15" },
+  withdrawal: { label: "Withdrawal", icon: ArrowUpRight, color: "text-text-muted", bg: "bg-white/5" },
+  deposit: { label: "Top up", icon: ArrowDownToLine, color: "text-green", bg: "bg-green/15" },
+  // Legacy (old plan system)
+  "plan-earning": { label: "Daily income", icon: ArrowDownRight, color: "text-green", bg: "bg-green/15" },
   "vault-growth": { label: "Vault growth", icon: TrendingUp, color: "text-vault", bg: "bg-vault/15" },
   "plan-activate": { label: "Plan activated", icon: Plus, color: "text-text-muted", bg: "bg-white/5" },
   "plan-complete": { label: "Plan complete", icon: CheckCircle2, color: "text-blue", bg: "bg-blue/15" },
-  withdrawal: { label: "Withdrawal", icon: ArrowUpRight, color: "text-text-muted", bg: "bg-white/5" },
-  reinvest: { label: "Reinvest", icon: RefreshCw, color: "text-gold", bg: "bg-gold/15" },
-  deposit: { label: "Top up", icon: ArrowDownToLine, color: "text-green", bg: "bg-green/15" },
 };
 
 const DEFAULT_META: Meta = {
@@ -52,7 +63,7 @@ const DEFAULT_META: Meta = {
 };
 
 // Event types that represent earnings (profit), not returned capital or deposits.
-const INCOME_TYPES = new Set(["vault-growth", "compound", "payout", "plan-complete"]);
+const INCOME_TYPES = new Set(["payout", "locked-bonus", "referral-commission", "fast-start", "leadership", "plan-earning", "vault-growth"]);
 
 export default function TransactionsPage() {
   const { demoMode } = useAuth();
@@ -107,7 +118,7 @@ export default function TransactionsPage() {
 
   return (
     <div>
-      <TopHeader title="Transactions" subtitle="Deposits, investments, income and payouts" />
+      <TopHeader title="Transactions" subtitle="Placements, payouts, commissions, bonuses and withdrawals" />
 
       <div className="grid grid-cols-3 gap-2 mb-3">
         {[
@@ -206,7 +217,7 @@ export default function TransactionsPage() {
               <tr>
                 <td colSpan={4} className="text-center text-text-subtle py-8">
                   {source.length === 0
-                    ? "No transactions yet. Top up your wallet and activate a plan to get started."
+                    ? "No transactions yet. Place capital to start receiving payouts."
                     : "No transactions match this filter."}
                 </td>
               </tr>

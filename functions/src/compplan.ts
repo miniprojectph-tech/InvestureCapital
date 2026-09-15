@@ -40,6 +40,7 @@ export type Placement = {
   totalPaid: number; // cycle income paid so far (excludes capital/bonus)
   lastAccrualDay?: string; // "YYYY-MM-DD" (Asia/Manila) of the last accrual notice
   requestId?: string;
+  source?: "wallet"; // reinvested from the member's wallet (no payment proof)
 };
 
 export type CompletedPlacement = Placement & {
@@ -149,26 +150,37 @@ type ActivateArgs = {
   amount?: number;
   termMonths?: number;
   note?: string;
+  /** Member self-service: pay for the placement from their own wallet. */
+  fromWallet?: boolean;
 };
 
 export const activatePlacement = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
-  const callerSnap = await userRef(request.auth.uid).get();
-  if (!callerSnap.exists || callerSnap.data()?.isAdmin !== true) {
-    throw new HttpsError("permission-denied", "Admin role required.");
-  }
   const args = (request.data ?? {}) as ActivateArgs;
+  const callerUid = request.auth.uid;
+  if (!args.fromWallet) {
+    const callerSnap = await userRef(callerUid).get();
+    if (!callerSnap.exists || callerSnap.data()?.isAdmin !== true) {
+      throw new HttpsError("permission-denied", "Admin role required.");
+    }
+  }
   const cfg = await loadCompPlan();
   const now = Date.now();
-  return db.runTransaction((tx) => activateInTx(tx, cfg, args, request.auth!.uid, now));
+  return db.runTransaction((tx) => activateInTx(tx, cfg, args, callerUid, now));
 });
 
-async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: ActivateArgs, adminUid: string, now: number) {
+async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: ActivateArgs, callerUid: string, now: number) {
   // ---------- reads (all before any write) ----------
   let reqRef: DocumentReference | null = null;
   let userId = args.userId;
   let amount = args.amount;
   let termMonths = args.termMonths;
+
+  if (args.fromWallet) {
+    // Reinvest: the caller places for themselves and pays from their wallet.
+    userId = callerUid;
+    if (args.requestId) throw new HttpsError("invalid-argument", "Wallet reinvest can't reference a request.");
+  }
 
   if (args.requestId) {
     reqRef = db.collection("plan_requests").doc(args.requestId);
@@ -191,6 +203,9 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
   const memberSnap = await tx.get(userRef(userId));
   if (!memberSnap.exists) throw new HttpsError("not-found", "Member not found.");
   const member = memberSnap.data() as UserDoc;
+  if (args.fromWallet && (member.balances?.wallet ?? 0) < amount) {
+    throw new HttpsError("failed-precondition", `Wallet balance is below ${peso(amount)}.`);
+  }
 
   // Walk the sponsor chain up to N levels (cycle-safe).
   const uplines: { uid: string; data: UserDoc }[] = [];
@@ -230,6 +245,7 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
     totalPaid: 0,
   };
   if (args.requestId) placement.requestId = args.requestId;
+  if (args.fromWallet) placement.source = "wallet";
   const perCycle = (amount * cfg.cycleRate) / 100;
   const memberName = displayName(member, userId);
 
@@ -238,9 +254,10 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
 
   // ---------- member ----------
   patches.set(userId, { placements: [...(member.placements ?? []), placement] });
+  if (args.fromWallet) patches.credit(userId, -amount);
   activity(writes, userId, {
-    type: "placement-activate",
-    title: `Placement activated — ${placement.id}`,
+    type: args.fromWallet ? "reinvest" : "placement-activate",
+    title: `${args.fromWallet ? "Reinvested into" : "Placement activated —"} ${placement.id}`,
     subtitle: `${peso(amount)} · ${term.months}-month term · ${cycles} payouts of ${peso(perCycle)}`,
     amount,
     amountKind: "out",
@@ -256,7 +273,7 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
     tx.update(reqRef, {
       status: "approved",
       processedAt: now,
-      processedBy: adminUid,
+      processedBy: callerUid,
       placementId: placement.id,
       ...(args.note ? { note: args.note } : {}),
     });

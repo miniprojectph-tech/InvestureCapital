@@ -17,21 +17,20 @@ import {
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
 import { PAYMENT_METHOD_LABELS, type PaymentMethodId } from "./settings";
-import { activatePlanFor, type UserState } from "./userState";
-import type { ReferralPlanConfig } from "./referrals";
+import type { UserState } from "./userState";
+import { activatePlacement, type ActivatePlacementResult } from "./compplan";
 
 export type PlanRequestStatus = "pending" | "approved" | "rejected";
 
+/** A member's request to place capital (paid off-platform, admin verifies the receipt). */
 export type PlanRequest = {
   id: string;
   userId: string;
   userName: string;
   userEmail: string;
-  planId: string;
-  planName: string;
   amount: number;
-  dailyRate: number;
-  durationDays: number;
+  /** Chosen term. Missing only on legacy requests from the old plan system. */
+  termMonths?: number;
   method: PaymentMethodId;
   methodLabel: string;
   referenceNumber?: string;
@@ -42,95 +41,59 @@ export type PlanRequest = {
   processedAt?: number;
   processedBy?: string;
   note?: string;
-  referralConfig?: ReferralPlanConfig;
+  /** Set by activatePlacement on approval. */
+  placementId?: string;
+  // Legacy fields (old plan templates) — display only.
+  planId?: string;
+  planName?: string;
+  dailyRate?: number;
+  durationDays?: number;
 };
 
 function planRequestsCollection(db: Firestore) {
   return collection(db, "plan_requests");
 }
 
-export async function requestPlanActivation(
+export async function requestPlacement(
   db: Firestore,
   args: {
     userId: string;
     userName: string;
     userEmail: string;
-    planId: string;
-    planName: string;
     amount: number;
-    dailyRate: number;
-    durationDays: number;
+    termMonths: number;
     method: PaymentMethodId;
     referenceNumber?: string;
     receiptUrl?: string;
     receiptPath?: string;
-    referralConfig?: ReferralPlanConfig;
-  }
+  },
 ): Promise<string> {
-  const {
-    userId, userName, userEmail, planId, planName, amount,
-    dailyRate, durationDays, method, referenceNumber,
-    receiptUrl, receiptPath, referralConfig,
-  } = args;
+  const { userId, userName, userEmail, amount, termMonths, method, referenceNumber, receiptUrl, receiptPath } = args;
   if (amount <= 0) throw new Error("Amount must be greater than zero");
   const ref = await addDoc(planRequestsCollection(db), {
     userId,
     userName,
     userEmail,
-    planId,
-    planName,
     amount,
-    dailyRate,
-    durationDays,
+    termMonths,
+    planName: `${termMonths}-month placement`,
     method,
     methodLabel: PAYMENT_METHOD_LABELS[method],
     ...(referenceNumber ? { referenceNumber } : {}),
     ...(receiptUrl ? { receiptUrl } : {}),
     ...(receiptPath ? { receiptPath } : {}),
-    ...(referralConfig ? { referralConfig } : {}),
     status: "pending",
     createdAt: Date.now(),
   });
   return ref.id;
 }
 
-export async function approvePlanRequest(
-  db: Firestore,
-  id: string,
-  adminUid: string,
-  note?: string
-): Promise<void> {
-  const rRef = doc(db, "plan_requests", id);
-  const rSnap = await getDoc(rRef);
-  if (!rSnap.exists()) throw new Error("Plan request not found");
-  const r = rSnap.data() as PlanRequest;
-  if (r.status !== "pending") throw new Error(`Already ${r.status}`);
-
-  await activatePlanFor(
-    db,
-    r.userId,
-    r.planId,
-    r.planName,
-    r.amount,
-    r.dailyRate,
-    r.durationDays,
-    r.referralConfig
-  );
-
-  await updateDoc(rRef, {
-    status: "approved",
-    processedAt: Date.now(),
-    processedBy: adminUid,
-    ...(note ? { note } : {}),
-  });
+/** Admin: activates the placement via Cloud Function (pays commissions) and marks the request approved. */
+export function approvePlanRequest(id: string, note?: string): Promise<ActivatePlacementResult> {
+  return activatePlacement({ requestId: id, note });
 }
 
-export async function rejectPlanRequest(
-  db: Firestore,
-  id: string,
-  adminUid: string,
-  note?: string
-): Promise<void> {
+export async function rejectPlanRequest(db: Firestore, id: string, adminUid: string, note?: string): Promise<void> {
   const rRef = doc(db, "plan_requests", id);
   const rSnap = await getDoc(rRef);
   if (!rSnap.exists()) throw new Error("Plan request not found");
@@ -142,31 +105,6 @@ export async function rejectPlanRequest(
     processedBy: adminUid,
     ...(note ? { note } : {}),
   });
-}
-
-export async function adminActivatePlan(
-  db: Firestore,
-  adminUid: string,
-  args: {
-    userId: string;
-    planId: string;
-    planName: string;
-    amount: number;
-    dailyRate: number;
-    durationDays: number;
-    referralConfig?: ReferralPlanConfig;
-  }
-): Promise<void> {
-  await activatePlanFor(
-    db,
-    args.userId,
-    args.planId,
-    args.planName,
-    args.amount,
-    args.dailyRate,
-    args.durationDays,
-    args.referralConfig
-  );
 }
 
 type Scope = "me" | "all";
@@ -190,11 +128,7 @@ export function usePlanRequests(scope: Scope = "me") {
     }
     const q =
       scope === "me"
-        ? query(
-            planRequestsCollection(db),
-            where("userId", "==", user.uid),
-            orderBy("createdAt", "desc")
-          )
+        ? query(planRequestsCollection(db), where("userId", "==", user.uid), orderBy("createdAt", "desc"))
         : query(planRequestsCollection(db), orderBy("createdAt", "desc"));
     const unsub = onSnapshot(
       q,
@@ -206,7 +140,7 @@ export function usePlanRequests(scope: Scope = "me") {
         console.warn("plan_requests subscription error:", err);
         setRows([]);
         setLoading(false);
-      }
+      },
     );
     return unsub;
   }, [user, demoMode, scope]);

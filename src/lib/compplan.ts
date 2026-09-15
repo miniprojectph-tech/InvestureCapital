@@ -34,6 +34,7 @@ export type Placement = {
   totalPaid: number;
   lastAccrualDay?: string;
   requestId?: string;
+  source?: "wallet";
 };
 
 export type CompletedPlacement = Placement & {
@@ -80,15 +81,94 @@ export function useCompPlan(): { cfg: CompPlanConfig; loading: boolean } {
 
 // ===== Placement helpers =====
 
+const DAY_MS = 86_400_000;
+
 export function nextPayoutAt(p: Placement): number {
-  return p.startedAt + (p.cyclesPaid + 1) * p.cycleDays * 86_400_000;
+  return p.startedAt + (p.cyclesPaid + 1) * p.cycleDays * DAY_MS;
 }
 
 export function placementPerCycle(p: Placement): number {
   return (p.capital * p.cycleRate) / 100;
 }
 
-// ===== Callables (admin) =====
+export function placementDailyAccrual(p: Placement): number {
+  return placementPerCycle(p) / p.cycleDays;
+}
+
+/** What the final payout will add on top of the regular cycle income. */
+export function placementFinalExtra(p: Placement): number {
+  return p.capital + p.lockedBonus;
+}
+
+export function placedCapital(placements: Placement[] | undefined): number {
+  return (placements ?? []).reduce((s, p) => s + p.capital, 0);
+}
+
+export function dailyAccrualTotal(placements: Placement[] | undefined): number {
+  return (placements ?? []).reduce((s, p) => s + placementDailyAccrual(p), 0);
+}
+
+export function upcomingBonuses(placements: Placement[] | undefined): number {
+  return (placements ?? []).reduce((s, p) => s + p.lockedBonus, 0);
+}
+
+/** Income earned so far: cycle payouts on active + everything paid on completed. */
+export function totalEarned(active: Placement[] | undefined, done: CompletedPlacement[] | undefined): number {
+  const a = (active ?? []).reduce((s, p) => s + (p.totalPaid ?? 0), 0);
+  const d = (done ?? []).reduce((s, p) => s + (p.totalPaid ?? 0) + (p.lockedBonusPaid ?? 0), 0);
+  return a + d;
+}
+
+/** The soonest upcoming payout across all placements, or null. */
+export function nextPayout(placements: Placement[] | undefined, now = Date.now()) {
+  let best: { at: number; amount: number; placement: Placement } | null = null;
+  for (const p of placements ?? []) {
+    if (p.cyclesPaid >= p.cycles) continue;
+    const at = nextPayoutAt(p);
+    const final = p.cyclesPaid + 1 === p.cycles;
+    const amount = placementPerCycle(p) + (final ? placementFinalExtra(p) : 0);
+    if (!best || at < best.at) best = { at, amount, placement: p };
+  }
+  if (!best) return null;
+  return { ...best, msLeft: Math.max(0, best.at - now) };
+}
+
+/** Wallet-in projection: cumulative scheduled payouts over the next `days` days. */
+export function projectedPayouts(placements: Placement[] | undefined, days: number, now = Date.now()): number[] {
+  const out = new Array<number>(days + 1).fill(0);
+  for (const p of placements ?? []) {
+    for (let k = p.cyclesPaid + 1; k <= p.cycles; k++) {
+      const at = p.startedAt + k * p.cycleDays * DAY_MS;
+      const dayIdx = Math.ceil((at - now) / DAY_MS);
+      if (dayIdx < 0 || dayIdx > days) continue;
+      out[Math.max(0, dayIdx)] += placementPerCycle(p) + (k === p.cycles ? placementFinalExtra(p) : 0);
+    }
+  }
+  for (let i = 1; i <= days; i++) out[i] += out[i - 1];
+  return out;
+}
+
+export function formatCountdown(ms: number): string {
+  if (ms <= 0) return "due now";
+  const h = Math.floor(ms / 3_600_000);
+  const d = Math.floor(h / 24);
+  const m = Math.floor((ms % 3_600_000) / 60_000);
+  if (d >= 1) return `${d}d ${h % 24}h`;
+  if (h >= 1) return `${h}h ${m}m`;
+  return `${Math.max(1, m)}m`;
+}
+
+/** Re-renders every `everyMs` so countdowns tick. */
+export function useNow(everyMs = 60_000): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), everyMs);
+    return () => clearInterval(t);
+  }, [everyMs]);
+  return now;
+}
+
+// ===== Callables =====
 
 export type ActivatePlacementArgs = {
   requestId?: string;
@@ -96,6 +176,8 @@ export type ActivatePlacementArgs = {
   amount?: number;
   termMonths?: number;
   note?: string;
+  /** Member self-service reinvest: pays from the caller's own wallet. */
+  fromWallet?: boolean;
 };
 
 export type ActivatePlacementResult = {

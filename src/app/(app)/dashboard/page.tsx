@@ -1,25 +1,29 @@
 "use client";
 
+import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
-import { ArrowDownRight, Lock, Loader2 } from "lucide-react";
+import { ArrowDownRight, Lock, Loader2, ArrowUpRight, Clock } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
-import { Card, CardHeader } from "@/components/Card";
+import { Card } from "@/components/Card";
 import { StatStrip } from "@/components/StatStrip";
 import { PortfolioDonut } from "@/components/PortfolioDonut";
 import { DashGrowthArea } from "@/components/DashGrowthArea";
-import { SummaryThemedCard } from "@/components/SummaryThemedCard";
-import { TickingBalance } from "@/components/TickingBalance";
 import { ActivePlansList } from "@/components/ActivePlansList";
 import { ActivityFeed } from "@/components/ActivityFeed";
 import { PlanHistoryTable } from "@/components/PlanHistoryTable";
 import { formatPHP } from "@/lib/utils";
 import { useUserState } from "@/lib/useUserState";
-import { useSettings } from "@/lib/settings";
-import { usePlans } from "@/lib/plans";
 import {
-  computeDailyIncome,
-  computeDeployed,
-} from "@/lib/userState";
+  useNow,
+  placedCapital,
+  dailyAccrualTotal,
+  upcomingBonuses,
+  totalEarned,
+  nextPayout,
+  projectedPayouts,
+  formatCountdown,
+  peso,
+} from "@/lib/compplan";
 
 const stagger: Variants = {
   hidden: { opacity: 0 },
@@ -27,18 +31,12 @@ const stagger: Variants = {
 };
 const item: Variants = {
   hidden: { opacity: 0, y: 10 },
-  show: {
-    opacity: 1,
-    y: 0,
-    transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const },
-  },
+  show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] as const } },
 };
 
 export default function DashboardPage() {
   const { state, loading } = useUserState();
-  const { settings } = useSettings();
-  const { plans } = usePlans();
-  const rate = settings.vaultDailyRate / 100;
+  const now = useNow(30_000);
 
   if (loading || !state) {
     return (
@@ -49,93 +47,55 @@ export default function DashboardPage() {
     );
   }
 
-  const deployed = computeDeployed(state.activePlans);
-  const dailyIncome = computeDailyIncome(state.activePlans, plans);
-  const total = state.balances.wallet + deployed + state.balances.vault;
-  const todayCompound =
-    state.balances.vault - state.balances.vault / (1 + rate);
+  const placements = state.placements ?? [];
+  const completed = state.completedPlacements ?? [];
+  const wallet = state.balances.wallet;
+  const placed = placedCapital(placements);
+  const accrual = dailyAccrualTotal(placements);
+  const bonuses = upcomingBonuses(placements);
+  const earned = totalEarned(placements, completed);
+  const total = wallet + placed;
+  const next = nextPayout(placements, now);
 
-  // Earnings = completed plan earnings + vault balance.
-  const completedEarnings = (state.completedPlans ?? []).reduce(
-    (s, p) => s + (p.vaultCredited ?? 0), 0
-  );
-  const totalEarned = completedEarnings + state.balances.vault;
-  // All capital ever put to work: currently deployed + capital of completed plans.
-  const completedCapital = (state.completedPlans ?? []).reduce(
-    (s, p) => s + p.capital,
-    0
-  );
-  const totalInvestedEver = deployed + completedCapital;
-  const roi = totalInvestedEver > 0 ? (totalEarned / totalInvestedEver) * 100 : 0;
+  const everPlaced = placed + completed.reduce((s, p) => s + p.capital, 0);
+  const roi = everPlaced > 0 ? (earned / everPlaced) * 100 : 0;
 
   const firstName = state.profile.name.split(" ")[0];
   const hour = new Date().getHours();
-  const greeting =
-    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
-  // Investment growth — accumulating curve from past data + projection
-  const growthData = Array.from({ length: 30 }, (_, i) => ({
-    day: i,
-    value: state.balances.vault * Math.pow(1 + rate, i - 25) + deployed * 0.5,
-  }));
+  // Real projection: wallet + placed capital, plus every scheduled payout in the next 30 days.
+  const scheduled = projectedPayouts(placements, 30, now);
+  const growthData = scheduled.map((v, day) => ({ day, value: total + v }));
 
   return (
     <div>
       <TopHeader
         title={`${greeting}, ${firstName}`}
-        subtitle={`${state.activePlans.length} active plans · next payout in 12h 43m`}
+        subtitle={
+          placements.length === 0
+            ? "No active placements yet"
+            : `${placements.length} active placement${placements.length > 1 ? "s" : ""} · next payout ${next ? `${peso(next.amount)} in ${formatCountdown(next.msLeft)}` : "—"}`
+        }
       />
 
       <motion.div variants={stagger} initial="hidden" animate="show">
-        {/* Main row: big left card + stacked themed cards on the right */}
-        <motion.div
-          variants={item}
-          className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3 mb-3"
-        >
-          {/* BIG LEFT CARD — stat strip on top, chart + donut below */}
+        <motion.div variants={item} className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3 mb-3">
           <Card className="!p-0">
             <StatStrip
               stats={[
-                {
-                  label: "Total portfolio",
-                  caption: `${state.activePlans.length} plans`,
-                  value: formatPHP(total, { short: true }),
-                  trend: { delta: roi, suffix: "%" },
-                  emphasis: true,
-                },
-                {
-                  label: "Capital invested",
-                  value: formatPHP(totalInvestedEver, { short: true }),
-                },
-                {
-                  label: "Total earned",
-                  value: formatPHP(totalEarned, { short: true }),
-                },
-                {
-                  label: "ROI",
-                  value: `${roi >= 0 ? "+" : ""}${roi.toFixed(1)}%`,
-                },
+                { label: "Total portfolio", caption: `${placements.length} placements`, value: formatPHP(total, { short: true }), trend: { delta: roi, suffix: "%" }, emphasis: true },
+                { label: "Capital placed", value: formatPHP(placed, { short: true }) },
+                { label: "Total earned", value: formatPHP(earned, { short: true }) },
+                { label: "ROI", value: `${roi >= 0 ? "+" : ""}${roi.toFixed(1)}%` },
               ]}
             />
 
             <div className="grid grid-cols-1 md:grid-cols-[1.6fr_1fr] gap-4 px-4 pb-4 pt-2 border-t border-border">
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-[12px] font-medium m-0">Investment growth</p>
-                  <div className="flex gap-1">
-                    {["1W", "1M", "3M", "1Y"].map((k, i) => (
-                      <span
-                        key={k}
-                        className={
-                          i === 1
-                            ? "text-[10px] px-2 py-0.5 bg-gold/15 text-gold rounded-full font-medium"
-                            : "text-[10px] px-2 py-0.5 text-text-subtle"
-                        }
-                      >
-                        {k}
-                      </span>
-                    ))}
-                  </div>
+                  <p className="text-[12px] font-medium m-0">Next 30 days</p>
+                  <span className="text-[10px] text-text-subtle">wallet + capital + scheduled payouts</span>
                 </div>
                 <div className="h-[150px]">
                   <DashGrowthArea data={growthData} />
@@ -146,55 +106,63 @@ export default function DashboardPage() {
                 <p className="text-[12px] font-medium m-0 mb-3">Your portfolio</p>
                 <PortfolioDonut
                   slices={[
-                    { name: "Wallet", value: state.balances.wallet, color: "#4F8EF7" },
-                    { name: "Deployed", value: deployed, color: "#3DD598" },
-                    { name: "Vault", value: state.balances.vault, color: "#A78BFA" },
+                    { name: "Wallet", value: wallet, color: "#4F8EF7" },
+                    { name: "Placed", value: placed, color: "#3DD598" },
+                    { name: "Bonuses due", value: bonuses, color: "#A78BFA" },
                   ]}
                 />
               </div>
             </div>
           </Card>
 
-          {/* RIGHT COLUMN — Daily Income + Vault themed cards */}
           <div className="flex flex-col gap-3">
-            <SummaryThemedCard
-              icon={ArrowDownRight}
-              theme="emerald"
-              title="Daily Income"
-              subtitle={`${state.activePlans.length} active plans`}
-              caption={{ label: "Today", value: formatPHP(dailyIncome, { short: true }) }}
-              valueLabel="Wallet balance"
-              value={formatPHP(state.balances.wallet, { short: true })}
-              trend={{
-                delta: deployed > 0 ? (dailyIncome / deployed) * 100 : 0,
-                suffix: "% / day",
-                label: "Avg rate",
-              }}
-              href="/wallet"
-            />
-            <SummaryThemedCard
-              icon={Lock}
-              theme="vault"
-              title="Future Growth Vault"
-              subtitle={`Locked · compounding ${settings.vaultDailyRate}% daily`}
-              caption={{ label: "Active plans", value: String(state.activePlans.length) }}
-              valueLabel="Vault balance"
-              value={<TickingBalance base={state.balances.vault} decimals={2} />}
-              trend={{
-                delta: (todayCompound / state.balances.vault) * 100 || 0,
-                suffix: "% today",
-                label: `+${formatPHP(todayCompound)}`,
-              }}
-              href="/vault"
-            />
+            {/* 5 Days Income */}
+            <Link href="/wallet" className="block">
+              <Card hoverable className="h-full">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-green/15 flex items-center justify-center ring-1 ring-green/15">
+                    <ArrowDownRight className="w-4 h-4 text-green" />
+                  </div>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-text-subtle" />
+                </div>
+                <p className="text-[12px] font-medium m-0">5 Days Income</p>
+                <p className="text-[10px] text-text-subtle m-0 mt-0.5">{placements.length} active placement{placements.length === 1 ? "" : "s"}</p>
+                <p className="text-[9px] text-text-subtle uppercase tracking-wider m-0 mt-4">Wallet balance</p>
+                <p className="text-[22px] font-mono font-medium m-0 tabular-nums">{formatPHP(wallet, { short: true })}</p>
+                <div className="flex items-center justify-between mt-2 text-[10px]">
+                  <span className="text-green font-mono">+{peso(accrual)} accruing today</span>
+                  {next && (
+                    <span className="text-text-subtle flex items-center gap-1">
+                      <Clock className="w-2.5 h-2.5" /> {formatCountdown(next.msLeft)}
+                    </span>
+                  )}
+                </div>
+              </Card>
+            </Link>
+
+            {/* Locked-In Bonuses */}
+            <Link href="/plans" className="block">
+              <Card hoverable className="h-full">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-9 h-9 rounded-lg bg-vault/15 flex items-center justify-center ring-1 ring-vault/20">
+                    <Lock className="w-4 h-4 text-vault" />
+                  </div>
+                  <ArrowUpRight className="w-3.5 h-3.5 text-text-subtle" />
+                </div>
+                <p className="text-[12px] font-medium m-0">Locked-In Bonuses</p>
+                <p className="text-[10px] text-text-subtle m-0 mt-0.5">Paid with each final payout</p>
+                <p className="text-[9px] text-text-subtle uppercase tracking-wider m-0 mt-4">Bonuses due</p>
+                <p className="text-[22px] font-mono font-medium m-0 tabular-nums text-vault">{formatPHP(bonuses, { short: true })}</p>
+                <p className="text-[10px] text-text-subtle m-0 mt-2">
+                  {placements.filter((p) => p.lockedBonus > 0).length} placement{placements.filter((p) => p.lockedBonus > 0).length === 1 ? "" : "s"} with a bonus
+                  {completed.length > 0 && ` · ${formatPHP(completed.reduce((s, p) => s + p.lockedBonusPaid, 0), { short: true })} paid so far`}
+                </p>
+              </Card>
+            </Link>
           </div>
         </motion.div>
 
-        {/* 3-column bottom row: Active plans · Daily activity · Plan history */}
-        <motion.div
-          variants={item}
-          className="grid grid-cols-1 lg:grid-cols-3 gap-3"
-        >
+        <motion.div variants={item} className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           <ActivePlansList />
           <ActivityFeed />
           <PlanHistoryTable />

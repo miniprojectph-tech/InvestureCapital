@@ -25,7 +25,7 @@ export function PendingPlanRequests() {
     <div className="bg-card border border-border rounded-2xl p-4">
       <div className="flex items-center justify-between mb-3">
         <p className="text-[10px] text-text-subtle uppercase tracking-wider m-0">
-          Your plan requests
+          Your placement requests
         </p>
         {pendingCount > 0 && (
           <span className="text-[10px] font-medium bg-vault/15 text-vault px-2 py-0.5 rounded-full">
@@ -54,7 +54,8 @@ export function PendingPlanRequests() {
                 <div className="min-w-0">
                   <p className="text-[11px] m-0">
                     <span className="font-mono">{formatPHP(r.amount)}</span>
-                    <span className="text-text-subtle"> · {r.planName}</span>
+                    <span className="text-text-subtle"> · {r.termMonths ? `${r.termMonths}-month placement` : r.planName}</span>
+                    {r.placementId && <span className="text-green font-mono"> · {r.placementId}</span>}
                   </p>
                   <p className="text-[9px] text-text-subtle m-0">
                     {r.methodLabel} · {new Date(r.createdAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
