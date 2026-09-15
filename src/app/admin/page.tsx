@@ -29,10 +29,10 @@ const mockPendingWithdrawals = [
 ];
 
 const mockInvestors: InvestorRow[] = [
-  { uid: "tw", name: "Theresa Webb", email: "theresa@mail.com", wallet: 250, vault: 9445, deployed: 5000, activePlansCount: 3, completedPlansCount: 1, totalEarned: 450, joinedAt: Date.now(), vaultLockStartedAt: null, vaultLastCompoundedAt: null, isAdmin: false },
-  { uid: "am", name: "Arlene McCoy", email: "arlene@mail.com", wallet: 120, vault: 3200, deployed: 2000, activePlansCount: 2, completedPlansCount: 0, totalEarned: 0, joinedAt: Date.now(), vaultLockStartedAt: null, vaultLastCompoundedAt: null, isAdmin: false },
-  { uid: "jb", name: "Jerome Bell", email: "jerome@mail.com", wallet: 890, vault: 24180, deployed: 15000, activePlansCount: 5, completedPlansCount: 3, totalEarned: 2400, joinedAt: Date.now(), vaultLockStartedAt: null, vaultLastCompoundedAt: null, isAdmin: false },
-  { uid: "re", name: "Ralph Edwards", email: "ralph@mail.com", wallet: 0, vault: 0, deployed: 0, activePlansCount: 0, completedPlansCount: 0, totalEarned: 0, joinedAt: Date.now(), vaultLockStartedAt: null, vaultLastCompoundedAt: null, isAdmin: false },
+  { uid: "tw", name: "Theresa Webb", email: "theresa@mail.com", wallet: 250, bonusesDue:9445, deployed: 5000, activePlansCount: 3, completedPlansCount: 1, totalEarned: 450, joinedAt: Date.now(), isAdmin: false },
+  { uid: "am", name: "Arlene McCoy", email: "arlene@mail.com", wallet: 120, bonusesDue:3200, deployed: 2000, activePlansCount: 2, completedPlansCount: 0, totalEarned: 0, joinedAt: Date.now(), isAdmin: false },
+  { uid: "jb", name: "Jerome Bell", email: "jerome@mail.com", wallet: 890, bonusesDue:24180, deployed: 15000, activePlansCount: 5, completedPlansCount: 3, totalEarned: 2400, joinedAt: Date.now(), isAdmin: false },
+  { uid: "re", name: "Ralph Edwards", email: "ralph@mail.com", wallet: 0, bonusesDue:0, deployed: 0, activePlansCount: 0, completedPlansCount: 0, totalEarned: 0, joinedAt: Date.now(), isAdmin: false },
 ];
 
 export default function AdminDashboard() {
@@ -120,19 +120,19 @@ export default function AdminDashboard() {
         <KpiCard
           label="Total investors"
           value={String(agg.totalInvestors)}
-          sub={`${agg.totalActivePlans} active plans`}
+          sub={`${agg.totalActivePlans} active placements`}
           icon={Users}
           iconTone="blue"
         />
         <KpiCard
-          label="Capital deployed"
+          label="Capital placed"
           value={formatPHP(agg.totalDeployed, { short: true })}
           icon={ArrowDownRight}
           iconTone="green"
         />
         <KpiCard
-          label="Vault total"
-          value={formatPHP(agg.totalVault, { short: true })}
+          label="Locked-In due"
+          value={formatPHP(agg.totalBonusesDue, { short: true })}
           icon={Coins}
           iconTone="gold"
         />
@@ -180,9 +180,9 @@ export default function AdminDashboard() {
           <p className="text-[10px] text-green m-0 mb-3">Live from Firestore</p>
           <div className="flex flex-col gap-2">
             <Stat label="Wallet total" value={formatPHP(agg.totalWallet, { short: true })} />
-            <Stat label="Vault total" value={formatPHP(agg.totalVault, { short: true })} />
-            <Stat label="Deployed" value={formatPHP(agg.totalDeployed, { short: true })} />
-            <Stat label="Active plans" value={String(agg.totalActivePlans)} />
+            <Stat label="Locked-In due" value={formatPHP(agg.totalBonusesDue, { short: true })} />
+            <Stat label="Capital placed" value={formatPHP(agg.totalDeployed, { short: true })} />
+            <Stat label="Active placements" value={String(agg.totalActivePlans)} />
           </div>
         </Card>
       </div>
@@ -223,9 +223,9 @@ export default function AdminDashboard() {
             <thead>
               <tr className="text-text-subtle text-left">
                 <th className="font-normal py-1" style={{ width: "34%" }}>Investor</th>
-                <th className="font-normal py-1 text-right" style={{ width: "10%" }}>Plans</th>
+                <th className="font-normal py-1 text-right" style={{ width: "10%" }}>Placements</th>
                 <th className="font-normal py-1 text-right" style={{ width: "16%" }}>Wallet</th>
-                <th className="font-normal py-1 text-right" style={{ width: "18%" }}>Vault</th>
+                <th className="font-normal py-1 text-right" style={{ width: "18%" }}>Locked-In due</th>
                 <th className="font-normal py-1 text-right" style={{ width: "14%" }}>Role</th>
                 <th className="font-normal py-1" style={{ width: "8%" }}></th>
               </tr>
@@ -247,7 +247,7 @@ export default function AdminDashboard() {
                   </td>
                   <td className="py-2 text-right font-mono">{u.activePlansCount}</td>
                   <td className="py-2 text-right font-mono">{formatPHP(u.wallet, { short: true })}</td>
-                  <td className="py-2 text-right font-mono text-vault">{formatPHP(u.vault, { short: true })}</td>
+                  <td className="py-2 text-right font-mono text-vault">{formatPHP(u.bonusesDue, { short: true })}</td>
                   <td className="py-2 text-right">
                     {u.isAdmin ? (
                       <span className="text-[9px] bg-vault/15 text-vault px-1.5 py-0.5 rounded-md">Admin</span>

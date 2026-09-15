@@ -2,6 +2,7 @@
 
 import { useSettings } from "./settings";
 import { useUserState } from "./useUserState";
+import { placedCapital } from "./compplan";
 
 export type GameAccessResult = {
   loading: boolean;
@@ -9,6 +10,7 @@ export type GameAccessResult = {
   reason: string | null;
 };
 
+/** Games can be gated behind a minimum total of active placements (admin-configurable). */
 export function useGameAccess(): GameAccessResult {
   const { settings, loading: settingsLoading } = useSettings();
   const { state, loading: userLoading } = useUserState();
@@ -22,15 +24,11 @@ export function useGameAccess(): GameAccessResult {
     return { loading: false, allowed: true, reason: null };
   }
 
-  const plans = state?.activePlans ?? [];
-  const match = plans.find(
-    (p) => p.planId === req.requiredPlanId && p.capital >= req.minInvestment
-  );
-
-  if (match) {
+  const placed = placedCapital(state?.placements);
+  if (placed >= (req.minInvestment || 0) && placed > 0) {
     return { loading: false, allowed: true, reason: null };
   }
 
-  const reason = `Requires an active ${req.requiredPlanName || "plan"} with at least ₱${req.minInvestment.toLocaleString()} investment`;
+  const reason = `Requires an active placement of at least ₱${(req.minInvestment || 0).toLocaleString()}`;
   return { loading: false, allowed: false, reason };
 }

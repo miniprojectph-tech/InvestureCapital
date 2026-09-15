@@ -392,6 +392,79 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
 }
 
 // ============================================================================
+// Admin test tools
+// ============================================================================
+
+async function assertAdmin(uid: string) {
+  const snap = await userRef(uid).get();
+  if (!snap.exists || snap.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Admin role required.");
+}
+
+/** Rewind a placement's start date by N days, then run its payouts — for testing without waiting. */
+export const adminAdvancePlacement = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  await assertAdmin(request.auth.uid);
+  const { userId, placementId, days } = (request.data ?? {}) as { userId?: string; placementId?: string; days?: number };
+  if (!userId || !placementId) throw new HttpsError("invalid-argument", "userId and placementId are required.");
+  if (typeof days !== "number" || !Number.isFinite(days) || days <= 0 || days > 400) {
+    throw new HttpsError("invalid-argument", "days must be between 1 and 400.");
+  }
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef(userId));
+    if (!snap.exists) throw new HttpsError("not-found", "Member not found.");
+    const placements = (snap.data() as UserDoc).placements ?? [];
+    if (!placements.some((p) => p.id === placementId)) throw new HttpsError("not-found", "Placement is not active.");
+    tx.update(userRef(userId), {
+      placements: placements.map((p) => {
+        if (p.id !== placementId) return p;
+        const moved: Placement = { ...p, startedAt: p.startedAt - days * DAY_MS };
+        delete moved.lastAccrualDay; // let today's accrual notice fire again
+        return moved;
+      }),
+    });
+  });
+  const cfg = await loadCompPlan();
+  const r = await processPlacementsForUser(userId, cfg, Date.now());
+  return { ok: true, ...r };
+});
+
+const RESET_COLLECTIONS = ["plan_requests", "commissions", "referral_transactions", "withdrawals", "topups"];
+
+/**
+ * Wipe the test economy: every member's wallet, placements, old plans/vault,
+ * activity and notifications, plus the request/commission ledgers. Keeps
+ * accounts, referral links and game data. Requires confirm === "RESET".
+ */
+export const adminResetEconomy = onCall({ timeoutSeconds: 540, memory: "512MiB" }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  await assertAdmin(request.auth.uid);
+  if ((request.data as { confirm?: string } | undefined)?.confirm !== "RESET") {
+    throw new HttpsError("invalid-argument", "Type RESET to confirm.");
+  }
+  const users = await db.collection("users").get();
+  let count = 0;
+  for (const u of users.docs) {
+    await db.recursiveDelete(u.ref.collection("activity"));
+    await db.recursiveDelete(u.ref.collection("notifications"));
+    await u.ref.update({
+      "balances.wallet": 0,
+      "balances.vault": 0,
+      "balances.vaultLockStartedAt": null,
+      "balances.vaultLastCompoundedAt": FieldValue.delete(),
+      activePlans: [],
+      completedPlans: [],
+      placements: [],
+      completedPlacements: [],
+      fastStart: FieldValue.delete(),
+      referralWallet: { available: 0, pending: 0, locked: 0, totalEarned: 0, totalWithdrawn: 0 },
+    });
+    count++;
+  }
+  for (const name of RESET_COLLECTIONS) await db.recursiveDelete(db.collection(name));
+  return { ok: true, users: count, collections: RESET_COLLECTIONS };
+});
+
+// ============================================================================
 // Payout engine (hourly)
 // ============================================================================
 

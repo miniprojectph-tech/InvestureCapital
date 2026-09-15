@@ -15,13 +15,8 @@ export { ensureCommunityAdmin, ensureCommunityMember, pruneCommunityRoom } from 
 
 // Compensation plan: placement activation (commissions + Fast-Start) and
 // read-only downline stats for the Referrals page.
-export { activatePlacement } from "./compplan";
+export { activatePlacement, adminAdvancePlacement, adminResetEconomy } from "./compplan";
 export { getReferralStats } from "./referral-stats";
-
-// Legacy one-level referral trigger — no longer fired by the new comp plan
-// (activatePlacement pays commissions directly). Kept until the old referral
-// ledger is retired.
-export { onReferralClaim } from "./referrals";
 
 // Community Tongits (Phase 1): room + economy callables + stale-room reaper.
 import { reapStaleTongitsRooms } from "./tongits";

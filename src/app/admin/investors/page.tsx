@@ -72,7 +72,7 @@ function exportCsvFile(
 }
 
 const TAB_LABELS: Record<ChipKey, string> = {
-  vault: "Vault",
+  vault: "Bonuses",
   wallet: "Wallet",
   plans: "Plans",
   joined: "Joined",
@@ -226,7 +226,7 @@ export default function AdminInvestorsPage() {
     );
     return [...matched].sort((a, b) => {
       switch (sortKey) {
-        case "vault": return b.vault - a.vault;
+        case "vault": return b.bonusesDue - a.bonusesDue;
         case "wallet": return b.wallet - a.wallet;
         case "plans": return b.activePlansCount - a.activePlansCount;
         case "joined": default: return b.joinedAt - a.joinedAt;
@@ -248,20 +248,19 @@ export default function AdminInvestorsPage() {
     } else if (sortKey === "vault") {
       exportCsvFile(
         filtered.map((u) => ({
-          Name: u.name, Email: u.email, "Vault Balance": u.vault,
-          "Lock Started": u.vaultLockStartedAt ? fmtDate(u.vaultLockStartedAt) : "—",
-          "Last Compounded": u.vaultLastCompoundedAt ? fmtDate(u.vaultLastCompoundedAt) : "—",
-          "Lock Day": lockDay(u.vaultLockStartedAt),
+          Name: u.name, Email: u.email, "Capital Placed": u.deployed,
+          "Locked-In Due": u.bonusesDue, "Total Earned": u.totalEarned,
+          "Active Placements": u.activePlansCount, "Completed": u.completedPlansCount,
           Role: u.isAdmin ? "Admin" : "Investor",
         })),
-        ["Name", "Email", "Vault Balance", "Lock Started", "Last Compounded", "Lock Day", "Role"],
-        `investors-vault-${date}`,
+        ["Name", "Email", "Capital Placed", "Locked-In Due", "Total Earned", "Active Placements", "Completed", "Role"],
+        `investors-bonuses-${date}`,
       );
     } else if (sortKey === "wallet") {
       exportCsvFile(
         filtered.map((u) => ({
           Name: u.name, Email: u.email, Wallet: u.wallet, Deployed: u.deployed,
-          "Total Portfolio": u.wallet + u.deployed + u.vault,
+          "Total Portfolio": u.wallet + u.deployed,
           "Active Plans": u.activePlansCount,
           Role: u.isAdmin ? "Admin" : "Investor",
         })),
@@ -283,10 +282,10 @@ export default function AdminInvestorsPage() {
       exportCsvFile(
         filtered.map((u) => ({
           Name: u.name, Email: u.email, Joined: fmtDate(u.joinedAt),
-          "Active Plans": u.activePlansCount, Wallet: u.wallet, Vault: u.vault,
+          "Active Placements": u.activePlansCount, Wallet: u.wallet, "Locked-In Due": u.bonusesDue,
           Role: u.isAdmin ? "Admin" : "Investor",
         })),
-        ["Name", "Email", "Joined", "Active Plans", "Wallet", "Vault", "Role"],
+        ["Name", "Email", "Joined", "Active Placements", "Wallet", "Locked-In Due", "Role"],
         `investors-${date}`,
       );
     }
@@ -444,7 +443,7 @@ export default function AdminInvestorsPage() {
       {/* ── Vault tab ── */}
       {sortKey === "vault" && (
         <Card>
-          <CardHeader title={`Vault overview (${filtered.length})`} subtitle="Vault balances, lock status, and compounding" />
+          <CardHeader title={`Bonuses overview (${filtered.length})`} subtitle="Capital placed, Locked-In Bonuses due, and total earned per member" />
           <div className="overflow-x-auto -mx-1">
             <table className="w-full text-[11px] table-fixed min-w-[820px]">
               <colgroup>
@@ -460,42 +459,24 @@ export default function AdminInvestorsPage() {
                 <tr className="text-text-subtle text-left">
                   <th className="font-normal py-2 px-1">Name</th>
                   <th className="font-normal py-2 px-1">Email</th>
-                  <th className="font-normal py-2 px-1 text-right">Vault Balance</th>
-                  <th className="font-normal py-2 px-1">Lock Started</th>
-                  <th className="font-normal py-2 px-1">Last Compounded</th>
-                  <th className="font-normal py-2 px-1">Lock Progress</th>
+                  <th className="font-normal py-2 px-1 text-right">Capital Placed</th>
+                  <th className="font-normal py-2 px-1 text-right">Locked-In Due</th>
+                  <th className="font-normal py-2 px-1 text-right">Total Earned</th>
+                  <th className="font-normal py-2 px-1">Placements</th>
                   <th className="font-normal py-2 px-1 text-right">Role</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((u) => {
-                  const ld = lockDay(u.vaultLockStartedAt);
-                  const pct = u.vaultLockStartedAt ? Math.min(100, (ld / 365) * 100) : 0;
                   return (
                     <tr key={u.uid} className="border-t border-border hover:bg-card-elev/50 transition">
                       <td className="py-2 px-1"><p className="m-0 text-[11px] truncate font-medium">{u.name}</p></td>
                       <td className="py-2 px-1"><p className="m-0 text-[10px] text-text-muted truncate">{u.email}</p></td>
-                      <td className="py-2 px-1 text-right font-mono text-vault">{formatPHP(u.vault, { short: true })}</td>
+                      <td className="py-2 px-1 text-right font-mono">{formatPHP(u.deployed, { short: true })}</td>
+                      <td className="py-2 px-1 text-right font-mono text-vault">{u.bonusesDue > 0 ? formatPHP(u.bonusesDue, { short: true }) : "—"}</td>
+                      <td className="py-2 px-1 text-right font-mono text-green">{formatPHP(u.totalEarned, { short: true })}</td>
                       <td className="py-2 px-1 text-text-muted text-[10px]">
-                        {u.vaultLockStartedAt ? fmtDateShort(u.vaultLockStartedAt) : "—"}
-                      </td>
-                      <td className="py-2 px-1 text-text-muted text-[10px]">
-                        {u.vaultLastCompoundedAt ? daysAgo(u.vaultLastCompoundedAt) : "—"}
-                      </td>
-                      <td className="py-2 px-1">
-                        {u.vaultLockStartedAt ? (
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center justify-between text-[9px]">
-                              <span className="text-text-muted">Day {ld}/365</span>
-                              <span className="text-text-subtle">{pct.toFixed(0)}%</span>
-                            </div>
-                            <div className="w-full h-1 bg-border rounded-full overflow-hidden">
-                              <div className="h-full bg-vault rounded-full transition-all" style={{ width: `${pct}%` }} />
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-[9px] text-text-subtle">No lock</span>
-                        )}
+                        {u.activePlansCount} active{u.completedPlansCount > 0 ? ` · ${u.completedPlansCount} done` : ""}
                       </td>
                       <td className="py-2 px-1 text-right">
                         {u.isAdmin ? (
@@ -544,7 +525,7 @@ export default function AdminInvestorsPage() {
               </thead>
               <tbody>
                 {filtered.map((u) => {
-                  const total = u.wallet + u.deployed + u.vault;
+                  const total = u.wallet + u.deployed;
                   return (
                     <tr key={u.uid} className="border-t border-border hover:bg-card-elev/50 transition">
                       <td className="py-2 px-1"><p className="m-0 text-[11px] truncate font-medium">{u.name}</p></td>
@@ -653,9 +634,9 @@ export default function AdminInvestorsPage() {
                   <th className="font-normal py-2 px-1">Name</th>
                   <th className="font-normal py-2 px-1">Email</th>
                   <th className="font-normal py-2 px-1">Joined</th>
-                  <th className="font-normal py-2 px-1 text-right">Active Plans</th>
+                  <th className="font-normal py-2 px-1 text-right">Placements</th>
                   <th className="font-normal py-2 px-1 text-right">Wallet</th>
-                  <th className="font-normal py-2 px-1 text-right">Vault</th>
+                  <th className="font-normal py-2 px-1 text-right">Locked-In Due</th>
                   <th className="font-normal py-2 px-1 text-right">Role</th>
                 </tr>
               </thead>
@@ -667,7 +648,7 @@ export default function AdminInvestorsPage() {
                     <td className="py-2 px-1 text-text-muted text-[10px]">{fmtDateShort(u.joinedAt)}</td>
                     <td className="py-2 px-1 text-right font-mono">{u.activePlansCount}</td>
                     <td className="py-2 px-1 text-right font-mono">{formatPHP(u.wallet, { short: true })}</td>
-                    <td className="py-2 px-1 text-right font-mono text-vault">{formatPHP(u.vault, { short: true })}</td>
+                    <td className="py-2 px-1 text-right font-mono text-vault">{u.bonusesDue > 0 ? formatPHP(u.bonusesDue, { short: true }) : "—"}</td>
                     <td className="py-2 px-1 text-right">
                       {u.isAdmin ? (
                         <span className="text-[9px] bg-vault/15 text-vault px-1.5 py-0.5 rounded-md">Admin</span>

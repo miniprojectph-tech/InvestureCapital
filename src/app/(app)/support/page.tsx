@@ -12,31 +12,39 @@ import {
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { cn } from "@/lib/utils";
-
-const faqs = [
-  {
-    q: "How does the daily income work?",
-    a: "When you activate a short-term plan, your investment earns a fixed daily percentage to your wallet for the plan's duration. The exact rate and duration are set per plan template (e.g. 10-day plan @ 2.5%/day means ₱25/day on ₱1,000 for 10 days).",
-  },
-  {
-    q: "What is the Future Growth Vault?",
-    a: "When a short-term plan completes, the total earnings are auto-credited to your Vault as a long-term holding. The Vault compounds at 1% daily and is locked for 365 days from your first activation. That's the real wealth-building engine.",
-  },
-  {
-    q: "Can I withdraw my wallet balance anytime?",
-    a: "Yes. Wallet income from short-term plans is withdrawable on demand. Vault funds are locked for 365 days from first activation, then released.",
-  },
-  {
-    q: "What happens if I activate another plan?",
-    a: "Each new plan adds to your active plans list with its own daily income stream. When each plan completes, its earnings are added to your existing Vault — so the Vault grows from every plan you run.",
-  },
-  {
-    q: "Is this real money?",
-    a: "No. Investure Capital is a simulation platform demonstrating the mathematics of compounding. All balances are illustrative. No real funds are deposited, traded, or withdrawn.",
-  },
-];
+import { useCompPlan, cyclesForTerm, peso } from "@/lib/compplan";
 
 export default function SupportPage() {
+  const { cfg } = useCompPlan();
+  const unit = cfg.increment;
+  const unitPayout = (unit * cfg.cycleRate) / 100;
+  const bonusTerms = cfg.terms.filter((t) => t.lockedBonusPerUnit > 0);
+  const faqs = [
+    {
+      q: "How does the 5 Days Income work?",
+      a: `Every ${cfg.cycleDays} days you receive ${cfg.cycleRate}% of your placement in your wallet — ${peso(unitPayout)} for every ₱${unit.toLocaleString()} placed. It accrues daily (you'll get a notice each day) and is credited as a numbered payout, e.g. "1 out of ${cyclesForTerm(cfg, cfg.terms[0].months)} payouts". The minimum term is ${cfg.terms[0].months} month${cfg.terms[0].months > 1 ? "s" : ""}.`,
+    },
+    {
+      q: "What terms can I choose, and what is the Locked-In Bonus?",
+      a: `${cfg.terms.map((t) => `${t.months} month${t.months > 1 ? "s" : ""} (${cyclesForTerm(cfg, t.months)} payouts)`).join(", ")}. ${bonusTerms.map((t) => `A ${t.months}-month term adds a Locked-In Bonus of ${peso(t.lockedBonusPerUnit)} per ₱${unit.toLocaleString()}`).join("; ")}. The bonus is paid together with your final payout.`,
+    },
+    {
+      q: "Do I get my capital back?",
+      a: "Yes. Your placement is returned in full, added to your final scheduled payout along with any Locked-In Bonus. Until then the capital stays placed; the income it generates is withdrawable at any time.",
+    },
+    {
+      q: "How do referrals work?",
+      a: `You earn on ${cfg.referralLevels.length} levels — ${cfg.referralLevels.join("% / ")}% — every time someone in your team places capital, paid instantly to your wallet. ${cfg.uplineMinActive > 0 ? `You need an active placement of at least ₱${cfg.uplineMinActive.toLocaleString()} to receive commissions.` : ""} Bring ${cfg.fastStartDirects} direct referrals who each place the tier minimum for a one-time Fast-Start Bonus, and earn a Leadership Bonus of ${cfg.leadershipPct}% of each direct referral's Locked-In Bonus when their term completes.`,
+    },
+    {
+      q: "Minimum placement?",
+      a: `₱${cfg.minPlacement.toLocaleString()}, in steps of ₱${unit.toLocaleString()}. Every bonus scales with the number of ₱${unit.toLocaleString()} units you place.`,
+    },
+    {
+      q: "Is this real money?",
+      a: "No. Investure Capital is a simulation platform demonstrating how a compensation plan works. All balances are illustrative. No real funds are deposited, traded, or withdrawn.",
+    },
+  ];
   const [openIdx, setOpenIdx] = useState<number | null>(0);
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");

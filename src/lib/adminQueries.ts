@@ -11,28 +11,29 @@ import {
   type Firestore,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-import type { CompletedPlan, StoredActivePlan, UserState } from "./userState";
+import type { UserState } from "./userState";
+import type { Placement, CompletedPlacement } from "./compplan";
 
 export type InvestorRow = {
   uid: string;
   name: string;
   email: string;
   wallet: number;
-  vault: number;
+  /** Locked-In Bonuses still to be paid on active placements. */
+  bonusesDue: number;
+  /** Capital currently placed. */
   deployed: number;
   activePlansCount: number;
   completedPlansCount: number;
   totalEarned: number;
   joinedAt: number;
-  vaultLockStartedAt: number | null;
-  vaultLastCompoundedAt: number | null;
   isAdmin: boolean;
 };
 
 export type AdminAggregate = {
   totalInvestors: number;
   totalWallet: number;
-  totalVault: number;
+  totalBonusesDue: number;
   totalDeployed: number;
   totalActivePlans: number;
 };
@@ -43,22 +44,21 @@ export async function listInvestors(db: Firestore, max = 100): Promise<InvestorR
   const snap = await getDocs(q);
   return snap.docs.map((d) => {
     const data = d.data() as UserState;
-    const deployed = data.activePlans?.reduce((s, p) => s + p.capital, 0) ?? 0;
-    const completed = data.completedPlans ?? [];
-    const totalEarned = completed.reduce((s, p) => s + (p.vaultCredited ?? 0), 0);
+    const placements = data.placements ?? [];
+    const completed = data.completedPlacements ?? [];
     return {
       uid: d.id,
       name: data.profile?.name ?? "—",
       email: data.profile?.email ?? "",
       wallet: data.balances?.wallet ?? 0,
-      vault: data.balances?.vault ?? 0,
-      deployed,
-      activePlansCount: data.activePlans?.length ?? 0,
+      bonusesDue: placements.reduce((s, p) => s + p.lockedBonus, 0),
+      deployed: placements.reduce((s, p) => s + p.capital, 0),
+      activePlansCount: placements.length,
       completedPlansCount: completed.length,
-      totalEarned,
+      totalEarned:
+        placements.reduce((s, p) => s + (p.totalPaid ?? 0), 0) +
+        completed.reduce((s, p) => s + (p.totalPaid ?? 0) + (p.lockedBonusPaid ?? 0), 0),
       joinedAt: data.profile?.joinedAt ?? 0,
-      vaultLockStartedAt: data.balances?.vaultLockStartedAt ?? null,
-      vaultLastCompoundedAt: data.balances?.vaultLastCompoundedAt ?? null,
       isAdmin: data.isAdmin === true,
     };
   });
@@ -68,89 +68,36 @@ export function computeAggregate(rows: InvestorRow[]): AdminAggregate {
   return {
     totalInvestors: rows.length,
     totalWallet: rows.reduce((s, r) => s + r.wallet, 0),
-    totalVault: rows.reduce((s, r) => s + r.vault, 0),
+    totalBonusesDue: rows.reduce((s, r) => s + r.bonusesDue, 0),
     totalDeployed: rows.reduce((s, r) => s + r.deployed, 0),
     totalActivePlans: rows.reduce((s, r) => s + r.activePlansCount, 0),
   };
 }
 
-// ===== Cross-investor plan listings =====
+// ===== Cross-investor placement listing =====
 
-export type ActivePlanRow = StoredActivePlan & {
+export type PlacementRow = Placement & {
   userId: string;
   userName: string;
   userEmail: string;
+  status: "active" | "completed";
+  completedAt?: number;
+  lockedBonusPaid?: number;
 };
 
-export type CompletedPlanRow = CompletedPlan & {
-  userId: string;
-  userName: string;
-  userEmail: string;
-};
-
-export async function listAllActivePlans(db: Firestore): Promise<ActivePlanRow[]> {
+/** Every placement on the platform (active first, newest first). Admin only. */
+export async function listAllPlacements(db: Firestore): Promise<PlacementRow[]> {
   const snap = await getDocs(collection(db, "users"));
-  const rows: ActivePlanRow[] = [];
+  const rows: PlacementRow[] = [];
   for (const userDoc of snap.docs) {
     const data = userDoc.data() as UserState;
-    for (const plan of data.activePlans ?? []) {
-      rows.push({
-        ...plan,
-        userId: userDoc.id,
-        userName: data.profile?.name ?? "—",
-        userEmail: data.profile?.email ?? "",
-      });
+    const who = { userId: userDoc.id, userName: data.profile?.name ?? "—", userEmail: data.profile?.email ?? "" };
+    for (const p of data.placements ?? []) rows.push({ ...p, ...who, status: "active" });
+    for (const p of (data.completedPlacements ?? []) as CompletedPlacement[]) {
+      rows.push({ ...p, ...who, status: "completed", completedAt: p.completedAt, lockedBonusPaid: p.lockedBonusPaid });
     }
   }
-  return rows.sort((a, b) => b.startedAt - a.startedAt);
-}
-
-export async function listAllCompletedPlans(db: Firestore): Promise<CompletedPlanRow[]> {
-  const snap = await getDocs(collection(db, "users"));
-  const rows: CompletedPlanRow[] = [];
-  for (const userDoc of snap.docs) {
-    const data = userDoc.data() as UserState;
-    for (const plan of data.completedPlans ?? []) {
-      rows.push({
-        ...plan,
-        userId: userDoc.id,
-        userName: data.profile?.name ?? "—",
-        userEmail: data.profile?.email ?? "",
-      });
-    }
-  }
-  return rows.sort((a, b) => b.completedAt - a.completedAt);
-}
-
-// ===== Cross-investor vault listing =====
-
-export type VaultRow = {
-  userId: string;
-  userName: string;
-  userEmail: string;
-  vault: number;
-  vaultLockStartedAt: number | null;
-  vaultLastCompoundedAt: number | null;
-};
-
-/** Every investor holding a vault balance, with their lock/compound anchors. */
-export async function listActiveVaults(db: Firestore): Promise<VaultRow[]> {
-  const snap = await getDocs(collection(db, "users"));
-  const rows: VaultRow[] = [];
-  for (const userDoc of snap.docs) {
-    const data = userDoc.data() as UserState;
-    const vault = data.balances?.vault ?? 0;
-    if (vault <= 0) continue;
-    rows.push({
-      userId: userDoc.id,
-      userName: data.profile?.name ?? "—",
-      userEmail: data.profile?.email ?? "",
-      vault,
-      vaultLockStartedAt: data.balances?.vaultLockStartedAt ?? null,
-      vaultLastCompoundedAt: data.balances?.vaultLastCompoundedAt ?? null,
-    });
-  }
-  return rows.sort((a, b) => b.vault - a.vault);
+  return rows.sort((a, b) => (a.status === b.status ? b.startedAt - a.startedAt : a.status === "active" ? -1 : 1));
 }
 
 // ===== Cross-investor activity (collectionGroup) =====

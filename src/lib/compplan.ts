@@ -206,6 +206,18 @@ export function activatePlacement(args: ActivatePlacementArgs): Promise<Activate
   return httpsCallable<ActivatePlacementArgs, ActivatePlacementResult>(functions, "activatePlacement")(args).then((r) => r.data);
 }
 
+export function adminAdvancePlacement(args: { userId: string; placementId: string; days: number }) {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Firebase not initialized");
+  return httpsCallable<typeof args, { ok: boolean; payouts: number; completed: number; notified: boolean }>(functions, "adminAdvancePlacement")(args).then((r) => r.data);
+}
+
+export function adminResetEconomy(confirm: string) {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Firebase not initialized");
+  return httpsCallable<{ confirm: string }, { ok: boolean; users: number; collections: string[] }>(functions, "adminResetEconomy")({ confirm }).then((r) => r.data);
+}
+
 export type MaintenanceResult = { usersScanned: number; usersUpdated: number; payouts: number; plansCompleted: number };
 
 export function runPayoutsNow(): Promise<MaintenanceResult> {

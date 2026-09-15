@@ -196,30 +196,30 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
       <main className="relative z-10 flex-1 flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-16 px-6 sm:px-10 pb-12">
         {/* headline */}
         <div className="max-w-md text-center lg:text-left">
-          <p className="text-[11px] tracking-[0.22em] text-vault-muted m-0 mb-3">ONE PLAN · TWO INCOME PATHS</p>
+          <p className="text-[11px] tracking-[0.22em] text-vault-muted m-0 mb-3">GET PAID EVERY 5 DAYS</p>
           <h1
             className="m-0 leading-tight"
             style={{ fontFamily: "var(--font-display)", fontSize: "clamp(30px,4.6vw,46px)" }}
           >
-            One plan.
+            Place capital.
             <br />
-            <span className="text-gold">Two income paths.</span>
+            <span className="text-gold">Get paid every 5 days.</span>
           </h1>
           <p className="text-[13px] text-white/60 mt-4 m-0 leading-relaxed max-w-sm mx-auto lg:mx-0">
-            Activate one short-term plan and earn from both at once.
+            10% of your placement lands in your wallet every 5 days. Your capital comes back with the final payout — longer terms add a Locked-In Bonus on top.
           </p>
           <div className="flex flex-col gap-2.5 mt-6 max-w-sm mx-auto lg:mx-0">
             <PathCard
               icon={Wallet}
               tone="green"
-              title="Active Daily Income"
-              body="Short-term earning paid to your wallet, day by day."
+              title="5 Days Income"
+              body="₱100 every 5 days for every ₱1,000 placed, credited straight to your wallet."
             />
             <PathCard
               icon={Lock}
               tone="vault"
-              title="Future Reserve Vault"
-              body="A long-term reserve that grows into a big payout."
+              title="Locked-In Bonus"
+              body="Choose a 3- or 6-month term and receive a bonus with your final payout."
             />
           </div>
         </div>
@@ -255,7 +255,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
               <Gift className="w-3.5 h-3.5 shrink-0" />
               <span>
                 Invited with code <span className="font-semibold tracking-wide">{referralCode}</span> — your
-                referrer earns a bonus when you activate a plan.
+                referrer earns a commission when you place capital.
               </span>
             </div>
           )}

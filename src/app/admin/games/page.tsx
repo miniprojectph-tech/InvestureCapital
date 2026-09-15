@@ -31,7 +31,6 @@ import {
   DEFAULT_GAME_ACCESS,
   type GameAccessRequirement,
 } from "@/lib/settings";
-import { usePlans } from "@/lib/plans";
 import { PlayerPointsPanel } from "@/components/admin/PlayerPointsPanel";
 
 type SettingsTab = "access" | "reef" | "assets" | "fish" | "players";
@@ -200,7 +199,6 @@ export default function AdminGamesPage() {
 
   // Game access gate
   const { settings: platformSettings } = useSettings();
-  const { plans } = usePlans({ onlyActive: true });
   const [gaDraft, setGaDraft] = useState<GameAccessRequirement | null>(null);
   const [savingGa, setSavingGa] = useState(false);
 
@@ -381,12 +379,12 @@ export default function AdminGamesPage() {
                 </div>
                 <div>
                   <p className="text-[12px] font-medium m-0">
-                    {gaDraft.enabled ? "Gate active — plan required" : "Gate off — everyone can play"}
+                    {gaDraft.enabled ? "Gate active — placement required" : "Gate off — everyone can play"}
                   </p>
                   <p className="text-[10px] text-text-subtle mt-0.5 m-0">
-                    {gaDraft.enabled && gaDraft.requiredPlanName
-                      ? `Requires: ${gaDraft.requiredPlanName} (min ₱${(gaDraft.minInvestment ?? 0).toLocaleString()})`
-                      : "Toggle on and pick a plan to restrict access"}
+                    {gaDraft.enabled
+                      ? `Requires active placements of at least ₱${(gaDraft.minInvestment ?? 0).toLocaleString()}`
+                      : "Toggle on and set a minimum placement to restrict access"}
                   </p>
                 </div>
               </div>
@@ -409,30 +407,13 @@ export default function AdminGamesPage() {
             {gaDraft.enabled && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
                 <div>
-                  <label className="block text-[11px] text-text-muted mb-1">Required plan</label>
-                  <select
-                    value={gaDraft.requiredPlanId}
-                    onChange={(e) => {
-                      const plan = plans.find((p) => p.id === e.target.value);
-                      setGaDraft({
-                        ...gaDraft,
-                        requiredPlanId: e.target.value,
-                        requiredPlanName: plan?.name ?? "",
-                        minInvestment: gaDraft.minInvestment || plan?.minInvestment || 0,
-                      });
-                    }}
-                    className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] text-text outline-none focus:border-gold/40 w-full"
-                  >
-                    <option value="">Select a plan…</option>
-                    {plans.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} ({p.durationDays}d · {p.dailyRate}%)
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block text-[11px] text-text-muted mb-1">Rule</label>
+                  <p className="text-[11px] text-text-subtle m-0 leading-relaxed bg-canvas border border-border rounded-md px-3 py-2">
+                    A member can play when their total <span className="text-text">active placements</span> reach the minimum below.
+                  </p>
                 </div>
                 <div>
-                  <label className="block text-[11px] text-text-muted mb-1">Minimum investment (₱)</label>
+                  <label className="block text-[11px] text-text-muted mb-1">Minimum active placement (₱)</label>
                   <input
                     type="number"
                     value={gaDraft.minInvestment}
