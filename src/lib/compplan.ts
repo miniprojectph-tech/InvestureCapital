@@ -239,6 +239,51 @@ export async function markNotificationsRead(uid: string, ids: string[]): Promise
   await batch.commit();
 }
 
+// ===== Referral stats (server-computed downline) =====
+
+export type ReferralLevelStat = { level: number; pct: number; members: number; active: number; placed: number };
+export type DirectStat = { uid: string; name: string; joinedAt: number; activePlaced: number; placements: number; pendingLockedBonus: number };
+export type FastStartTierStat = { minPlacement: number; bonus: number; qualifying: number; paidAt: number | null };
+export type ReferralStats = {
+  rootUid: string;
+  levels: ReferralLevelStat[];
+  directs: DirectStat[];
+  totals: { members: number; active: number; placed: number };
+  fastStart: { directsRequired: number; tiers: FastStartTierStat[] };
+  leadershipPct: number;
+  uplineMinActive: number;
+  selfActive: boolean;
+  truncated: boolean;
+};
+
+export function getReferralStats(userId?: string): Promise<ReferralStats> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Firebase not initialized");
+  return httpsCallable<{ userId?: string }, ReferralStats>(functions, "getReferralStats")(userId ? { userId } : {}).then((r) => r.data);
+}
+
+/** Loads the downline once per mount (it's a server walk, not a live listener). */
+export function useReferralStats(userId?: string) {
+  const { user, demoMode } = useAuth();
+  const [stats, setStats] = useState<ReferralStats | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (!user || demoMode) { setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+    getReferralStats(userId)
+      .then((s) => { if (!cancelled) setStats(s); })
+      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Couldn't load referral stats"); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [user, demoMode, userId, tick]);
+
+  return { stats, loading, error, refresh: () => setTick((t) => t + 1) };
+}
+
 // ===== Commission ledger =====
 
 /** Commissions and bonuses paid (or skipped) TO the signed-in user. */

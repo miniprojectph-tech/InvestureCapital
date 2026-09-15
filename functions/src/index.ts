@@ -13,8 +13,10 @@ export { placeColorBet, resolveColorRound, adminAdjustColorJackpot, adminSetColo
 // Community chat: admin mirror for RTDB rules + room pruning.
 export { ensureCommunityAdmin, ensureCommunityMember, pruneCommunityRoom } from "./community";
 
-// Compensation plan: placement activation (commissions + Fast-Start).
+// Compensation plan: placement activation (commissions + Fast-Start) and
+// read-only downline stats for the Referrals page.
 export { activatePlacement } from "./compplan";
+export { getReferralStats } from "./referral-stats";
 
 // Legacy one-level referral trigger — no longer fired by the new comp plan
 // (activatePlacement pays commissions directly). Kept until the old referral

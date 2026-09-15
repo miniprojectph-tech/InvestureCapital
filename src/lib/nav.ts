@@ -39,7 +39,7 @@ export const investorNav: NavGroup[] = [
       { label: "Dashboard", href: "/dashboard", icon: "dashboard" },
       { label: "My plans", href: "/plans", icon: "coins" },
       { label: "Wallet", href: "/wallet", icon: "wallet" },
-      { label: "Vault", href: "/vault", icon: "lock" },
+      { label: "Bonuses", href: "/bonuses", icon: "lock" },
       { label: "AI Trading", href: "/ai-trading", icon: "bot" },
       { label: "Referrals", href: "/referrals", icon: "share" },
       { label: "Activity", href: "/activity", icon: "activity" },

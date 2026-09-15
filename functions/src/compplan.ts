@@ -49,8 +49,8 @@ export type CompletedPlacement = Placement & {
   lockedBonusPaid: number;
 };
 
-type UserDoc = {
-  profile?: { name?: string; email?: string };
+export type UserDoc = {
+  profile?: { name?: string; email?: string; joinedAt?: number };
   balances?: { wallet?: number };
   placements?: Placement[];
   completedPlacements?: CompletedPlacement[];
@@ -73,16 +73,16 @@ function genPlacementId(): string {
   return s;
 }
 
-function activeCapital(u: UserDoc | undefined): number {
+export function activeCapital(u: UserDoc | undefined): number {
   return (u?.placements ?? []).reduce((s, p) => s + (p.capital ?? 0), 0);
 }
 
-function isActiveUpline(u: UserDoc | undefined, cfg: CompPlanConfig): boolean {
+export function isActiveUpline(u: UserDoc | undefined, cfg: CompPlanConfig): boolean {
   if (cfg.uplineMinActive <= 0) return true;
   return activeCapital(u) >= cfg.uplineMinActive;
 }
 
-function displayName(u: UserDoc | undefined, uid: string): string {
+export function displayName(u: UserDoc | undefined, uid: string): string {
   return u?.profile?.name || u?.profile?.email?.split("@")[0] || uid.slice(0, 6);
 }
 
