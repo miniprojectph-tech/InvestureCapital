@@ -12,6 +12,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { createReferralClaim, type ReferralPlanConfig } from "./referrals";
+import type { Placement, CompletedPlacement } from "./compplan";
 
 export type StoredActivePlan = {
   id: string;
@@ -89,6 +90,11 @@ export type UserState = {
   referredByUserId?: string;
   /** Referrer earnings buckets. Defaults to zeros for older accounts. */
   referralWallet?: ReferralWallet;
+  /** Compensation plan: active placements (written by Cloud Functions). */
+  placements?: Placement[];
+  completedPlacements?: CompletedPlacement[];
+  /** Fast-Start tiers already paid, keyed by tier minPlacement → paid-at ms. */
+  fastStart?: { paidTiers?: Record<string, number> };
 };
 
 /** Kept for backwards compatibility; new sign-ups now start with zero balance. */

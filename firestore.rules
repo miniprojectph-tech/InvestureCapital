@@ -29,6 +29,23 @@ service cloud.firestore {
         allow read: if isSignedIn() && request.auth.uid == userId;
         allow read, write: if isAdmin();
       }
+
+      // Notifications — written by Cloud Functions; the owner may only flip `read`.
+      match /notifications/{nId} {
+        allow read: if isSignedIn() && request.auth.uid == userId;
+        allow update: if isSignedIn() && request.auth.uid == userId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+        allow read, write: if isAdmin();
+      }
+    }
+
+    // === Compensation plan: commission / bonus ledger (Functions write) ===
+    match /commissions/{cId} {
+      allow read: if isSignedIn()
+        && (resource.data.toUserId == request.auth.uid
+            || resource.data.fromUserId == request.auth.uid
+            || isAdmin());
+      allow write: if isAdmin();
     }
 
     // === Reef: fish catalog (admin-managed, readable by all signed-in) ===
