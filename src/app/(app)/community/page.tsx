@@ -33,12 +33,14 @@ export default function CommunityPage() {
 
   const modRole = useChatModRole();
   // Staff read the full history; members only from their sign-up date.
-  const { messages: room, loading: roomLoading } = useCommunityRoom(100, !!user?.isAdmin || modRole.isMod);
+  const roomFeed = useCommunityRoom(!!user?.isAdmin || modRole.isMod);
+  const { messages: room, loading: roomLoading } = roomFeed;
   const pinned = usePinnedMessage(room);
   const muted = useIsMuted();
 
   const uid = user?.uid ?? null;
-  const { messages: inbox, loading: inboxLoading } = useInbox(tab === "admin" ? uid : null);
+  const inboxFeed = useInbox(tab === "admin" ? uid : null);
+  const { messages: inbox, loading: inboxLoading } = inboxFeed;
   const inboxMeta = useInboxMeta(uid);
   const adminUnread = isInboxUnread(inboxMeta, "user");
 
@@ -112,6 +114,10 @@ export default function CommunityPage() {
           allowVideo={isStaff}
           keepOriginal={isStaff}
           blockLinks={!isStaff}
+          hasMore={roomFeed.hasMore}
+          loadingOlder={roomFeed.loadingOlder}
+          onLoadOlder={roomFeed.loadOlder}
+          historyStartLabel={isStaff ? "Beginning of the room" : "You joined the community here"}
           onSend={(p) => sendRoomMessage(sender, p)}
           {...moderation}
         />
@@ -127,6 +133,9 @@ export default function CommunityPage() {
           emptyText="This is a private conversation between you and the admin team. Send a message and we'll reply here."
           canSend={!demoMode}
           maxText={1000}
+          hasMore={inboxFeed.hasMore}
+          loadingOlder={inboxFeed.loadingOlder}
+          onLoadOlder={inboxFeed.loadOlder}
           onSend={(p) => sendInboxMessage(user.uid, { uid: user.uid, name: user.name, isAdmin: false }, p, { name: user.name, email: user.email })}
         />
       )}

@@ -10,8 +10,9 @@ export { castLine, claimQuest, claimDailyEnergy, redeemReward, fishOfTheHour, we
 // Color Game callables.
 export { placeColorBet, resolveColorRound, adminAdjustColorJackpot, adminSetColorJackpotColor, adminSetColorJackpotConfig } from "./colorgame";
 
-// Community chat: admin mirror for RTDB rules + room pruning.
-export { ensureCommunityAdmin, ensureCommunityMember, pruneCommunityRoom } from "./community";
+// Community chat: admin + join-date mirrors for RTDB rules, and storage stats.
+// (History is kept forever — there is no pruning job.)
+export { ensureCommunityAdmin, ensureCommunityMember, updateCommunityStats, refreshCommunityStats } from "./community";
 
 // Compensation plan: placement activation (commissions + Fast-Start) and
 // read-only downline stats for the Referrals page.

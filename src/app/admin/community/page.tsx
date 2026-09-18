@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { VolumeX, Pin, ExternalLink, ShieldCheck, Search, Plus, X, Loader2 } from "lucide-react";
+import { VolumeX, Pin, ExternalLink, ShieldCheck, Search, Plus, X, Loader2, RefreshCw } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { InboxPanel } from "@/components/community/InboxPanel";
@@ -15,6 +15,8 @@ import {
   useCommunityRoom,
   usePinnedMessage,
   useChatMods,
+  useCommunityStats,
+  refreshCommunityStats,
   unmuteUser,
   setPinnedMessage,
   ensureCommunityAdmin,
@@ -29,7 +31,9 @@ export default function AdminCommunityPage() {
   const [adminReady, setAdminReady] = useState(false);
 
   const mutedUsers = useMutedUsers(adminReady);
-  const { messages: room } = useCommunityRoom(100, true);
+  const { messages: room } = useCommunityRoom(true);
+  const stats = useCommunityStats(adminReady);
+  const [refreshing, setRefreshing] = useState(false);
   const pinned = usePinnedMessage(room);
 
   useEffect(() => {
@@ -60,6 +64,38 @@ export default function AdminCommunityPage() {
           }
         />
       </div>
+
+      {/* Chat storage — history is kept forever, so keep an eye on growth */}
+      <Card className="mb-3">
+        <CardHeader
+          title="Chat storage"
+          subtitle="History is never deleted. Totals update daily — refresh for a live count."
+          right={
+            <button
+              onClick={() => { setRefreshing(true); refreshCommunityStats().catch(() => {}).finally(() => setRefreshing(false)); }}
+              disabled={refreshing || !adminReady}
+              className="text-[10px] text-gold hover:underline flex items-center gap-1 disabled:opacity-50"
+            >
+              <RefreshCw className={cn("w-3 h-3", refreshing && "animate-spin")} /> Refresh
+            </button>
+          }
+        />
+        {(() => {
+          const msgs = stats?.roomMessages ?? 0;
+          const dbGb = (msgs * 300) / 1e9;
+          const mediaGb = (stats?.mediaBytes ?? 0) / 1e9;
+          const monthly = Math.max(0, dbGb - 1) * 5 + mediaGb * 0.026;
+          const fmtSize = (gb: number) => (gb >= 1 ? `${gb.toFixed(2)} GB` : `${(gb * 1000).toFixed(gb * 1000 >= 10 ? 0 : 1)} MB`);
+          return (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+              <StorageTile label="Room messages" value={msgs.toLocaleString()} sub={`≈ ${fmtSize(dbGb)} in the database`} />
+              <StorageTile label="Media files" value={stats?.mediaFiles != null ? stats.mediaFiles.toLocaleString() : "—"} sub={stats?.mediaBytes != null ? fmtSize(mediaGb) : "not measured yet"} />
+              <StorageTile label="Est. storage cost" value={`$${monthly.toFixed(2)} / mo`} sub="first 1 GB of messages is free" tone="text-green" />
+              <StorageTile label="Last updated" value={stats?.updatedAt ? formatRelative(stats.updatedAt) + " ago" : "never"} sub="runs automatically every day" />
+            </div>
+          );
+        })()}
+      </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <ModeratorsCard enabled={adminReady} demoMode={demoMode} />
@@ -117,6 +153,16 @@ export default function AdminCommunityPage() {
           )}
         </Card>
       </div>
+    </div>
+  );
+}
+
+function StorageTile({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: string }) {
+  return (
+    <div className="bg-canvas border border-border rounded-lg px-3 py-2.5">
+      <p className="text-[9px] uppercase tracking-wider text-text-subtle m-0 mb-1">{label}</p>
+      <p className={cn("text-[14px] font-mono font-medium m-0 tabular-nums", tone)}>{value}</p>
+      {sub && <p className="text-[9px] text-text-subtle m-0 mt-0.5">{sub}</p>}
     </div>
   );
 }

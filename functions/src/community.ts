@@ -1,17 +1,20 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getDatabase } from "firebase-admin/database";
+import { getStorage } from "firebase-admin/storage";
 import { logger } from "firebase-functions";
 import { db } from "./init";
 
 // Community chat lives entirely in Realtime Database (bandwidth-priced) and
 // clients write directly under security rules — no function on the send path.
-// These two helpers are the only server pieces:
-//   * ensureCommunityAdmin mirrors the Firestore `isAdmin` flag into RTDB
+// History is kept FOREVER (nothing is pruned); the app pages back through it.
+// Server pieces:
+//   * ensureCommunityAdmin  mirrors the Firestore `isAdmin` flag into RTDB
 //     (`admins/{uid}`) so RTDB rules can grant moderator powers.
-//   * pruneCommunityRoom keeps the public room bounded so storage never grows.
-
-const ROOM_KEEP = 500;
+//   * ensureCommunityMember mirrors the sign-up date so rules can hide history
+//     from before a member joined.
+//   * updateCommunityStats / refreshCommunityStats keep message + media totals
+//     at `community/stats` so the admin can watch storage grow.
 
 export const ensureCommunityAdmin = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
@@ -42,17 +45,65 @@ export const ensureCommunityMember = onCall(async (request) => {
   return { ok: true, joinedAt: value };
 });
 
-export const pruneCommunityRoom = onSchedule("every 24 hours", async () => {
+// ===== Storage stats =====
+
+type CommunityStats = {
+  roomMessages: number;
+  lastRoomKey: string | null;
+  mediaFiles: number | null;
+  mediaBytes: number | null;
+  updatedAt: number;
+};
+
+/** Below this, recount from scratch (also corrects for deletions); above it, count only new keys. */
+const FULL_RECOUNT_LIMIT = 20_000;
+
+async function computeCommunityStats(): Promise<CommunityStats> {
   const rtdb = getDatabase();
-  const snap = await rtdb.ref("community/room").orderByChild("at").once("value");
-  const keys: string[] = [];
-  snap.forEach((child) => {
-    keys.push(child.key as string);
-  });
-  const excess = keys.length - ROOM_KEEP;
-  if (excess <= 0) return;
-  const updates: Record<string, null> = {};
-  for (const key of keys.slice(0, excess)) updates[`community/room/${key}`] = null;
-  await rtdb.ref().update(updates);
-  logger.info("pruned community room", { removed: excess, kept: ROOM_KEEP });
+  const prev = ((await rtdb.ref("community/stats").once("value")).val() ?? null) as CommunityStats | null;
+
+  let roomMessages = 0;
+  let lastRoomKey: string | null = null;
+  if (prev && prev.roomMessages >= FULL_RECOUNT_LIMIT && prev.lastRoomKey) {
+    // Push keys are chronological, so everything after the last counted key is new.
+    const snap = await rtdb.ref("community/room").orderByKey().startAfter(prev.lastRoomKey).once("value");
+    roomMessages = prev.roomMessages + snap.numChildren();
+    lastRoomKey = prev.lastRoomKey;
+    snap.forEach((c) => { lastRoomKey = c.key; });
+  } else {
+    const snap = await rtdb.ref("community/room").orderByKey().once("value");
+    roomMessages = snap.numChildren();
+    snap.forEach((c) => { lastRoomKey = c.key; });
+  }
+
+  // Media: metadata-only listing of everything under community/ in Storage.
+  let mediaFiles: number | null = null;
+  let mediaBytes: number | null = null;
+  try {
+    const bucketName = (JSON.parse(process.env.FIREBASE_CONFIG || "{}") as { storageBucket?: string }).storageBucket;
+    if (bucketName) {
+      const [files] = await getStorage().bucket(bucketName).getFiles({ prefix: "community/" });
+      mediaFiles = files.length;
+      mediaBytes = files.reduce((s, f) => s + Number(f.metadata.size ?? 0), 0);
+    }
+  } catch (err) {
+    logger.warn("community media listing failed", err);
+  }
+
+  const stats: CommunityStats = { roomMessages, lastRoomKey, mediaFiles, mediaBytes, updatedAt: Date.now() };
+  await rtdb.ref("community/stats").set(stats);
+  return stats;
+}
+
+export const updateCommunityStats = onSchedule("every 24 hours", async () => {
+  const s = await computeCommunityStats();
+  logger.info("community stats", s);
+});
+
+/** Admin-triggered recount for the "Refresh" button. */
+export const refreshCommunityStats = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const caller = await db.collection("users").doc(request.auth.uid).get();
+  if (caller.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Admin role required.");
+  return computeCommunityStats();
 });

@@ -35,7 +35,8 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
   const [search, setSearch] = useState("");
 
   const threads = useInboxList(true);
-  const { messages, loading } = useInbox(selected);
+  const feed = useInbox(selected);
+  const { messages, loading } = feed;
 
   const current = useMemo(() => threads.find((t) => t.uid === selected) ?? null, [threads, selected]);
   const currentUnread = isInboxUnread(current, "admin");
@@ -138,6 +139,9 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
               allowVideo
               keepOriginal
               maxText={1000}
+              hasMore={feed.hasMore}
+              loadingOlder={feed.loadingOlder}
+              onLoadOlder={feed.loadOlder}
               onSend={(p) => sendInboxMessage(selected, staff, p)}
               onDelete={(m: ChatItem) => deleteInboxMessage(selected, m.id)}
             />

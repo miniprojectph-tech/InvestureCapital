@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ref,
   onValue,
@@ -8,6 +8,7 @@ import {
   orderByChild,
   limitToLast,
   startAt,
+  endBefore,
   push,
   update,
   remove,
@@ -86,64 +87,88 @@ type RawInbox = { from: string; name: string; kind: ChatKind; text?: string; med
 
 // ===== Hooks =====
 
+const roomToItem = (id: string, raw: unknown): ChatItem => {
+  const m = raw as RawRoom;
+  return { id, senderId: m.uid, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: !!m.admin, mod: !!m.mod };
+};
+
+const inboxToItem = (id: string, raw: unknown): ChatItem => {
+  const m = raw as RawInbox;
+  return { id, senderId: m.from, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: m.from === "admin" };
+};
+
+const byTime = (a: ChatItem, b: ChatItem) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/** How many messages the live listener holds, and how many each scroll-back fetches. */
+const LIVE_WINDOW = 50;
+const PAGE_SIZE = 50;
+
+export type PagedMessages = {
+  messages: ChatItem[];
+  loading: boolean;
+  /** True while older history exists beyond what's loaded. */
+  hasMore: boolean;
+  loadingOlder: boolean;
+  loadOlder: () => void;
+};
+
 /**
- * Live room messages. Members only see messages posted on or after the day
- * they signed up (enforced by rules via `members/{uid}/joinedAt`); pass
- * `all = true` for staff, who may read the full history.
+ * History is kept forever, so nothing loads it all: a live listener holds the
+ * newest LIVE_WINDOW messages and `loadOlder` pages further back on demand.
+ *
+ * `since`: undefined = not ready yet, null = no lower bound (staff / private
+ * threads), number = the member's join date. Room rules only support EQUALITY
+ * on query.startAt, so a member's every query starts exactly at that date.
  */
-export function useCommunityRoom(max = 100, all = false) {
-  const { user } = useAuth();
-  const [messages, setMessages] = useState<ChatItem[]>([]);
+function usePagedMessages(
+  path: string | null,
+  since: number | null | undefined,
+  toItem: (id: string, raw: unknown) => ChatItem,
+): PagedMessages {
+  const store = useRef(new Map<string, ChatItem>());
+  const busy = useRef(false);
+  const [version, setVersion] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [since, setSince] = useState<number | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   // A denied read cancels the listener for good, so re-subscribe a few times —
   // covers an admin/moderator whose RTDB flag lands just after the first try.
   const [retry, setRetry] = useState(0);
 
-  // Resolve the member's join date (server-mirrored) before querying.
   useEffect(() => {
-    if (!user) return;
-    if (all) { setSince(0); return; }
+    store.current = new Map();
+    setVersion((v) => v + 1);
+    setHasMore(false);
+    if (!path || since === undefined) return;
     const { rtdb } = getFirebase();
     if (!rtdb) { setLoading(false); return; }
-    return onValue(ref(rtdb, `members/${user.uid}/joinedAt`), (s) => {
-      const v = s.val();
-      if (typeof v === "number") setSince(v);
-      // First visit — the mirror write re-fires this listener. If the mirror
-      // can't be created, stop the spinner rather than hang.
-      else ensureCommunityMember().then((j) => { if (j === null) setLoading(false); });
-    });
-  }, [user, all]);
+    setLoading(true);
 
-  useEffect(() => {
-    if (!user || since === null) return;
-    const { rtdb } = getFirebase();
-    if (!rtdb) { setLoading(false); return; }
-    // Rules only support EQUALITY on query.startAt (ordering comparisons are
-    // rejected), so members must start exactly at their mirrored join date.
-    const q = all
-      ? rtdbQuery(ref(rtdb, "community/room"), orderByChild("at"), limitToLast(max))
-      : rtdbQuery(ref(rtdb, "community/room"), orderByChild("at"), startAt(since), limitToLast(max));
+    const bounds = since === null ? [] : [startAt(since)];
+    const q = rtdbQuery(ref(rtdb, path), orderByChild("at"), ...bounds, limitToLast(LIVE_WINDOW));
+    let first = true;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
     const unsub = onValue(
       q,
       (snap) => {
-        const val = (snap.val() as Record<string, RawRoom> | null) ?? {};
-        setMessages(
-          Object.entries(val)
-            .map(([id, m]) => ({
-              id,
-              senderId: m.uid,
-              name: m.name,
-              kind: m.kind,
-              text: m.text,
-              media: m.media,
-              at: m.at,
-              admin: !!m.admin,
-              mod: !!m.mod,
-            }))
-            .sort((a, b) => a.at - b.at),
-        );
+        const val = (snap.val() as Record<string, unknown> | null) ?? {};
+        const items = Object.entries(val).map(([id, raw]) => toItem(id, raw));
+        const ids = new Set(items.map((i) => i.id));
+        if (items.length === 0) {
+          store.current.clear();
+        } else {
+          // Inside the live window, anything missing from the snapshot was
+          // deleted. Older entries (paged in, or scrolled out) are kept.
+          const minAt = Math.min(...items.map((i) => i.at));
+          for (const [id, it] of store.current) if (it.at >= minAt && !ids.has(id)) store.current.delete(id);
+          for (const it of items) store.current.set(it.id, it);
+        }
+        if (first) {
+          setHasMore(items.length >= LIVE_WINDOW);
+          first = false;
+        }
+        setVersion((v) => v + 1);
         setLoading(false);
       },
       () => {
@@ -155,9 +180,65 @@ export function useCommunityRoom(max = 100, all = false) {
       unsub();
       if (retryTimer) clearTimeout(retryTimer);
     };
-  }, [user, max, all, since, retry]);
+  }, [path, since, toItem, retry]);
 
-  return { messages, loading };
+  const loadOlder = useCallback(() => {
+    if (!path || since === undefined || busy.current || !hasMore) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    const oldest = [...store.current.values()].sort(byTime)[0];
+    if (!oldest) return;
+    busy.current = true;
+    setLoadingOlder(true);
+    const bounds = since === null ? [] : [startAt(since)];
+    const q = rtdbQuery(ref(rtdb, path), orderByChild("at"), ...bounds, endBefore(oldest.at, oldest.id), limitToLast(PAGE_SIZE));
+    get(q)
+      .then((snap) => {
+        const val = (snap.val() as Record<string, unknown> | null) ?? {};
+        const items = Object.entries(val).map(([id, raw]) => toItem(id, raw));
+        for (const it of items) store.current.set(it.id, it);
+        setHasMore(items.length >= PAGE_SIZE);
+        setVersion((v) => v + 1);
+      })
+      .catch(() => setHasMore(false))
+      .finally(() => {
+        busy.current = false;
+        setLoadingOlder(false);
+      });
+  }, [path, since, hasMore, toItem]);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const messages = useMemo(() => [...store.current.values()].sort(byTime), [version]);
+  return { messages, loading, hasMore, loadingOlder, loadOlder };
+}
+
+/**
+ * The Community Room. Members only see messages posted on or after the day
+ * they signed up (enforced by rules via `members/{uid}/joinedAt`); pass
+ * `all = true` for staff, who may read the full history.
+ */
+export function useCommunityRoom(all = false): PagedMessages {
+  const { user } = useAuth();
+  const [joined, setJoined] = useState<number | null>(null);
+  const [mirrorFailed, setMirrorFailed] = useState(false);
+
+  // Resolve the member's join date (server-mirrored) before querying.
+  useEffect(() => {
+    if (!user || all) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, `members/${user.uid}/joinedAt`), (s) => {
+      const v = s.val();
+      if (typeof v === "number") setJoined(v);
+      // First visit — the mirror write re-fires this listener. If the mirror
+      // can't be created, stop the spinner rather than hang.
+      else ensureCommunityMember().then((j) => { if (j === null) setMirrorFailed(true); });
+    });
+  }, [user, all]);
+
+  const since = !user ? undefined : all ? null : joined ?? undefined;
+  const paged = usePagedMessages(user ? "community/room" : null, since, roomToItem);
+  return { ...paged, loading: paged.loading && !mirrorFailed };
 }
 
 /** Mirrors the member's sign-up date into RTDB so the room can hide older history. */
@@ -284,42 +365,38 @@ export function useMutedUsers(enabled: boolean): MutedUser[] {
   return list;
 }
 
-export function useInbox(threadUid: string | null, max = 100) {
+/** A member ↔ admin private thread. Kept forever; pages back like the room. */
+export function useInbox(threadUid: string | null): PagedMessages {
   const { user } = useAuth();
-  const [messages, setMessages] = useState<ChatItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  return usePagedMessages(user && threadUid ? `community/inbox/${threadUid}` : null, null, inboxToItem);
+}
 
+// ===== Storage stats (admin) =====
+
+export type CommunityStats = {
+  roomMessages: number;
+  mediaFiles: number | null;
+  mediaBytes: number | null;
+  updatedAt: number;
+};
+
+/** Staff only — message/media totals maintained by a daily Cloud Function. */
+export function useCommunityStats(enabled: boolean): CommunityStats | null {
+  const { user } = useAuth();
+  const [stats, setStats] = useState<CommunityStats | null>(null);
   useEffect(() => {
-    if (!user || !threadUid) return;
+    if (!user || !enabled) return;
     const { rtdb } = getFirebase();
-    if (!rtdb) { setLoading(false); return; }
-    setLoading(true);
-    const q = rtdbQuery(ref(rtdb, `community/inbox/${threadUid}`), orderByChild("at"), limitToLast(max));
-    return onValue(
-      q,
-      (snap) => {
-        const val = (snap.val() as Record<string, RawInbox> | null) ?? {};
-        setMessages(
-          Object.entries(val)
-            .map(([id, m]) => ({
-              id,
-              senderId: m.from,
-              name: m.name,
-              kind: m.kind,
-              text: m.text,
-              media: m.media,
-              at: m.at,
-              admin: m.from === "admin",
-            }))
-            .sort((a, b) => a.at - b.at),
-        );
-        setLoading(false);
-      },
-      () => setLoading(false),
-    );
-  }, [user, threadUid, max]);
+    if (!rtdb) return;
+    return onValue(ref(rtdb, "community/stats"), (s) => setStats((s.val() as CommunityStats | null) ?? null), () => {});
+  }, [user, enabled]);
+  return stats;
+}
 
-  return { messages, loading };
+export function refreshCommunityStats(): Promise<CommunityStats> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Firebase not initialized");
+  return httpsCallable<unknown, CommunityStats>(functions, "refreshCommunityStats")({}).then((r) => r.data);
 }
 
 export function useInboxMeta(threadUid: string | null): InboxMeta | null {

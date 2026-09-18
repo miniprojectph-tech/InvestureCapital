@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   Image as ImageIcon,
   Video as VideoIcon,
@@ -45,6 +45,12 @@ type Props = {
   /** Reject messages containing links before they reach the (also enforcing) rules. */
   blockLinks?: boolean;
   maxText?: number;
+  /** Scroll-back: older history exists / is being fetched / fetch the next page. */
+  hasMore?: boolean;
+  loadingOlder?: boolean;
+  onLoadOlder?: () => void;
+  /** Shown at the very top once everything available is loaded. */
+  historyStartLabel?: string;
   onSend: (payload: SendPayload) => Promise<void>;
   onDelete?: (item: ChatItem) => Promise<void>;
   onPin?: (item: ChatItem) => Promise<void>;
@@ -101,6 +107,10 @@ export function ChatView({
   keepOriginal = false,
   blockLinks = false,
   maxText = MAX_TEXT,
+  hasMore = false,
+  loadingOlder = false,
+  onLoadOlder,
+  historyStartLabel = "Beginning of the conversation",
   onSend,
   onDelete,
   onPin,
@@ -117,6 +127,7 @@ export function ChatView({
 
   const listRef = useRef<HTMLDivElement>(null);
   const atBottomRef = useRef(true);
+  const heightBeforeLoad = useRef<number | null>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const imgInput = useRef<HTMLInputElement>(null);
   const vidInput = useRef<HTMLInputElement>(null);
@@ -140,11 +151,28 @@ export function ChatView({
     return () => document.removeEventListener("click", close);
   }, [menuFor]);
 
+  function requestOlder() {
+    const el = listRef.current;
+    if (!el || !onLoadOlder || !hasMore || loadingOlder) return;
+    heightBeforeLoad.current = el.scrollHeight;
+    onLoadOlder();
+  }
+
   function onScroll() {
     const el = listRef.current;
     if (!el) return;
     atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (el.scrollTop < 80) requestOlder();
   }
+
+  // After older messages are prepended, keep the reader on the message they
+  // were looking at instead of jumping to the new top.
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    if (!el || loadingOlder || heightBeforeLoad.current === null) return;
+    el.scrollTop += el.scrollHeight - heightBeforeLoad.current;
+    heightBeforeLoad.current = null;
+  }, [loadingOlder, messages]);
 
   function pickFile(kind: "image" | "video", file: File | undefined) {
     if (!file) return;
@@ -235,7 +263,23 @@ export function ChatView({
             <p className="text-[12px] text-text-subtle text-center m-0">{emptyText}</p>
           </div>
         ) : (
-          messages.map((m, i) => {
+          <>
+          {/* Top of loaded history: fetch more, or mark where history begins */}
+          <div className="flex justify-center pb-2">
+            {hasMore ? (
+              <button
+                onClick={requestOlder}
+                disabled={loadingOlder}
+                className="text-[10px] px-3 py-1 rounded-full bg-card-elev border border-border text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-70"
+              >
+                {loadingOlder ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                {loadingOlder ? "Loading older messages…" : "Load older messages"}
+              </button>
+            ) : (
+              <span className="text-[9px] uppercase tracking-[0.14em] text-text-subtle">{historyStartLabel}</span>
+            )}
+          </div>
+          {messages.map((m, i) => {
             const prev = messages[i - 1];
             const own = m.senderId === meUid;
             const newDay = !prev || formatChatDay(prev.at) !== formatChatDay(m.at);
@@ -411,7 +455,8 @@ export function ChatView({
                 </div>
               </div>
             );
-          })
+          })}
+          </>
         )}
       </div>
 
