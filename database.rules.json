@@ -31,7 +31,7 @@
 
     "community": {
       "room": {
-        ".read": "auth != null && ((root.child('admins').child(auth.uid).val() === true || root.child('chatMods').child(auth.uid).exists()) || (query.orderByChild === 'at' && query.startAt >= root.child('members').child(auth.uid).child('joinedAt').val()))",
+        ".read": "auth != null && ((root.child('admins').child(auth.uid).val() === true || root.child('chatMods').child(auth.uid).exists()) || (query.orderByChild == 'at' && query.startAt == root.child('members').child(auth.uid).child('joinedAt').val()))",
         ".indexOn": ["at"],
         "$msgId": {
           ".read": "auth != null",

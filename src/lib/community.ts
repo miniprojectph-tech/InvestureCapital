@@ -96,6 +96,9 @@ export function useCommunityRoom(max = 100, all = false) {
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [since, setSince] = useState<number | null>(null);
+  // A denied read cancels the listener for good, so re-subscribe a few times —
+  // covers an admin/moderator whose RTDB flag lands just after the first try.
+  const [retry, setRetry] = useState(0);
 
   // Resolve the member's join date (server-mirrored) before querying.
   useEffect(() => {
@@ -106,7 +109,9 @@ export function useCommunityRoom(max = 100, all = false) {
     return onValue(ref(rtdb, `members/${user.uid}/joinedAt`), (s) => {
       const v = s.val();
       if (typeof v === "number") setSince(v);
-      else ensureCommunityMember(); // first visit — the mirror write re-fires this listener
+      // First visit — the mirror write re-fires this listener. If the mirror
+      // can't be created, stop the spinner rather than hang.
+      else ensureCommunityMember().then((j) => { if (j === null) setLoading(false); });
     });
   }, [user, all]);
 
@@ -114,10 +119,13 @@ export function useCommunityRoom(max = 100, all = false) {
     if (!user || since === null) return;
     const { rtdb } = getFirebase();
     if (!rtdb) { setLoading(false); return; }
+    // Rules only support EQUALITY on query.startAt (ordering comparisons are
+    // rejected), so members must start exactly at their mirrored join date.
     const q = all
       ? rtdbQuery(ref(rtdb, "community/room"), orderByChild("at"), limitToLast(max))
       : rtdbQuery(ref(rtdb, "community/room"), orderByChild("at"), startAt(since), limitToLast(max));
-    return onValue(
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const unsub = onValue(
       q,
       (snap) => {
         const val = (snap.val() as Record<string, RawRoom> | null) ?? {};
@@ -138,9 +146,16 @@ export function useCommunityRoom(max = 100, all = false) {
         );
         setLoading(false);
       },
-      () => setLoading(false),
+      () => {
+        setLoading(false);
+        if (retry < 3) retryTimer = setTimeout(() => setRetry((r) => r + 1), 1500);
+      },
     );
-  }, [user, max, all, since]);
+    return () => {
+      unsub();
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [user, max, all, since, retry]);
 
   return { messages, loading };
 }
