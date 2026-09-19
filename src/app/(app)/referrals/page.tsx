@@ -222,7 +222,12 @@ export default function ReferralsPage() {
                     </p>
                     <p className="text-[9px] text-text-subtle m-0 truncate">
                       {new Date(c.createdAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
-                      {c.pct ? ` · ${c.pct}% of ${formatPHP(c.placementAmount ?? 0, { short: true })}` : ""}
+                      {/* Leadership is a % of the direct's Locked-In Bonus, not of their placement. */}
+                      {c.pct
+                        ? c.type === "leadership"
+                          ? ` · ${c.pct}% of ${formatPHP((c.amount * 100) / c.pct, { short: true })} Locked-In Bonus`
+                          : ` · ${c.pct}% of ${formatPHP(c.placementAmount ?? 0, { short: true })}`
+                        : ""}
                       {c.status === "skipped" && <span className="text-red"> · not paid: {c.reason}</span>}
                     </p>
                   </div>

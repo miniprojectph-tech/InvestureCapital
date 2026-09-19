@@ -103,7 +103,11 @@ export default function AdminReferralsPage() {
                   <td className="py-2 text-text-muted">{r.fromUserName}</td>
                   <td className="py-2 font-mono text-text-muted">
                     {r.placementId}
-                    {r.placementAmount ? <span className="text-text-subtle font-sans"> · {formatPHP(r.placementAmount, { short: true })}{r.pct ? ` × ${r.pct}%` : ""}</span> : null}
+                    {r.type === "leadership" && r.pct ? (
+                      <span className="text-text-subtle font-sans"> · {formatPHP((r.amount * 100) / r.pct, { short: true })} Locked-In × {r.pct}%</span>
+                    ) : r.placementAmount ? (
+                      <span className="text-text-subtle font-sans"> · {formatPHP(r.placementAmount, { short: true })}{r.pct ? ` × ${r.pct}%` : ""}</span>
+                    ) : null}
                     {r.tier ? <span className="text-text-subtle font-sans"> · {formatPHP(r.tier, { short: true })} tier</span> : null}
                   </td>
                   <td className="py-2 text-text-muted whitespace-nowrap">{new Date(r.createdAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
