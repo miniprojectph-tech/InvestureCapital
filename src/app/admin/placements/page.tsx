@@ -115,7 +115,7 @@ export default function AdminPlacementsPage() {
       </div>
 
       <Card className="mb-3">
-        <CardHeader title={tab === "active" ? "Running placements" : "Completed placements"} subtitle={tab === "active" ? `Fast-forward moves a placement's start date back and runs its payouts immediately — testing only` : "Capital and any Locked-In Bonus were paid with the final payout"} />
+        <CardHeader title={tab === "active" ? "Running placements" : "Completed placements"} subtitle={tab === "active" ? `Fast-forward pushes a placement's clock ahead and runs its payouts immediately — its start date (and history dates) are untouched. More tools in Investors › Plans.` : "Capital and any Locked-In Bonus were paid with the final payout"} />
         {rows === null ? (
           <div className="py-8 flex justify-center"><Loader2 className="w-5 h-5 text-gold animate-spin" /></div>
         ) : filtered.length === 0 ? (

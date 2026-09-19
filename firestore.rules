@@ -39,6 +39,15 @@ service cloud.firestore {
       }
     }
 
+    // === Test clocks: accounts an admin put on accelerated time ===
+    // Deliberately NOT on the user doc (members can edit that) — otherwise a
+    // member could speed up their own payouts. The owner may read theirs so the
+    // app can show the "test clock" chip; only admins/functions write.
+    match /test_clocks/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
     // === Compensation plan: commission / bonus ledger (Functions write) ===
     match /commissions/{cId} {
       allow read: if isSignedIn()

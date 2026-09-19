@@ -88,9 +88,12 @@ export async function requestPlacement(
   return ref.id;
 }
 
-/** Admin: activates the placement via Cloud Function (pays commissions) and marks the request approved. */
-export function approvePlanRequest(id: string, note?: string): Promise<ActivatePlacementResult> {
-  return activatePlacement({ requestId: id, note });
+/**
+ * Admin: activates the placement via Cloud Function (pays commissions) and marks
+ * the request approved. `startedAt` backdates the start (e.g. to the payment date).
+ */
+export function approvePlanRequest(id: string, note?: string, startedAt?: number): Promise<ActivatePlacementResult> {
+  return activatePlacement({ requestId: id, note, ...(startedAt !== undefined ? { startedAt } : {}) });
 }
 
 export async function rejectPlanRequest(db: Firestore, id: string, adminUid: string, note?: string): Promise<void> {

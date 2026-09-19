@@ -80,7 +80,7 @@ export default function BonusesPage() {
                     </div>
                     <div className="flex items-center justify-between mt-1 text-[9px] text-text-subtle">
                       <span>{p.cyclesPaid} of {p.cycles} payouts done</span>
-                      <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> with final payout in {formatCountdown(at - now)} · {new Date(at).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</span>
+                      <span className="flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> with final payout in {formatCountdown(at - (p.clockAdvanceMs ?? 0) - now)} · {new Date(at).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</span>
                     </div>
                   </div>
                 );

@@ -16,7 +16,15 @@ export { ensureCommunityAdmin, ensureCommunityMember, updateCommunityStats, refr
 
 // Compensation plan: placement activation (commissions + Fast-Start) and
 // read-only downline stats for the Referrals page.
-export { activatePlacement, adminAdvancePlacement, adminResetEconomy } from "./compplan";
+export {
+  activatePlacement,
+  adminAdvancePlacement,
+  adminSetPlacementStart,
+  adminResetMember,
+  adminResetEconomy,
+  adminSetTestClock,
+  tickTestClocks,
+} from "./compplan";
 export { getReferralStats } from "./referral-stats";
 
 // Community Tongits (Phase 1): room + economy callables + stale-room reaper.

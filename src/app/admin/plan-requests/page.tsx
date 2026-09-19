@@ -9,7 +9,13 @@ import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { usePlanRequests, approvePlanRequest, rejectPlanRequest, listAllUsers, type PlanRequestStatus, type PlanRequest } from "@/lib/planRequests";
-import { useCompPlan, activatePlacement, projectPlacement, validatePlacementAmount, peso } from "@/lib/compplan";
+import { useCompPlan, activatePlacement, projectPlacement, validatePlacementAmount, toDateInput, fromDateInput, peso } from "@/lib/compplan";
+
+/** A date-input value → start timestamp, or undefined when it's today (= start now). */
+function startFromInput(dateStr: string): number | undefined {
+  if (!dateStr || dateStr === toDateInput(Date.now())) return undefined;
+  return fromDateInput(dateStr);
+}
 
 const statusMeta = {
   pending: { label: "Pending", icon: Clock, color: "text-vault", bg: "bg-vault/15" },
@@ -30,6 +36,8 @@ export default function AdminPlanRequestsPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [viewReceipt, setViewReceipt] = useState<PlanRequest | null>(null);
   const [manualOpen, setManualOpen] = useState(false);
+  const [approving, setApproving] = useState<PlanRequest | null>(null);
+  const [approveDate, setApproveDate] = useState("");
 
   const counts = useMemo(
     () => ({
@@ -50,8 +58,9 @@ export default function AdminPlanRequestsPage() {
     setBusyId(r.id);
     setError(null);
     setNotice(null);
+    setApproving(null);
     try {
-      const res = await approvePlanRequest(r.id);
+      const res = await approvePlanRequest(r.id, undefined, startFromInput(approveDate));
       setNotice(
         `Activated ${res.placementId} for ${r.userName}: ${res.cycles} payouts of ${peso(res.perCycle)}` +
           (res.lockedBonus > 0 ? `, Locked-In ${peso(res.lockedBonus)}` : "") +
@@ -176,7 +185,7 @@ export default function AdminPlanRequestsPage() {
               </div>
               {tab === "pending" ? (
                 <div className="flex gap-1.5 ml-auto sm:ml-0 w-full sm:w-auto">
-                  <button onClick={() => approve(r)} disabled={isBusy} className="flex-1 sm:flex-none text-[11px] px-3 py-1.5 bg-green/15 text-green rounded-md flex items-center justify-center gap-1.5 hover:bg-green/25 transition disabled:opacity-60">
+                  <button onClick={() => { setApproveDate(toDateInput(Date.now())); setApproving(r); }} disabled={isBusy} className="flex-1 sm:flex-none text-[11px] px-3 py-1.5 bg-green/15 text-green rounded-md flex items-center justify-center gap-1.5 hover:bg-green/25 transition disabled:opacity-60">
                     {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                     Approve
                   </button>
@@ -222,6 +231,37 @@ export default function AdminPlanRequestsPage() {
         )}
       </Modal>
 
+      {/* Approve — optionally backdate the start to the payment date */}
+      <Modal open={approving !== null} onClose={() => setApproving(null)} title="Approve placement" maxWidth="max-w-sm">
+        {approving && (
+          <div className="flex flex-col gap-4">
+            <div className="bg-canvas border border-border rounded-lg p-3 text-[11px]">
+              <p className="m-0 text-text">{approving.userName}</p>
+              <p className="m-0 text-text-subtle mt-0.5">{formatPHP(approving.amount)} · {describe(approving)} · {approving.methodLabel}</p>
+            </div>
+            <div>
+              <label className="block text-[10px] text-text-muted uppercase tracking-wider mb-1.5">Start date</label>
+              <input
+                type="date"
+                value={approveDate}
+                max={toDateInput(Date.now() + 366 * 86_400_000)}
+                onChange={(e) => setApproveDate(e.target.value)}
+                className="w-full bg-canvas border border-border rounded-lg px-3 py-2.5 text-[12px] text-text outline-none focus:border-gold/40 [color-scheme:dark]"
+              />
+              <p className="text-[10px] text-text-subtle m-0 mt-1.5 leading-relaxed">
+                Leave as today to start now. Set it to the payment date if this was approved late — the payout schedule and history are dated from it, and any payouts already due are credited immediately.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setApproving(null)} className="flex-1 py-2.5 border border-border-strong rounded-lg text-[12px] text-text-muted hover:bg-card-elev transition">Cancel</button>
+              <button onClick={() => approve(approving)} className="flex-1 py-2.5 rounded-lg text-[12px] font-medium bg-gold text-gold-dark hover:brightness-110 flex items-center justify-center gap-2">
+                Approve &amp; activate <Check className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       <ManualActivateModal open={manualOpen} onClose={() => setManualOpen(false)} onError={setError} />
     </div>
   );
@@ -238,6 +278,7 @@ function ManualActivateModal({ open, onClose, onError }: { open: boolean; onClos
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [startDate, setStartDate] = useState(() => toDateInput(Date.now()));
 
   useEffect(() => {
     if (!open) return;
@@ -271,7 +312,8 @@ function ManualActivateModal({ open, onClose, onError }: { open: boolean; onClos
     setBusy(true);
     onError(null);
     try {
-      const r = await activatePlacement({ userId: selectedUid, amount, termMonths: term.months });
+      const startedAt = startFromInput(startDate);
+      const r = await activatePlacement({ userId: selectedUid, amount, termMonths: term.months, ...(startedAt !== undefined ? { startedAt } : {}) });
       setDone(`${r.placementId} · ${r.cycles} payouts of ${peso(r.perCycle)}${r.lockedBonus > 0 ? ` · Locked-In ${peso(r.lockedBonus)}` : ""} · ${r.commissionsPaid} commission${r.commissionsPaid === 1 ? "" : "s"} paid`);
     } catch (e) {
       onError(e instanceof Error ? e.message : "Activation failed");
@@ -345,6 +387,17 @@ function ManualActivateModal({ open, onClose, onError }: { open: boolean; onClos
                 {proj.cycles} payouts of {peso(proj.perCycle)}{proj.lockedBonus > 0 ? ` · Locked-In ${formatPHP(proj.lockedBonus, { short: true })}` : ""} · total return {formatPHP(proj.total, { short: true })}
               </p>
             )}
+          </div>
+
+          <div>
+            <label className="block text-[10px] text-text-muted uppercase tracking-wider mb-1.5">Start date</label>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full bg-canvas border border-border rounded-lg px-3 py-2.5 text-[12px] text-text outline-none focus:border-gold/40 [color-scheme:dark]"
+            />
+            <p className="text-[10px] text-text-subtle m-0 mt-1">Today = starts now. An earlier date credits any payouts already due.</p>
           </div>
 
           <div className="flex gap-2 mt-1">

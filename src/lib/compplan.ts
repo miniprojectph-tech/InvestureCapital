@@ -29,7 +29,12 @@ export type Placement = {
   cycleDays: number;
   cycleRate: number;
   lockedBonus: number;
+  /** True start date — admin-editable; every history date is scheduled from it. */
   startedAt: number;
+  /** Kept the first time an admin edits the start date. */
+  originalStartedAt?: number;
+  /** Virtual time added by the test clock / fast-forward (never moves startedAt). */
+  clockAdvanceMs?: number;
   cyclesPaid: number;
   totalPaid: number;
   lastAccrualDay?: string;
@@ -38,10 +43,16 @@ export type Placement = {
 };
 
 export type CompletedPlacement = Placement & {
+  /** Scheduled completion date (follows startedAt). */
   completedAt: number;
+  completedRealAt?: number;
   capitalReturned: number;
   lockedBonusPaid: number;
 };
+
+export type TestClockSpeed = "fast" | "medium";
+export type TestClock = { uid: string; speed: TestClockSpeed; cycleRealMs: number; enabledAt: number; lastTickAt: number; name: string };
+export const TEST_CLOCK_LABEL: Record<TestClockSpeed, string> = { fast: "1 payout / min", medium: "1 payout / 5 min" };
 
 export type AppNotification = {
   id: string;
@@ -83,8 +94,34 @@ export function useCompPlan(): { cfg: CompPlanConfig; loading: boolean } {
 
 const DAY_MS = 86_400_000;
 
+/** The SCHEDULED (history) date of payout k — follows the start date. */
+export function scheduledPayoutDate(p: Placement, k: number): number {
+  return p.startedAt + k * p.cycleDays * DAY_MS;
+}
+
+/** The REAL moment the next payout becomes due (scheduled date minus any clock advance). */
 export function nextPayoutAt(p: Placement): number {
-  return p.startedAt + (p.cyclesPaid + 1) * p.cycleDays * DAY_MS;
+  return scheduledPayoutDate(p, p.cyclesPaid + 1) - (p.clockAdvanceMs ?? 0);
+}
+
+/** Real moment the final payout (capital + bonus) becomes due. */
+export function finalPayoutDueAt(p: Placement): number {
+  return scheduledPayoutDate(p, p.cycles) - (p.clockAdvanceMs ?? 0);
+}
+
+/** yyyy-mm-dd (local) for <input type="date">. */
+export function toDateInput(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** A date-input value → ms, keeping the time of day of `timeFrom` (default: now). */
+export function fromDateInput(dateStr: string, timeFrom = Date.now()): number {
+  const t = new Date(timeFrom);
+  const d = new Date(`${dateStr}T00:00:00`);
+  d.setHours(t.getHours(), t.getMinutes(), t.getSeconds(), 0);
+  return d.getTime();
 }
 
 export function placementPerCycle(p: Placement): number {
@@ -138,7 +175,7 @@ export function projectedPayouts(placements: Placement[] | undefined, days: numb
   const out = new Array<number>(days + 1).fill(0);
   for (const p of placements ?? []) {
     for (let k = p.cyclesPaid + 1; k <= p.cycles; k++) {
-      const at = p.startedAt + k * p.cycleDays * DAY_MS;
+      const at = scheduledPayoutDate(p, k) - (p.clockAdvanceMs ?? 0); // real due time
       const dayIdx = Math.ceil((at - now) / DAY_MS);
       if (dayIdx < 0 || dayIdx > days) continue;
       out[Math.max(0, dayIdx)] += placementPerCycle(p) + (k === p.cycles ? placementFinalExtra(p) : 0);
@@ -185,6 +222,8 @@ export type ActivatePlacementArgs = {
   amount?: number;
   termMonths?: number;
   note?: string;
+  /** Admin only: the placement's true start (e.g. the payment date). Defaults to now. */
+  startedAt?: number;
   /** Member self-service reinvest: pays from the caller's own wallet. */
   fromWallet?: boolean;
 };
@@ -206,10 +245,66 @@ export function activatePlacement(args: ActivatePlacementArgs): Promise<Activate
   return httpsCallable<ActivatePlacementArgs, ActivatePlacementResult>(functions, "activatePlacement")(args).then((r) => r.data);
 }
 
-export function adminAdvancePlacement(args: { userId: string; placementId: string; days: number }) {
+type PayoutRun = { ok: boolean; payouts: number; completed: number; notified: boolean; active: number };
+
+function adminCall<A, R>(name: string, args: A): Promise<R> {
   const { functions } = getFirebase();
   if (!functions) throw new Error("Firebase not initialized");
-  return httpsCallable<typeof args, { ok: boolean; payouts: number; completed: number; notified: boolean }>(functions, "adminAdvancePlacement")(args).then((r) => r.data);
+  return httpsCallable<A, R>(functions, name)(args).then((r) => r.data);
+}
+
+/** Push a placement's clock forward (never its start date) and run its payouts. */
+export function adminAdvancePlacement(args: { userId: string; placementId: string; days?: number; mode?: "next" | "complete" }) {
+  return adminCall<typeof args, PayoutRun>("adminAdvancePlacement", args);
+}
+
+/** Change a placement's true start date — the schedule and every history date follow. */
+export function adminSetPlacementStart(args: { userId: string; placementId: string; startedAt: number }) {
+  return adminCall<typeof args, PayoutRun & { redated: number; oldStart: number }>("adminSetPlacementStart", args);
+}
+
+/** Wipe one member's economy (and reverse what their placements paid to uplines). */
+export function adminResetMember(userId: string) {
+  return adminCall<{ userId: string }, { ok: boolean; reversedCommissions: number }>("adminResetMember", { userId });
+}
+
+/** Put an account on accelerated time (null = off). Stops itself after the final payout. */
+export function adminSetTestClock(userId: string, speed: TestClockSpeed | null) {
+  return adminCall<{ userId: string; speed: TestClockSpeed | null }, { ok: boolean; enabled: boolean }>("adminSetTestClock", { userId, speed });
+}
+
+/** Admin: every account currently on a test clock, keyed by uid. */
+export function useTestClocks(enabled: boolean): Map<string, TestClock> {
+  const { user } = useAuth();
+  const [clocks, setClocks] = useState<Map<string, TestClock>>(new Map());
+  useEffect(() => {
+    if (!user || !enabled) return;
+    const { db } = getFirebase();
+    if (!db) return;
+    return onSnapshot(
+      collection(db, "test_clocks"),
+      (snap) => setClocks(new Map(snap.docs.map((d) => [d.id, { uid: d.id, ...(d.data() as Omit<TestClock, "uid">) }]))),
+      () => {},
+    );
+  }, [user, enabled]);
+  return clocks;
+}
+
+/** The signed-in member's own test clock, if an admin switched one on. */
+export function useMyTestClock(): TestClock | null {
+  const { user } = useAuth();
+  const [clock, setClock] = useState<TestClock | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    const { db } = getFirebase();
+    if (!db) return;
+    return onSnapshot(
+      doc(db, "test_clocks", user.uid),
+      (s) => setClock(s.exists() ? { uid: user.uid, ...(s.data() as Omit<TestClock, "uid">) } : null),
+      () => setClock(null),
+    );
+  }, [user]);
+  return clock;
 }
 
 export function adminResetEconomy(confirm: string) {

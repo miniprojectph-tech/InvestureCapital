@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Coins, Plus, Loader2, Clock, CheckCircle2 } from "lucide-react";
+import { Coins, Plus, Loader2, Clock, CheckCircle2, Zap } from "lucide-react";
 import { formatPHP, cn } from "@/lib/utils";
 import { useUserState } from "@/lib/useUserState";
 import {
@@ -11,6 +11,8 @@ import {
   placementDailyAccrual,
   placementFinalExtra,
   formatCountdown,
+  useMyTestClock,
+  TEST_CLOCK_LABEL,
   peso,
 } from "@/lib/compplan";
 
@@ -18,6 +20,7 @@ import {
 export function ActivePlacements() {
   const { state, loading } = useUserState();
   const now = useNow(30_000);
+  const testClock = useMyTestClock();
 
   if (loading || !state) {
     return (
@@ -67,7 +70,7 @@ export function ActivePlacements() {
                 <div className="flex justify-between items-baseline mb-1 gap-2">
                   <span className="text-[12px] font-medium text-text font-mono">{p.id}</span>
                   <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-card-elev text-text-muted shrink-0">
-                    {p.termMonths}-month
+                    {p.termMonths}-month · started {new Date(p.startedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
                   </span>
                 </div>
 
@@ -87,10 +90,16 @@ export function ActivePlacements() {
                   <span>
                     <span className="font-mono text-text-muted">{p.cyclesPaid}</span> of {p.cycles} payouts credited
                   </span>
-                  <span className="flex items-center gap-1 text-right">
-                    <Clock className="w-2.5 h-2.5" />
-                    {isFinalNext ? "Final payout" : `Payout ${p.cyclesPaid + 1}`} {peso(nextAmount)} in {formatCountdown(nextAt - now)}
-                  </span>
+                  {testClock ? (
+                    <span className="flex items-center gap-1 text-right text-gold">
+                      <Zap className="w-2.5 h-2.5" /> Test clock · {TEST_CLOCK_LABEL[testClock.speed]}
+                    </span>
+                  ) : (
+                    <span className="flex items-center gap-1 text-right">
+                      <Clock className="w-2.5 h-2.5" />
+                      {isFinalNext ? "Final payout" : `Payout ${p.cyclesPaid + 1}`} {peso(nextAmount)} in {formatCountdown(nextAt - now)}
+                    </span>
+                  )}
                 </div>
 
                 {p.lockedBonus > 0 && (

@@ -30,12 +30,14 @@ export default function WalletPage() {
 
   const income = useMemo(() => activity.filter((e) => INCOME_TYPES.has(e.type) && e.amountKind === "in"), [activity]);
 
+  // Money-in-wallet figures use the REAL credited time (history dates follow the
+  // schedule and can be in the future for fast-forwarded placements).
   const totals = useMemo(() => {
     const week = now - 7 * DAY_MS;
     const month = now - 30 * DAY_MS;
     return {
-      week: income.filter((e) => e.at >= week).reduce((s, e) => s + (e.amount ?? 0), 0),
-      month: income.filter((e) => e.at >= month).reduce((s, e) => s + (e.amount ?? 0), 0),
+      week: income.filter((e) => e.creditedAt >= week).reduce((s, e) => s + (e.amount ?? 0), 0),
+      month: income.filter((e) => e.creditedAt >= month).reduce((s, e) => s + (e.amount ?? 0), 0),
       all: income.reduce((s, e) => s + (e.amount ?? 0), 0),
     };
   }, [income, now]);
@@ -43,7 +45,7 @@ export default function WalletPage() {
   const chartData = useMemo(() => {
     const days = Array.from({ length: 30 }, (_, i) => ({ day: i, value: 0, isToday: i === 29 }));
     for (const e of income) {
-      const idx = 29 - Math.floor((now - e.at) / DAY_MS);
+      const idx = 29 - Math.floor((now - e.creditedAt) / DAY_MS);
       if (idx >= 0 && idx < 30) days[idx].value += e.amount ?? 0;
     }
     return days;

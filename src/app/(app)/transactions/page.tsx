@@ -33,6 +33,8 @@ type TxRow = {
   amount?: number;
   amountKind?: "in" | "out" | "neutral";
   at: number;
+  /** Real credited time; differs from `at` when a placement record is dated by its schedule. */
+  creditedAt?: number;
 };
 
 type Meta = { label: string; icon: LucideIcon; color: string; bg: string };
@@ -48,6 +50,7 @@ const typeMeta: Record<string, Meta> = {
   reinvest: { label: "Reinvest", icon: RefreshCw, color: "text-gold", bg: "bg-gold/15" },
   withdrawal: { label: "Withdrawal", icon: ArrowUpRight, color: "text-text-muted", bg: "bg-white/5" },
   deposit: { label: "Top up", icon: ArrowDownToLine, color: "text-green", bg: "bg-green/15" },
+  "start-date-change": { label: "Start date changed", icon: RefreshCw, color: "text-text-muted", bg: "bg-white/5" },
   // Legacy (old plan system)
   "plan-earning": { label: "Daily income", icon: ArrowDownRight, color: "text-green", bg: "bg-green/15" },
   "vault-growth": { label: "Vault growth", icon: TrendingUp, color: "text-vault", bg: "bg-vault/15" },
@@ -252,6 +255,12 @@ export default function TransactionsPage() {
                       hour: "2-digit",
                       minute: "2-digit",
                     })}
+                    {/* Placement records are dated by their schedule; show the real credit day when it differs. */}
+                    {row.creditedAt !== undefined && Math.abs(row.creditedAt - row.at) > 86_400_000 && (
+                      <span className="block text-[9px] text-text-subtle">
+                        credited {new Date(row.creditedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
+                      </span>
+                    )}
                   </td>
                   <td
                     className={cn(

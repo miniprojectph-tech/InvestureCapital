@@ -12,7 +12,11 @@ export type UserActivityRow = {
   subtitle: string;
   amount?: number;
   amountKind?: "in" | "out" | "neutral";
+  /** History date. For placement records this is the SCHEDULED date (follows the start date). */
   at: number;
+  /** When it was really credited — set on placement records; equals `at` otherwise. */
+  creditedAt: number;
+  planId?: string;
 };
 
 function toMs(v: unknown): number {
@@ -58,6 +62,8 @@ export function useUserActivity(typeFilter?: string) {
             amount: typeof data.amount === "number" ? data.amount : undefined,
             amountKind: data.amountKind,
             at: toMs(data.at),
+            creditedAt: data.creditedAt ? toMs(data.creditedAt) : toMs(data.at),
+            planId: typeof data.planId === "string" ? data.planId : undefined,
           } as UserActivityRow;
         });
         if (typeFilter) r = r.filter((x) => x.type === typeFilter);

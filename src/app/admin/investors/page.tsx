@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
+import { InvestorPlansPanel } from "@/components/admin/InvestorPlansPanel";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -202,6 +203,9 @@ export default function AdminInvestorsPage() {
       .sort((a, b) => b.points - a.points || b.totalCasts - a.totalCasts);
   }, [rows, gameByUid, query]);
 
+  const [reloadTick, setReloadTick] = useState(0);
+  const reloadInvestors = useCallback(() => setReloadTick((t) => t + 1), []);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -217,7 +221,7 @@ export default function AdminInvestorsPage() {
     }
     load();
     return () => { cancelled = true; };
-  }, [user, demoMode]);
+  }, [user, demoMode, reloadTick]);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -553,66 +557,8 @@ export default function AdminInvestorsPage() {
         </Card>
       )}
 
-      {/* ── Plans tab ── */}
-      {sortKey === "plans" && (
-        <Card>
-          <CardHeader title={`Plan activity (${filtered.length})`} subtitle="Active & completed plans, deployed capital, and total earnings" />
-          <div className="overflow-x-auto -mx-1">
-            <table className="w-full text-[11px] table-fixed min-w-[820px]">
-              <colgroup>
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "18%" }} />
-                <col style={{ width: "11%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "13%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "10%" }} />
-              </colgroup>
-              <thead>
-                <tr className="text-text-subtle text-left">
-                  <th className="font-normal py-2 px-1">Name</th>
-                  <th className="font-normal py-2 px-1">Email</th>
-                  <th className="font-normal py-2 px-1 text-right">Active</th>
-                  <th className="font-normal py-2 px-1 text-right">Deployed</th>
-                  <th className="font-normal py-2 px-1 text-right">Completed</th>
-                  <th className="font-normal py-2 px-1 text-right">Total Earned</th>
-                  <th className="font-normal py-2 px-1 text-right">Role</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((u) => (
-                  <tr key={u.uid} className="border-t border-border hover:bg-card-elev/50 transition">
-                    <td className="py-2 px-1"><p className="m-0 text-[11px] truncate font-medium">{u.name}</p></td>
-                    <td className="py-2 px-1"><p className="m-0 text-[10px] text-text-muted truncate">{u.email}</p></td>
-                    <td className="py-2 px-1 text-right font-mono">
-                      {u.activePlansCount > 0 ? (
-                        <span className="text-green">{u.activePlansCount}</span>
-                      ) : (
-                        <span className="text-text-subtle">0</span>
-                      )}
-                    </td>
-                    <td className="py-2 px-1 text-right font-mono text-green">{formatPHP(u.deployed, { short: true })}</td>
-                    <td className="py-2 px-1 text-right font-mono">{u.completedPlansCount}</td>
-                    <td className="py-2 px-1 text-right font-mono text-vault">
-                      {u.totalEarned > 0 ? `+${formatPHP(u.totalEarned, { short: true })}` : formatPHP(0)}
-                    </td>
-                    <td className="py-2 px-1 text-right">
-                      {u.isAdmin ? (
-                        <span className="text-[9px] bg-vault/15 text-vault px-1.5 py-0.5 rounded-md">Admin</span>
-                      ) : (
-                        <span className="text-[9px] bg-green/15 text-green px-1.5 py-0.5 rounded-md">Investor</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={7} className="text-center text-text-subtle py-8">No investors match your search.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-      )}
+      {/* ── Plans tab — placements, test clock and per-placement tools ── */}
+      {sortKey === "plans" && <InvestorPlansPanel investors={filtered} onChanged={reloadInvestors} />}
 
       {/* ── Joined tab ── */}
       {sortKey === "joined" && (
