@@ -21,6 +21,7 @@ export {
   adminAdvancePlacement,
   adminSetPlacementStart,
   adminResetMember,
+  adminPaySkippedCommission,
   adminResetEconomy,
   adminSetTestClock,
   tickTestClocks,

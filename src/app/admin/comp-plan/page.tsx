@@ -164,8 +164,26 @@ export default function AdminCompPlanPage() {
             ))}
           </div>
           <div className="mt-3 grid grid-cols-2 gap-2.5">
-            <NumField label="Upline must have active placement ≥ (₱, 0 = off)" value={cfg.uplineMinActive} min={0} onChange={(v) => patch({ uplineMinActive: v })} />
+            <NumField label={'"Active" = running placements ≥ (₱)'} value={cfg.uplineMinActive} min={0} onChange={(v) => patch({ uplineMinActive: v })} />
             <NumField label="Leadership Bonus (% of direct's Locked-In Bonus)" value={cfg.leadershipPct} min={0} step={5} onChange={(v) => patch({ leadershipPct: v })} />
+          </div>
+          <div className="mt-3 bg-canvas border border-border rounded-lg px-3 py-2.5">
+            <p className="text-[9px] uppercase tracking-wider text-text-subtle m-0 mb-1.5">Recipient must be active to receive</p>
+            <div className="flex flex-col gap-1.5">
+              {([
+                ["requireActiveReferral", "Referral commission (all levels)"],
+                ["requireActiveFastStart", "Fast-Start Bonus"],
+                ["requireActiveLeadership", "Leadership Bonus"],
+              ] as const).map(([key, label]) => (
+                <label key={key} className="flex items-center gap-2 text-[11px] text-text cursor-pointer">
+                  <input type="checkbox" checked={cfg[key]} onChange={(e) => patch({ [key]: e.target.checked })} className="accent-[#3DD598]" />
+                  {label}
+                </label>
+              ))}
+            </div>
+            <p className="text-[9px] text-text-subtle m-0 mt-1.5">
+              Unticked = always paid. When ticked, an earning that lands while the recipient has no active placement is recorded as skipped — you can still release it from Referrals › Pay now.
+            </p>
           </div>
           <p className="text-[10px] text-text-subtle m-0 mt-2">
             Per ₱{unit.toLocaleString()} placement the levels pay {cfg.referralLevels.map((p) => peso((unit * p) / 100)).join(" / ")} = {peso(unit * cfg.referralLevels.reduce((s, v) => s + v, 0) / 100)}.
@@ -198,7 +216,9 @@ export default function AdminCompPlanPage() {
               </div>
             ))}
           </div>
-          <p className="text-[10px] text-text-subtle m-0 mt-2">A direct qualifies for a tier by their total active placements. The sponsor must also be active.</p>
+          <p className="text-[10px] text-text-subtle m-0 mt-2">
+            A direct qualifies for a tier by their total active placements.{cfg.requireActiveFastStart ? " The sponsor must also be active." : ""}
+          </p>
         </Card>
       </div>
 

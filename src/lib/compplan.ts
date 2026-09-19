@@ -268,6 +268,21 @@ export function adminResetMember(userId: string) {
   return adminCall<{ userId: string }, { ok: boolean; reversedCommissions: number }>("adminResetMember", { userId });
 }
 
+/** Pay a commission/bonus the engine skipped (admin release). */
+export function adminPaySkippedCommission(commissionId: string) {
+  return adminCall<{ commissionId: string }, { ok: boolean; paid: number; toUserId: string }>("adminPaySkippedCommission", { commissionId });
+}
+
+/** Which earnings currently require the recipient to be active — for member-facing copy. */
+export function earningsRequiringActive(cfg: CompPlanConfig): string[] {
+  if (cfg.uplineMinActive <= 0) return [];
+  return [
+    cfg.requireActiveReferral ? "referral commissions" : null,
+    cfg.requireActiveFastStart ? "the Fast-Start Bonus" : null,
+    cfg.requireActiveLeadership ? "the Leadership Bonus" : null,
+  ].filter((x): x is string => x !== null);
+}
+
 /** Put an account on accelerated time (null = off). Stops itself after the final payout. */
 export function adminSetTestClock(userId: string, speed: TestClockSpeed | null) {
   return adminCall<{ userId: string; speed: TestClockSpeed | null }, { ok: boolean; enabled: boolean }>("adminSetTestClock", { userId, speed });

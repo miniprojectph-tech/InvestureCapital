@@ -347,7 +347,9 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
   uplines.forEach((up, i) => {
     const pct = cfg.referralLevels[i] ?? 0;
     const commission = Math.round(((amount * pct) / 100) * 100) / 100;
-    const active = isActiveUpline(up.data, cfg);
+    // Referral commission is paid to every upline; the "must be active" rule is
+    // opt-in per earning type (by default it applies to the Leadership Bonus only).
+    const active = !cfg.requireActiveReferral || isActiveUpline(up.data, cfg);
     const paid = active && commission > 0;
     writes.push({
       ref: commissionRef(),
@@ -400,7 +402,7 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
     const totals = directs.map((d) => activeCapital(d.data) + (d.id === userId ? amount : 0));
     if (!directs.some((d) => d.id === userId)) totals.push(activeCapital(member) + amount);
     const paidTiers = sponsor.data.fastStart?.paidTiers ?? {};
-    const sponsorActive = isActiveUpline(sponsor.data, cfg);
+    const sponsorActive = !cfg.requireActiveFastStart || isActiveUpline(sponsor.data, cfg);
     const sponsorName = displayName(sponsor.data, sponsor.uid);
 
     for (const tier of cfg.fastStartTiers) {
@@ -625,7 +627,9 @@ export async function processPlacementsForUser(
 
     if (sponsorUid && sponsorData) {
       const memberName = displayName(user, uid);
-      const sponsorActive = isActiveUpline(sponsorData, cfg);
+      // The owner's rule: the sponsor must hold an active placement at the moment
+      // the Leadership Bonus is received.
+      const sponsorActive = !cfg.requireActiveLeadership || isActiveUpline(sponsorData, cfg);
       for (const p of leadershipDue) {
         const bonus = Math.round(((p.lockedBonus * cfg.leadershipPct) / 100) * 100) / 100;
         const atCompletion: Sched = { planId: p.id, startedAt: p.startedAt, offsetMs: p.cycles * cycleMsOf(p) };
@@ -870,6 +874,89 @@ export const adminResetMember = onCall({ timeoutSeconds: 300 }, async (request) 
   });
   await db.collection("test_clocks").doc(userId).delete();
   return { ok: true, reversedCommissions: upward.size };
+});
+
+/**
+ * Pay a commission / bonus the engine skipped (e.g. the recipient wasn't active
+ * at the time). Credits the wallet, writes the history entry dated like the
+ * ledger row, and marks the row paid with a note that an admin released it.
+ */
+export const adminPaySkippedCommission = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const adminUid = request.auth.uid;
+  await assertAdmin(adminUid);
+  const { commissionId } = (request.data ?? {}) as { commissionId?: string };
+  if (!commissionId) throw new HttpsError("invalid-argument", "commissionId is required.");
+  const now = Date.now();
+
+  return db.runTransaction(async (tx) => {
+    const cRef = db.collection("commissions").doc(commissionId);
+    const cSnap = await tx.get(cRef);
+    if (!cSnap.exists) throw new HttpsError("not-found", "Commission record not found.");
+    const c = cSnap.data() as {
+      type: "level" | "fastStart" | "leadership";
+      level?: number;
+      tier?: number;
+      toUserId: string;
+      fromUserName: string;
+      placementId: string;
+      placementAmount?: number;
+      pct?: number;
+      amount: number;
+      status: string;
+      createdAt: number;
+      schedOffsetMs?: number;
+    };
+    if (c.status !== "skipped") throw new HttpsError("failed-precondition", `This record is already ${c.status}.`);
+    if (!(c.amount > 0)) throw new HttpsError("failed-precondition", "Nothing to pay on this record.");
+    const toSnap = await tx.get(userRef(c.toUserId));
+    if (!toSnap.exists) throw new HttpsError("not-found", "Recipient not found.");
+
+    const offsetMs = c.schedOffsetMs ?? 0;
+    const sched: Sched = { planId: c.placementId, startedAt: c.createdAt - offsetMs, offsetMs };
+    const writes: Write[] = [];
+    const patches = new UserPatches();
+    patches.credit(c.toUserId, c.amount);
+
+    if (c.type === "level") {
+      activity(writes, c.toUserId, {
+        type: "referral-commission",
+        title: `Level ${c.level} commission — ${c.fromUserName}`,
+        subtitle: `${c.pct}% of ${peso(c.placementAmount ?? 0)} placement ${c.placementId} · released by admin`,
+        amount: c.amount,
+        amountKind: "in",
+      }, sched);
+    } else if (c.type === "fastStart") {
+      if (c.tier !== undefined) patches.set(c.toUserId, { [`fastStart.paidTiers.${c.tier}`]: now });
+      activity(writes, c.toUserId, {
+        type: "fast-start",
+        title: `Fast-Start Bonus — ${peso(c.tier ?? 0)} tier`,
+        subtitle: "Released by admin",
+        amount: c.amount,
+        amountKind: "in",
+      }, sched);
+    } else {
+      activity(writes, c.toUserId, {
+        type: "leadership",
+        title: `Leadership Bonus — ${c.fromUserName}`,
+        subtitle: `${c.pct}% of ${peso(c.pct ? (c.amount * 100) / c.pct : 0)} Locked-In Bonus (${c.placementId}) · released by admin`,
+        amount: c.amount,
+        amountKind: "in",
+      }, sched);
+    }
+    notify(writes, c.toUserId, now, {
+      type: c.type === "level" ? "commission" : c.type,
+      title: `${c.type === "level" ? `Level ${c.level} commission` : c.type === "fastStart" ? "Fast-Start Bonus" : "Leadership Bonus"} +${peso(c.amount)}`,
+      body: `From ${c.fromUserName} (${c.placementId}).`,
+      amount: c.amount,
+      planId: c.placementId,
+    });
+
+    patches.flush(tx);
+    for (const w of writes) tx.set(w.ref, w.data);
+    tx.update(cRef, { status: "paid", reason: null, releasedBy: adminUid, releasedAt: now, creditedAt: now });
+    return { ok: true, paid: c.amount, toUserId: c.toUserId };
+  });
 });
 
 const RESET_COLLECTIONS = ["plan_requests", "commissions", "referral_transactions", "withdrawals", "topups", "test_clocks"];

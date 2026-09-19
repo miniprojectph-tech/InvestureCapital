@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Search, Users, Zap, Award, XCircle, Coins } from "lucide-react";
+import { Search, Users, Zap, Award, XCircle, Coins, Loader2 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { formatPHP, cn } from "@/lib/utils";
-import { useCompPlan, useAllCommissions, type Commission } from "@/lib/compplan";
+import { useCompPlan, useAllCommissions, adminPaySkippedCommission, type Commission } from "@/lib/compplan";
 
 type TypeFilter = "all" | Commission["type"];
 type StatusFilter = "all" | "paid" | "skipped";
@@ -19,6 +19,22 @@ export default function AdminReferralsPage() {
   const [type, setType] = useState<TypeFilter>("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
+  const [paying, setPaying] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+
+  async function payNow(r: Commission) {
+    if (!window.confirm(`Pay ${formatPHP(r.amount)} to ${r.toUserName}? This releases the skipped ${r.type === "level" ? `Level ${r.level} commission` : TYPE_LABEL[r.type]} to their wallet.`)) return;
+    setPaying(r.id);
+    setNotice(null);
+    try {
+      const res = await adminPaySkippedCommission(r.id);
+      setNotice({ ok: true, text: `Paid ${formatPHP(res.paid)} to ${r.toUserName}.` });
+    } catch (e) {
+      setNotice({ ok: false, text: e instanceof Error ? e.message : "Payment failed" });
+    } finally {
+      setPaying(null);
+    }
+  }
 
   const totals = useMemo(() => {
     const paid = rows.filter((r) => r.status === "paid");
@@ -52,8 +68,10 @@ export default function AdminReferralsPage() {
         <Kpi icon={Coins} label="Commissions paid" value={formatPHP(totals.level)} tone="text-blue" sub={[...totals.byLevel.entries()].sort((a, b) => a[0] - b[0]).map(([l, v]) => `L${l} ${formatPHP(v, { short: true })}`).join(" · ") || undefined} />
         <Kpi icon={Zap} label="Fast-Start paid" value={formatPHP(totals.fastStart)} tone="text-vault" />
         <Kpi icon={Award} label="Leadership paid" value={formatPHP(totals.leadership)} tone="text-gold" />
-        <Kpi icon={XCircle} label="Skipped (not paid)" value={formatPHP(totals.skipped)} tone="text-red" sub={`${totals.skippedCount} record${totals.skippedCount === 1 ? "" : "s"} — upline inactive`} />
+        <Kpi icon={XCircle} label="Skipped (not paid)" value={formatPHP(totals.skipped)} tone="text-red" sub={`${totals.skippedCount} record${totals.skippedCount === 1 ? "" : "s"} — recipient not active · Pay now to release`} />
       </div>
+
+      {notice && <p className={cn("text-[11px] m-0 mb-3", notice.ok ? "text-green" : "text-red")}>{notice.text}</p>}
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {(["all", "level", "fastStart", "leadership"] as TypeFilter[]).map((t) => (
@@ -111,7 +129,19 @@ export default function AdminReferralsPage() {
                     {r.tier ? <span className="text-text-subtle font-sans"> · {formatPHP(r.tier, { short: true })} tier</span> : null}
                   </td>
                   <td className="py-2 text-text-muted whitespace-nowrap">{new Date(r.createdAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
-                  <td className={cn("py-2 text-right font-mono", r.status === "paid" ? "text-green" : "text-text-subtle line-through")}>{formatPHP(r.amount)}</td>
+                  <td className="py-2 text-right whitespace-nowrap">
+                    <span className={cn("font-mono", r.status === "paid" ? "text-green" : "text-text-subtle line-through")}>{formatPHP(r.amount)}</span>
+                    {r.status === "skipped" && r.amount > 0 && (
+                      <button
+                        onClick={() => payNow(r)}
+                        disabled={paying !== null}
+                        className="ml-2 text-[10px] px-2 py-0.5 rounded-md bg-gold/15 text-gold border border-gold/30 hover:bg-gold/25 disabled:opacity-50 inline-flex items-center gap-1 no-underline"
+                        title="Release this skipped amount to the recipient's wallet"
+                      >
+                        {paying === r.id ? <Loader2 className="w-3 h-3 animate-spin" /> : null} Pay now
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

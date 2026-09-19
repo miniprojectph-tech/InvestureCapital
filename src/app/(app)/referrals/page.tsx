@@ -7,7 +7,7 @@ import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { formatPHP, cn } from "@/lib/utils";
 import { useReferralCode } from "@/lib/useReferrals";
-import { useCompPlan, useReferralStats, useMyCommissions, peso, type Commission } from "@/lib/compplan";
+import { useCompPlan, useReferralStats, useMyCommissions, earningsRequiringActive, peso, type Commission } from "@/lib/compplan";
 
 const TYPE_LABEL: Record<Commission["type"], string> = { level: "Commission", fastStart: "Fast-Start", leadership: "Leadership" };
 const TYPE_TONE: Record<Commission["type"], string> = { level: "bg-blue/15 text-blue", fastStart: "bg-vault/15 text-vault", leadership: "bg-gold/15 text-gold" };
@@ -19,6 +19,7 @@ export default function ReferralsPage() {
   const commissions = useMyCommissions(200);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const needsActive = earningsRequiringActive(cfg);
 
   const paid = useMemo(() => commissions.filter((c) => c.status === "paid"), [commissions]);
   const earnedByLevel = useMemo(() => {
@@ -66,12 +67,12 @@ export default function ReferralsPage() {
         {copyError && <p className="text-[10px] text-red m-0 mt-2">{copyError}</p>}
       </Card>
 
-      {stats && !stats.selfActive && cfg.uplineMinActive > 0 && (
+      {stats && !stats.selfActive && needsActive.length > 0 && (
         <div className="mb-3 flex items-start gap-2 px-3 py-2.5 bg-gold/10 border border-gold/25 rounded-lg text-[11px] text-text">
           <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-gold" />
           <span>
-            You need an active placement of at least <span className="text-gold">{formatPHP(cfg.uplineMinActive)}</span> to receive commissions and bonuses.{" "}
-            <Link href="/plans" className="text-gold underline">Place capital</Link> to start earning from your team.
+            You need an active placement of at least <span className="text-gold">{formatPHP(cfg.uplineMinActive)}</span> to receive {needsActive.join(" and ")}.{" "}
+            <Link href="/plans" className="text-gold underline">Place capital</Link> so you don&apos;t miss {needsActive.length > 1 ? "them" : "it"}.
           </span>
         </div>
       )}
@@ -165,7 +166,9 @@ export default function ReferralsPage() {
                   </div>
                 );
               })}
-              <p className="text-[9px] text-text-subtle m-0">A direct counts toward a tier by their total active placements. You must be active to receive it.</p>
+              <p className="text-[9px] text-text-subtle m-0">
+                A direct counts toward a tier by their total active placements.{cfg.requireActiveFastStart && cfg.uplineMinActive > 0 ? " You must be active to receive it." : ""}
+              </p>
             </div>
           )}
         </Card>
@@ -174,7 +177,11 @@ export default function ReferralsPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Directs */}
         <Card>
-          <CardHeader title="Direct referrals" subtitle={`Leadership Bonus: ${cfg.leadershipPct}% of each direct's Locked-In Bonus when their term completes`} right={<Award className="w-4 h-4 text-gold" />} />
+          <CardHeader
+            title="Direct referrals"
+            subtitle={`Leadership Bonus: ${cfg.leadershipPct}% of each direct's Locked-In Bonus when their term completes${cfg.requireActiveLeadership && cfg.uplineMinActive > 0 ? ` — you must have an active placement (${formatPHP(cfg.uplineMinActive, { short: true })}+) at that moment` : ""}`}
+            right={<Award className="w-4 h-4 text-gold" />}
+          />
           {!stats ? (
             <div className="py-6 flex justify-center"><Loader2 className="w-4 h-4 text-gold animate-spin" /></div>
           ) : stats.directs.length === 0 ? (

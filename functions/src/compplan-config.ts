@@ -30,9 +30,15 @@ export type CompPlanConfig = {
   terms: CompPlanTerm[];
   /** Referral commission percent per level (index 0 = direct referral). */
   referralLevels: number[];
-  /** An upline must have at least this much actively placed to receive
-   *  commissions / bonuses. 0 disables the requirement. */
+  /** What counts as "active": at least this much in running placements.
+   *  Only enforced for the earnings switched on below. 0 disables it entirely. */
   uplineMinActive: number;
+  /** Six-level referral commission needs the upline to be active. Default: no. */
+  requireActiveReferral: boolean;
+  /** Fast-Start Bonus needs the sponsor to be active. Default: no. */
+  requireActiveFastStart: boolean;
+  /** Leadership Bonus needs the sponsor to be active when it is received. Default: YES. */
+  requireActiveLeadership: boolean;
   /** Number of qualifying direct referrals for a Fast-Start tier. */
   fastStartDirects: number;
   fastStartTiers: FastStartTier[];
@@ -55,6 +61,9 @@ export const DEFAULT_COMP_PLAN: CompPlanConfig = {
   ],
   referralLevels: [10, 4, 2.5, 1.5, 1, 1],
   uplineMinActive: 1000,
+  requireActiveReferral: false,
+  requireActiveFastStart: false,
+  requireActiveLeadership: true,
   fastStartDirects: 10,
   fastStartTiers: [
     { minPlacement: 1000, bonus: 500 },

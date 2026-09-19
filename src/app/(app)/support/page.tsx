@@ -12,13 +12,14 @@ import {
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { cn } from "@/lib/utils";
-import { useCompPlan, cyclesForTerm, peso } from "@/lib/compplan";
+import { useCompPlan, cyclesForTerm, earningsRequiringActive, peso } from "@/lib/compplan";
 
 export default function SupportPage() {
   const { cfg } = useCompPlan();
   const unit = cfg.increment;
   const unitPayout = (unit * cfg.cycleRate) / 100;
   const bonusTerms = cfg.terms.filter((t) => t.lockedBonusPerUnit > 0);
+  const needsActive = earningsRequiringActive(cfg);
   const faqs = [
     {
       q: "How does the 5 Days Income work?",
@@ -34,7 +35,7 @@ export default function SupportPage() {
     },
     {
       q: "How do referrals work?",
-      a: `You earn on ${cfg.referralLevels.length} levels — ${cfg.referralLevels.join("% / ")}% — every time someone in your team places capital, paid instantly to your wallet. ${cfg.uplineMinActive > 0 ? `You need an active placement of at least ₱${cfg.uplineMinActive.toLocaleString()} to receive commissions.` : ""} Bring ${cfg.fastStartDirects} direct referrals who each place the tier minimum for a one-time Fast-Start Bonus, and earn a Leadership Bonus of ${cfg.leadershipPct}% of each direct referral's Locked-In Bonus when their term completes.`,
+      a: `You earn on ${cfg.referralLevels.length} levels — ${cfg.referralLevels.join("% / ")}% — every time someone in your team places capital, paid instantly to your wallet. ${needsActive.length > 0 ? `To receive ${needsActive.join(" and ")} you need an active placement of at least ₱${cfg.uplineMinActive.toLocaleString()} at the moment it is paid.` : ""} Bring ${cfg.fastStartDirects} direct referrals who each place the tier minimum for a one-time Fast-Start Bonus, and earn a Leadership Bonus of ${cfg.leadershipPct}% of each direct referral's Locked-In Bonus when their term completes.`,
     },
     {
       q: "Minimum placement?",
