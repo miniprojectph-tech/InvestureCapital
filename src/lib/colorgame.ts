@@ -5,6 +5,7 @@ import { ref, onValue, query as rtdbQuery, orderByChild, limitToLast } from "fir
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
+import { ensureCommunityAdmin } from "./community";
 
 // ===== Types (mirror functions/src/colorgame-types.ts) =====
 
@@ -280,15 +281,29 @@ export function useColorJackpotConfig() {
   const [config, setConfig] = useState<ColorJackpotConfig>(DEFAULT_JACKPOT_CFG);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user?.isAdmin) return;
     const { rtdb } = getFirebase();
     if (!rtdb) return;
-    // Read from RTDB — Firestore realtime listeners on the named game DB don't
-    // deliver in this app, so the server mirrors the config here.
-    return onValue(ref(rtdb, "color/config"), (snap) => {
-      setConfig({ ...DEFAULT_JACKPOT_CFG, ...((snap.val() as Partial<ColorJackpotConfig>) ?? {}) });
+    // ADMIN ONLY. The config names the designated winner, so the server mirrors
+    // it to `colorAdmin/config`, which RTDB rules open to admins alone (players
+    // only ever see the jackpot colour via color/state). Those rules key off the
+    // `admins/{uid}` mirror, so make sure it exists before subscribing — a denied
+    // listener is cancelled for good.
+    let unsub: (() => void) | undefined;
+    let cancelled = false;
+    ensureCommunityAdmin().then(() => {
+      if (cancelled) return;
+      unsub = onValue(
+        ref(rtdb, "colorAdmin/config"),
+        (snap) => setConfig({ ...DEFAULT_JACKPOT_CFG, ...((snap.val() as Partial<ColorJackpotConfig>) ?? {}) }),
+        () => {},
+      );
     });
-  }, [user]);
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
+  }, [user?.isAdmin]);
 
   return config;
 }

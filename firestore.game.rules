@@ -57,9 +57,12 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Color Game global state (jackpot, history).
+    // Color Game global state (jackpot pool, history) — public.
+    // EXCEPT `config`: it names the designated jackpot winner and whether the
+    // jackpot is armed, so no client may read it (the admin page gets it from the
+    // admin-only RTDB node `colorAdmin/config`; Functions use the admin SDK).
     match /color_game/{doc} {
-      allow read: if isSignedIn();
+      allow read: if isSignedIn() && doc != 'config';
       allow write: if false;
     }
 

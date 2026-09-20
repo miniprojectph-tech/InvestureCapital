@@ -46,12 +46,15 @@ async function readJackpotConfig(): Promise<JackpotConfig> {
   return { ...DEFAULT_JACKPOT_CONFIG, ...(snap.exists ? (snap.data() as Partial<JackpotConfig>) : {}) };
 }
 
-// Mirror the whole config to RTDB — the client reads it from there because
-// Firestore realtime listeners on the named game DB don't deliver in this app.
+// Mirror the config to RTDB for the ADMIN page (Firestore realtime listeners on
+// the named game DB don't deliver in this app). It holds the designated winner,
+// so it lives under `colorAdmin/` — readable by admins only — never under
+// `color/`, which every signed-in player can read. Players only ever get the
+// jackpot colour, via `color/state/jackpotColor`. The old public node is cleared.
 async function mirrorConfigToRtdb(): Promise<void> {
   try {
     const cfg = await readJackpotConfig();
-    await getDatabase().ref("color/config").set(cfg);
+    await getDatabase().ref().update({ "colorAdmin/config": cfg, "color/config": null });
   } catch (e) {
     console.error("config RTDB mirror failed", e);
   }
