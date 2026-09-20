@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import type { Transaction } from "firebase-admin/firestore";
+import { FieldValue, type Transaction } from "firebase-admin/firestore";
 import { db, gameDb } from "./init";
 
 // Region for all live Tongits actions — sits next to the game-live-asia DB.
@@ -409,7 +409,11 @@ async function settleEconomy(input: SettleEcoInputs) {
 
       const net = netChanges[s.uid];
       const winnerJackpot = isWinner ? jackpot : 0;
-      const winnings = lockedAmount + net + winnerJackpot;
+      // Hand back only what is really locked. Returning the full stake
+      // unconditionally is what let a round that never locked stakes mint
+      // 1.5 × C per player out of nothing.
+      const release = Math.min(locked, lockedAmount);
+      const winnings = release + net + winnerJackpot;
 
       const rankingEarned = isWinner
         ? (resultType === "tongits_win" ? RP_TONGITS : RP_SHOWDOWN) + (secret ? RP_SECRET : 0)
@@ -418,8 +422,8 @@ async function settleEconomy(input: SettleEcoInputs) {
       tx.set(
         userStateRef(s.uid),
         {
-          points: points + winnings,
-          lockedPoints: Math.max(0, locked - lockedAmount),
+          points: Math.max(0, points + winnings),
+          lockedPoints: locked - release,
           rankingPoints: Math.max(0, rp + rankingEarned),
           tongitsGames: games + 1,
           tongitsWins: wins + (isWinner ? 1 : 0),
@@ -544,6 +548,21 @@ export const startTongitsGame = onCall({ region: GAME_REGION }, async (request) 
     }
   }
   const ante = (roomPre.jackpotAnte as number) ?? 0;
+
+  // Never deal a round whose stakes aren't locked — every path into "ready" must
+  // have locked them (first start via the ready flow, later rounds via
+  // tongitsResolvePostGame). This is the backstop if one ever forgets.
+  const stakeNeeded = Math.round(((roomPre.challengePoints as number) ?? 0) * (1 + CHALLENGE_BONUS_RATE));
+  if (stakeNeeded > 0) {
+    const stateDocs = await Promise.all(seats.map((s) => userStateRef(s.uid).get()));
+    const unlocked = seats.filter((_, i) => ((stateDocs[i].data()?.lockedPoints as number) ?? 0) < stakeNeeded);
+    if (unlocked.length > 0) {
+      throw new HttpsError(
+        "failed-precondition",
+        `Stakes aren't locked for ${unlocked.map((s) => s.name).join(", ")}. Go back to the waiting room and ready up again.`
+      );
+    }
+  }
 
   // Phase A — deduct antes on the default (us-central) db.
   if (ante > 0) {
@@ -1014,17 +1033,106 @@ export const tongitsPostGameRespond = onCall({ region: GAME_REGION }, async (req
   });
 });
 
-/** Resolve the post-game phase: start next round or return to waiting room. */
+type StakePlayer = { uid: string; name: string };
+
+/**
+ * Lock the challenge stake (1.5 × C) for every listed player on the default db.
+ * All-or-nothing: if anyone can't cover it, nothing is written and their uids
+ * are returned so the caller can sit them out.
+ */
+async function tryLockStakes(
+  players: StakePlayer[],
+  C: number,
+  code: string,
+  now: number
+): Promise<{ ok: true } | { ok: false; short: string[] }> {
+  const lockedAmount = Math.round(C * (1 + CHALLENGE_BONUS_RATE));
+  return db.runTransaction(async (tx) => {
+    const snaps = await Promise.all(players.map((p) => tx.get(userStateRef(p.uid))));
+    const states = snaps.map((s, i) => ({
+      ...players[i],
+      points: (s.data()?.points as number) ?? 0,
+      locked: (s.data()?.lockedPoints as number) ?? 0,
+    }));
+    // A stake already held (a previous resolve attempt locked it, then died before
+    // the room advanced) counts as locked — never take it twice. Between rounds a
+    // player's lockedPoints is otherwise 0, since settlement releases it.
+    const need = states.filter((s) => s.locked < lockedAmount);
+    const short = need.filter((s) => s.points < lockedAmount).map((s) => s.uid);
+    if (short.length > 0) return { ok: false as const, short };
+    for (const s of need) {
+      tx.set(userStateRef(s.uid), { points: s.points - lockedAmount, lockedPoints: s.locked + lockedAmount }, { merge: true });
+      tx.set(txnCol().doc(), {
+        userId: s.uid,
+        type: "challenge_points_locked",
+        amount: lockedAmount,
+        roomCode: code,
+        matchId: null,
+        description: `Locked ${lockedAmount} for the next round in Tongits room ${code}`,
+        createdAt: now,
+      });
+    }
+    return { ok: true as const };
+  });
+}
+
+/** Give a just-locked stake back when the room failed to advance to the next round. */
+async function unlockStakes(players: StakePlayer[], C: number, code: string, now: number): Promise<void> {
+  const lockedAmount = Math.round(C * (1 + CHALLENGE_BONUS_RATE));
+  await db.runTransaction(async (tx) => {
+    const snaps = await Promise.all(players.map((p) => tx.get(userStateRef(p.uid))));
+    snaps.forEach((s, i) => {
+      const points = (s.data()?.points as number) ?? 0;
+      const lp = (s.data()?.lockedPoints as number) ?? 0;
+      const back = Math.min(lp, lockedAmount);
+      if (back <= 0) return;
+      tx.set(userStateRef(players[i].uid), { points: points + back, lockedPoints: lp - back }, { merge: true });
+      tx.set(txnCol().doc(), {
+        userId: players[i].uid,
+        type: "challenge_points_returned",
+        amount: back,
+        roomCode: code,
+        matchId: null,
+        description: `Returned ${back} stake — next round in room ${code} didn't start`,
+        createdAt: now,
+      });
+    });
+  });
+}
+
+/** How long one caller "owns" a resolve before another may retry (covers a crashed resolver). */
+const RESOLVE_LEASE_MS = 20_000;
+
+type ResolvePayload = { ok: true; result: "cancelled" | "waiting_room" | "ready"; needsStart?: boolean };
+
+/**
+ * Resolve the post-game phase: start the next round or return to the waiting room.
+ *
+ * A continued round must lock its stakes AGAIN — settlement hands the locked
+ * stake back every round, so dealing without re-locking mints points. The lock
+ * lives on the default db and the room on gameDb, so this runs in three steps
+ * under a short lease (`resolvingAt`). The lease matters because all clients
+ * call this at the same instant; without it they'd each lock the stakes.
+ *   A (gameDb)   decide who continues; take the lease.
+ *   B (default)  lock stakes for the continuing players — or learn who can't pay.
+ *   C (gameDb)   flip to "ready"; or sit out whoever couldn't pay and retry with
+ *                the rest; or fall back to the waiting room.
+ */
 export const tongitsResolvePostGame = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const now = Date.now();
-  return gameDb.runTransaction(async (tx) => {
+
+  // ---- A ----
+  const a = await gameDb.runTransaction<{ done: true; payload: ResolvePayload } | { done: false; active: StakePlayer[]; C: number }>(async (tx) => {
     const roomSnap = await tx.get(roomRef(code));
     if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
     const room = roomSnap.data() as FirebaseFirestore.DocumentData;
     if (!room.players?.[uid]) throw new HttpsError("permission-denied", "You're not in this room.");
     if (room.status !== "post_game") throw new HttpsError("failed-precondition", "Not in post-game.");
+    if (room.resolvingAt && now - (room.resolvingAt as number) < RESOLVE_LEASE_MS) {
+      throw new HttpsError("failed-precondition", "Already resolving.");
+    }
     const players = { ...(room.players as Record<string, Record<string, unknown>>) };
     const playerUids = Object.keys(players);
     const responses = { ...(room.postGameResponses ?? {}) } as Record<string, string>;
@@ -1047,7 +1155,7 @@ export const tongitsResolvePostGame = onCall({ region: GAME_REGION }, async (req
     if (remaining.length === 0) {
       tx.update(roomRef(code), { status: "cancelled", updatedAt: now, completedAt: now, postGameResponses: null, postGameDeadline: null });
       tx.delete(gsRef(code));
-      return { ok: true, result: "cancelled" as const };
+      return { done: true as const, payload: { ok: true as const, result: "cancelled" as const } };
     }
     const activePlayers = remaining.filter((u) => players[u].role !== "idle");
     // Pot just paid out + only 2 active → force waiting room
@@ -1063,17 +1171,76 @@ export const tongitsResolvePostGame = onCall({ region: GAME_REGION }, async (req
         postGameResponses: null, postGameDeadline: null, lastResult: null, updatedAt: now,
       });
       tx.delete(gsRef(code));
-      return { ok: true, result: "waiting_room" as const };
+      return { done: true as const, payload: { ok: true as const, result: "waiting_room" as const } };
     }
-    // 2+ active → auto-start next round
-    tx.update(roomRef(code), {
-      players, playerUids: remaining,
-      status: "ready",
-      postGameResponses: null, postGameDeadline: null, lastResult: null, updatedAt: now,
-    });
-    tx.delete(gsRef(code));
-    return { ok: true, result: "ready" as const, needsStart: true };
+    // 2+ active → next round, but only once their stakes are locked again.
+    // Stay in post_game (responses intact, so a retry after a crash re-derives
+    // the same roles) and take the lease.
+    tx.update(roomRef(code), { players, playerUids: remaining, resolvingAt: now, updatedAt: now });
+    return {
+      done: false as const,
+      active: activePlayers.map((u) => ({ uid: u, name: String(players[u].name ?? "Player") })),
+      C: (room.challengePoints as number) ?? 0,
+    };
   });
+  if (a.done) return a.payload;
+
+  // ---- B + C (repeat once if someone can't cover the stake) ----
+  let active = a.active;
+  for (;;) {
+    const lock = await tryLockStakes(active, a.C, code, now);
+    try {
+      const c = await gameDb.runTransaction<{ done: true; payload: ResolvePayload } | { done: false; next: StakePlayer[] }>(async (tx) => {
+        const roomSnap = await tx.get(roomRef(code));
+        if (!roomSnap.exists) throw new HttpsError("not-found", "Room not found.");
+        const room = roomSnap.data() as FirebaseFirestore.DocumentData;
+        if (room.status !== "post_game" || room.resolvingAt !== now) {
+          throw new HttpsError("aborted", "Room changed while resolving.");
+        }
+        const players = { ...(room.players as Record<string, Record<string, unknown>>) };
+
+        if (lock.ok) {
+          tx.update(roomRef(code), {
+            status: "ready",
+            postGameResponses: null, postGameDeadline: null, lastResult: null,
+            resolvingAt: FieldValue.delete(), updatedAt: now,
+          });
+          tx.delete(gsRef(code));
+          return { done: true as const, payload: { ok: true as const, result: "ready" as const, needsStart: true } };
+        }
+
+        // Someone can't cover the stake → they sit this round out.
+        for (const u of lock.short) {
+          if (players[u]) players[u] = { ...players[u], role: "idle", joinNextRound: false, isReady: false, agreedToChallenge: false };
+        }
+        const stillActive = active.filter((p) => !lock.short.includes(p.uid));
+        if (stillActive.length >= 2) {
+          tx.update(roomRef(code), { players, updatedAt: now });
+          return { done: false as const, next: stillActive };
+        }
+
+        // Not enough funded players → waiting room; stakes lock through the normal ready flow.
+        const everyone = Object.keys(players);
+        for (const u of everyone) {
+          players[u] = { ...players[u], role: "active", isReady: false, agreedToChallenge: false };
+        }
+        tx.update(roomRef(code), {
+          players, playerUids: everyone,
+          status: everyone.length >= 3 ? "full" : "open",
+          postGameResponses: null, postGameDeadline: null, lastResult: null,
+          resolvingAt: FieldValue.delete(), updatedAt: now,
+        });
+        tx.delete(gsRef(code));
+        return { done: true as const, payload: { ok: true as const, result: "waiting_room" as const } };
+      });
+      if (c.done) return c.payload;
+      active = c.next;
+    } catch (err) {
+      // The room didn't advance — never leave players with a stake locked for nothing.
+      if (lock.ok) await unlockStakes(active, a.C, code, now).catch(() => {});
+      throw err;
+    }
+  }
 });
 
 /**
