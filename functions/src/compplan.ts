@@ -3,6 +3,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { FieldValue, Timestamp, type DocumentReference, type Transaction } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
 import { db } from "./init";
+import { sweepColorRounds } from "./colorgame";
 import {
   mergeCompPlan,
   cyclesForTerm,
@@ -1046,7 +1047,16 @@ export const adminSetTestClock = onCall(async (request) => {
   return { ok: true, enabled: true, speed };
 });
 
+// The one per-minute scheduler job. It carries two independent chores so we pay for
+// a single Cloud Scheduler job: the Color Game safety-net sweep, then test clocks.
 export const tickTestClocks = onSchedule("every 1 minutes", async () => {
+  try {
+    const r = await sweepColorRounds();
+    if (r.swept || r.failed) logger.info("color sweep", r);
+  } catch (err) {
+    logger.error("color sweep failed", err);
+  }
+
   const snap = await db.collection("test_clocks").get();
   if (snap.empty) return;
   const cfg = await loadCompPlan();

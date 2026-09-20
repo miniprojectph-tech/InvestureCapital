@@ -9,7 +9,7 @@ export type ColorBet = {
   placedAt: number;
 };
 
-export type RoundPhase = "betting" | "rolling" | "result" | "expired";
+export type RoundPhase = "betting" | "rolling" | "result" | "expired" | "void";
 
 export type ColorRound = {
   roundId: string;
@@ -22,6 +22,13 @@ export type ColorRound = {
   jackpotTriggered?: boolean;
   jackpotColor?: DieColor;
   jackpotAmount?: number;
+  /** uid → GP owed for this round (winnings, or the refunded stake when voided). */
+  payouts?: Record<string, number>;
+  /** Open work for the server sweeper: unresolved, or resolved but not yet credited. */
+  pending?: boolean;
+  paidAt?: number;
+  sweepFails?: number;
+  stuck?: boolean;
 };
 
 export type ColorGameConfig = {

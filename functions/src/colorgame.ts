@@ -1,5 +1,6 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getDatabase, ServerValue } from "firebase-admin/database";
+import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, gameDb } from "./init";
 import {
   ALL_COLORS,
@@ -132,6 +133,9 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
   // Record bet on gameDb — keyed by uid_color so players can bet on multiple colors.
   // (No client listeners on this doc anymore — clients read the aggregated totals
   //  from Realtime Database below, which is bandwidth-priced instead of per-read.)
+  // The points are already deducted (different database, so it can't share this
+  // transaction). If recording the bet fails for ANY reason — contention, the
+  // round resolving in the gap, a crash-free error — give the points straight back.
   const isNewKey = await gameDb.runTransaction(async (tx) => {
     // Firestore requires ALL reads before ANY writes — read the round and the
     // game-state (jackpot) docs up front, then do both writes afterward.
@@ -141,8 +145,8 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
     let round: ColorRound;
     if (rSnap.exists) {
       round = rSnap.data() as ColorRound;
-      if (round.dice) {
-        throw new HttpsError("failed-precondition", "Round already resolved.");
+      if (round.dice || round.phase !== "betting") {
+        throw new HttpsError("failed-precondition", "Betting window closed for this round.");
       }
     } else {
       round = {
@@ -152,6 +156,9 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
         bets: {},
       };
     }
+    // Open work for the server sweeper: stays true until the round is resolved
+    // AND its winners are credited (see sweepColorRounds).
+    round.pending = true;
     const betKey = `${uid}_${color}`;
     const existing = round.bets[betKey];
     const bet: ColorBet = {
@@ -176,6 +183,15 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
     }, { merge: true });
 
     return !existing;
+  }).catch(async (err) => {
+    try {
+      await userStateRef(uid).update({ points: FieldValue.increment(amount) });
+    } catch (refundErr) {
+      console.error(`BET REFUND FAILED uid=${uid} round=${rid} amount=${amount}`, refundErr);
+    }
+    throw err instanceof HttpsError
+      ? err
+      : new HttpsError("aborted", "Bet not placed — your points were returned. Try again.");
   });
 
   // Mirror the live, high-churn state to Realtime Database (what all clients read).
@@ -197,42 +213,108 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
 });
 
 // ── Resolve a round: generate dice + compute payouts ──
+//
+// Who triggers it:
+//   • a player's browser, the moment betting closes (fast path — dice land on time)
+//   • the server sweeper, once a minute (safety net — a round still resolves and
+//     pays even if every player closed the tab, lost signal, or the call failed)
+// Both go through resolveRoundCore, which is safe to run any number of times.
 
-export const resolveColorRound = onCall({ region: GAME_REGION }, async (request) => {
-  requireUid(request);
-  const { roundId } = request.data as { roundId: string };
+const VOID_AFTER_MS = 60 * 60 * 1000; // an unresolved round this stale is refunded, not rolled
+const SWEEP_GRACE_MS = 5_000; // let the players' own call go first
+const PAYOUT_MARKER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
-  if (!roundId) throw new HttpsError("invalid-argument", "Missing roundId.");
+const payoutMarkerRef = (roundId: string) => db.doc(`color_payouts/${roundId}`);
 
-  const now = Date.now();
-  const start = roundStart(roundId);
-  if (now - start < BET_MS) {
-    throw new HttpsError("failed-precondition", "Betting window still open.");
+type CoreResult = {
+  dice?: [DieColor, DieColor, DieColor];
+  payouts: Record<string, number>;
+  jackpotTriggered: boolean;
+  fresh: boolean; // this call is the one that resolved it
+  voided: boolean;
+};
+
+/**
+ * Credit a round's payouts exactly once. The points live on the default database
+ * and the round on the game database, so they can't share a transaction — instead
+ * the credit and a `color_payouts/{roundId}` marker are written together, and any
+ * retry that finds the marker skips the credit. Then the round is closed.
+ */
+async function payRound(roundId: string, payouts: Record<string, number>): Promise<void> {
+  const entries = Object.entries(payouts).filter(([, amt]) => amt > 0);
+  if (entries.length > 0) {
+    await db.runTransaction(async (tx) => {
+      const marker = await tx.get(payoutMarkerRef(roundId));
+      if (marker.exists) return; // already credited by an earlier attempt
+      const snaps = await Promise.all(entries.map(([uid]) => tx.get(userStateRef(uid))));
+      entries.forEach(([uid, payout], i) => {
+        const pts = (snaps[i].data() as { points?: number } | undefined)?.points ?? 0;
+        tx.set(userStateRef(uid), { points: pts + payout }, { merge: true });
+      });
+      const now = Date.now();
+      tx.create(payoutMarkerRef(roundId), {
+        roundId,
+        at: now,
+        total: entries.reduce((s, [, a]) => s + a, 0),
+        expireAt: Timestamp.fromMillis(now + PAYOUT_MARKER_TTL_MS),
+      });
+    });
   }
+  await roundRef(roundId).set({ pending: false, paidAt: Date.now() }, { merge: true });
+}
 
+async function resolveRoundCore(roundId: string, now: number): Promise<CoreResult> {
   const cfg = await readJackpotConfig();
 
-  // Resolve on gameDb
   const result = await gameDb.runTransaction(async (tx) => {
     const rSnap = await tx.get(roundRef(roundId));
+
+    // Nobody bet. Persist the dice anyway so every caller sees the SAME roll
+    // (it used to re-roll per caller, so the dice could change on screen) and so
+    // a late-arriving bet finds the round closed and is refunded.
     if (!rSnap.exists) {
-      return { alreadyResolved: false, noBets: true, dice: rollDice(), payouts: {} as Record<string, number> };
+      if (now - roundStart(roundId) < BET_MS) {
+        throw new HttpsError("failed-precondition", "Betting window still open.");
+      }
+      const dice = rollDice();
+      tx.set(roundRef(roundId), {
+        roundId, phase: "result", bettingDeadline: roundStart(roundId) + BET_MS,
+        bets: {}, dice, resolvedAt: now, totalPool: 0, pending: false,
+      });
+      return { kind: "empty" as const, dice };
     }
+
     const round = rSnap.data() as ColorRound;
 
-    if (round.dice) {
+    if (round.dice || round.phase === "void") {
       return {
-        alreadyResolved: true,
-        noBets: false,
+        kind: "done" as const,
         dice: round.dice,
-        payouts: {} as Record<string, number>,
-        jackpotTriggered: round.jackpotTriggered,
+        payouts: round.payouts ?? {},
+        unpaid: round.pending === true,
+        jackpotTriggered: round.jackpotTriggered ?? false,
+        voided: round.phase === "void",
       };
     }
 
-    const bets = round.bets;
+    // Use the deadline stored on the round (round length has changed before, so
+    // re-deriving it from the id would be wrong for older rounds).
+    if (now < round.bettingDeadline) {
+      throw new HttpsError("failed-precondition", "Betting window still open.");
+    }
+
+    const bets = round.bets ?? {};
     const betEntries = Object.values(bets);
     const totalPool = betEntries.reduce((s, b) => s + b.amount, 0);
+
+    // Far too late to play out fairly (outage / abandoned legacy round): void it
+    // and hand every stake back. No dice, no history row, no leaderboard change.
+    if (now - round.bettingDeadline > VOID_AFTER_MS) {
+      const refunds: Record<string, number> = {};
+      for (const b of betEntries) refunds[b.uid] = (refunds[b.uid] ?? 0) + b.amount;
+      tx.update(roundRef(roundId), { phase: "void", resolvedAt: now, totalPool, payouts: refunds, pending: true });
+      return { kind: "void" as const, payouts: refunds };
+    }
 
     // The jackpot fires only when it's armed AND the designated player has bet
     // the jackpot color this round — then we force 3 of that color so they win.
@@ -286,8 +368,12 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       totalBetByUid[b.uid] = (totalBetByUid[b.uid] ?? 0) + b.amount;
       nameByUid[b.uid] = b.name;
     }
+    const owes = Object.values(payouts).some((p) => p > 0);
 
     // ── Writes (after all reads) ──
+    // The payouts are saved ON the round before anyone is credited, and the round
+    // stays `pending` until payRound confirms — so a crash between "dice rolled"
+    // and "winners credited" is finished by the sweeper instead of lost.
     tx.update(roundRef(roundId), {
       dice,
       phase: "result",
@@ -296,6 +382,8 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
       jackpotTriggered,
       jackpotColor: jackpotColor ?? null,
       jackpotAmount: jackpotTriggered ? jackpotAmount : 0,
+      payouts,
+      pending: owes,
     });
 
     const history = [...(gs.history ?? [])];
@@ -337,62 +425,94 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
     }
 
     return {
-      alreadyResolved: false, noBets: false, dice, payouts, jackpotTriggered,
+      kind: "resolved" as const, dice, payouts, jackpotTriggered,
       jackpotColor: jackpotColor ?? null, jackpotAmount: jackpotTriggered ? jackpotAmount : 0,
       newJackpotPool: fireJackpot ? cfg.jackpotDefault : gs.jackpotPool,
       leaderUpdates,
     };
   });
 
-  // Mirror the resolved result to Realtime Database (what clients read).
-  try {
-    const rtdb = getDatabase();
-    const liveUpd: Record<string, unknown> = {
-      [`color/live/${roundId}/dice`]: result.dice,
-      [`color/live/${roundId}/resolvedAt`]: now,
-    };
-    if (!result.alreadyResolved && !result.noBets) {
-      liveUpd[`color/live/${roundId}/jackpotTriggered`] = result.jackpotTriggered ?? false;
-      liveUpd[`color/live/${roundId}/jackpotColor`] = result.jackpotColor ?? null;
-      liveUpd[`color/live/${roundId}/jackpotAmount`] = result.jackpotAmount ?? 0;
-      liveUpd[`color/state/totalRounds`] = ServerValue.increment(1);
-      if (result.jackpotTriggered) liveUpd[`color/state/jackpotPool`] = result.newJackpotPool ?? 0;
-      liveUpd[`color/history/${roundId}`] = { dice: result.dice, at: now };
-      // Mirror leaderboard rows to RTDB (Firestore listeners on the named game
-      // DB don't deliver, so clients read the ranking from here).
-      const leaderUpdates = (result as { leaderUpdates?: Record<string, ColorLeaderboardEntry> }).leaderUpdates ?? {};
-      for (const [uid, e] of Object.entries(leaderUpdates)) {
-        liveUpd[`color/leaderboard/${uid}`] = e;
+  // Mirror the result to Realtime Database (what clients read). Re-mirroring an
+  // already-resolved round is harmless and heals a mirror write that failed.
+  if (result.kind !== "void" && result.dice) {
+    try {
+      const liveUpd: Record<string, unknown> = {
+        [`color/live/${roundId}/dice`]: result.dice,
+      };
+      if (result.kind !== "done") liveUpd[`color/live/${roundId}/resolvedAt`] = now;
+      if (result.kind === "resolved") {
+        liveUpd[`color/live/${roundId}/jackpotTriggered`] = result.jackpotTriggered;
+        liveUpd[`color/live/${roundId}/jackpotColor`] = result.jackpotColor;
+        liveUpd[`color/live/${roundId}/jackpotAmount`] = result.jackpotAmount;
+        liveUpd[`color/state/totalRounds`] = ServerValue.increment(1);
+        if (result.jackpotTriggered) liveUpd[`color/state/jackpotPool`] = result.newJackpotPool;
+        liveUpd[`color/history/${roundId}`] = { dice: result.dice, at: now };
+        // Mirror leaderboard rows to RTDB (Firestore listeners on the named game
+        // DB don't deliver, so clients read the ranking from here).
+        for (const [uid, e] of Object.entries(result.leaderUpdates)) {
+          liveUpd[`color/leaderboard/${uid}`] = e;
+        }
       }
+      await getDatabase().ref().update(liveUpd);
+    } catch (e) {
+      console.error("RTDB resolve mirror failed", e);
     }
-    await rtdb.ref().update(liveUpd);
-  } catch (e) {
-    console.error("RTDB resolve mirror failed", e);
   }
 
-  // Jackpot auto-deactivated this round — reflect the config change to clients.
-  if (result.jackpotTriggered) await mirrorConfigToRtdb();
+  // Jackpot auto-deactivated this round — reflect the config change to the admin page.
+  if (result.kind === "resolved" && result.jackpotTriggered) await mirrorConfigToRtdb();
 
-  if (result.alreadyResolved || result.noBets) {
-    return { ok: true, dice: result.dice, payouts: result.payouts, cached: true };
-  }
+  // Credit winners (or refund a voided round). Idempotent, so it also finishes a
+  // round that an earlier attempt resolved but failed to pay.
+  const payouts = result.kind === "empty" ? {} : result.payouts;
+  const needsPay = result.kind === "resolved" || result.kind === "void" || (result.kind === "done" && result.unpaid);
+  if (needsPay) await payRound(roundId, payouts);
 
-  // Credit winners on default db (separate transaction — acceptable non-atomicity)
-  const payoutEntries = Object.entries(result.payouts).filter(([, amt]) => amt > 0);
-  if (payoutEntries.length > 0) {
-    await db.runTransaction(async (tx) => {
-      const snaps = await Promise.all(payoutEntries.map(([uid]) => tx.get(userStateRef(uid))));
-      for (let i = 0; i < payoutEntries.length; i++) {
-        const [, payout] = payoutEntries[i];
-        const state = snaps[i].data() as { points?: number } | undefined;
-        const pts = state?.points ?? 0;
-        tx.update(userStateRef(payoutEntries[i][0]), { points: pts + payout });
-      }
-    });
-  }
+  return {
+    dice: result.kind === "void" ? undefined : result.dice,
+    payouts,
+    jackpotTriggered: result.kind === "resolved" ? result.jackpotTriggered : result.kind === "done" ? result.jackpotTriggered : false,
+    fresh: result.kind === "resolved" || result.kind === "empty",
+    voided: result.kind === "void" || (result.kind === "done" && result.voided),
+  };
+}
 
-  return { ok: true, dice: result.dice, payouts: result.payouts, jackpotTriggered: result.jackpotTriggered };
+export const resolveColorRound = onCall({ region: GAME_REGION }, async (request) => {
+  requireUid(request);
+  const { roundId } = request.data as { roundId: string };
+  if (!roundId || !/^\d{1,12}$/.test(roundId)) throw new HttpsError("invalid-argument", "Missing roundId.");
+
+  const r = await resolveRoundCore(roundId, Date.now());
+  return { ok: true, dice: r.dice, payouts: r.payouts, jackpotTriggered: r.jackpotTriggered, cached: !r.fresh };
 });
+
+/**
+ * Server safety net, run once a minute from the existing per-minute scheduler
+ * (no extra Cloud Scheduler job). Finishes every round still marked `pending`:
+ * bet on but never resolved, or resolved but winners not yet credited.
+ */
+export async function sweepColorRounds(now = Date.now()): Promise<{ swept: number; failed: number }> {
+  const snap = await gameDb.collection("color_rounds").where("pending", "==", true).limit(25).get();
+  let swept = 0, failed = 0;
+  for (const d of snap.docs) {
+    const round = d.data() as ColorRound;
+    if (!round.dice && round.phase !== "void" && now < (round.bettingDeadline ?? 0) + SWEEP_GRACE_MS) continue;
+    try {
+      await resolveRoundCore(d.id, now);
+      swept++;
+    } catch (err) {
+      failed++;
+      console.error(`color sweep failed for round ${d.id}`, err);
+      // A round that can never be finished must not hog the sweep window forever:
+      // after 10 failed minutes park it (`stuck`) for a human to look at.
+      const fails = (round.sweepFails ?? 0) + 1;
+      await d.ref
+        .set(fails >= 10 ? { sweepFails: fails, pending: false, stuck: true } : { sweepFails: fails }, { merge: true })
+        .catch(() => {});
+    }
+  }
+  return { swept, failed };
+}
 
 // ── Admin: adjust jackpot pool ──
 
