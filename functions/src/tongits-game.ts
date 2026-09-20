@@ -1247,7 +1247,9 @@ export const tongitsResolvePostGame = onCall({ region: GAME_REGION }, async (req
  * Split an unclaimed jackpot equally among the remaining players and close the
  * room. Both remaining players must call it (mutual consent).
  */
-export const splitTongitsJackpot = onCall(async (request) => {
+// Must live in GAME_REGION like every other Tongits callable — the client calls
+// them all through the asia-southeast1 Functions instance.
+export const splitTongitsJackpot = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const code = codeArg(request);
   const now = Date.now();
