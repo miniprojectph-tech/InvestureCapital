@@ -142,11 +142,15 @@ export default function GamesHubPage() {
     <div>
       <TopHeader title="Games" subtitle="Play, earn Game Points, redeem rewards." />
 
-      {/* balance + daily bonus */}
-      <div className="grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-3 mb-3">
+      {/* hero banner: balance + daily bonus over the games key art */}
+      <div className="relative rounded-2xl overflow-hidden border border-border mb-3 p-3 sm:p-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/games/games-hero.webp" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover object-center" />
+        <div className="absolute inset-0 bg-gradient-to-b from-canvas/40 via-canvas/55 to-canvas/85" />
+        <div className="relative grid grid-cols-1 lg:grid-cols-[auto_1fr] gap-3">
         <Link
           href="/rewards"
-          className="flex items-center gap-3 rounded-xl bg-card border border-border-gold px-4 py-3 hover:bg-card-elev transition-colors"
+          className="flex items-center gap-3 rounded-xl bg-card/85 backdrop-blur-sm border border-border-gold px-4 py-3 hover:bg-card-elev transition-colors"
         >
           <span className="w-9 h-9 rounded-lg bg-gold/15 flex items-center justify-center shrink-0">
             <Coins className="w-4 h-4 text-gold" />
@@ -157,7 +161,7 @@ export default function GamesHubPage() {
           </span>
         </Link>
 
-        <Card>
+        <Card className="bg-card/85 backdrop-blur-sm">
           <div className="flex flex-col sm:flex-row sm:items-center gap-3">
             <div className="flex items-center gap-3 flex-1 min-w-0">
               <span className="w-9 h-9 rounded-lg bg-[#F59E0B]/15 flex items-center justify-center shrink-0">
@@ -189,6 +193,7 @@ export default function GamesHubPage() {
           </div>
           {claimError && <p className="text-[11px] text-red m-0 mt-2">{claimError}</p>}
         </Card>
+        </div>
       </div>
 
       {locked && (
@@ -214,6 +219,7 @@ export default function GamesHubPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
         <GameCard
           href="/play"
+          cover="/games/reef-cover.webp"
           locked={locked}
           icon={Fish}
           tint="#5CE0D2"
@@ -235,6 +241,7 @@ export default function GamesHubPage() {
         />
         <GameCard
           href="/tongits"
+          cover="/games/tongits-cover.webp"
           locked={locked}
           icon={Spade}
           tint="#7FADFF"
@@ -253,6 +260,7 @@ export default function GamesHubPage() {
         />
         <GameCard
           href="/color-game"
+          cover="/games/color-cover.webp"
           locked={locked}
           icon={Dices}
           tint="#FF8DB4"
@@ -345,9 +353,10 @@ export default function GamesHubPage() {
 }
 
 function GameCard({
-  href, locked, icon: Icon, tint, name, blurb, pill, pillLive, hero, heroLabel, stats, cta,
+  href, cover, locked, icon: Icon, tint, name, blurb, pill, pillLive, hero, heroLabel, stats, cta,
 }: {
   href: string;
+  cover: string;
   locked: boolean;
   icon: typeof Fish;
   tint: string;
@@ -362,18 +371,20 @@ function GameCard({
 }) {
   const inner = (
     <>
-      <span
-        className="pointer-events-none absolute -right-14 -top-14 w-48 h-48 rounded-full"
-        style={{ background: `radial-gradient(circle, ${tint}2E, ${tint}00 70%)` }}
-      />
-      <div className="flex items-center justify-between mb-3">
-        <span className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: `${tint}24` }}>
-          <Icon className="w-5 h-5" style={{ color: tint }} />
-        </span>
-        <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded-full" style={{ background: `${tint}1F`, color: tint }}>
-          {pillLive && <span className="w-1.5 h-1.5 rounded-full" style={{ background: tint }} />}
-          {pill}
-        </span>
+      {/* key art band: icon badge top-left, live pill top-right, fades into the card */}
+      <div className="relative aspect-[16/9] -mx-4 -mt-4 mb-3 overflow-hidden">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={cover} alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-card" />
+        <div className="absolute inset-x-4 top-4 flex items-start justify-between">
+          <span className="w-11 h-11 rounded-xl flex items-center justify-center backdrop-blur-sm" style={{ background: `${tint}33`, boxShadow: `0 0 0 1px ${tint}55` }}>
+            <Icon className="w-5 h-5" style={{ color: tint }} />
+          </span>
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold px-2.5 py-1 rounded-full bg-canvas/70 backdrop-blur-sm" style={{ color: tint, boxShadow: `0 0 0 1px ${tint}55` }}>
+            {pillLive && <span className="w-1.5 h-1.5 rounded-full" style={{ background: tint }} />}
+            {pill}
+          </span>
+        </div>
       </div>
       <div className="text-[16px] font-medium text-text">{name}</div>
       <p className="text-[11.5px] text-text-muted leading-snug m-0 mt-1 mb-4">{blurb}</p>
