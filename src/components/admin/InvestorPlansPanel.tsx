@@ -18,6 +18,7 @@ import {
   adminSetPlacementStart,
   adminResetMember,
   adminSetTestClock,
+  placementClock,
   peso,
   TEST_CLOCK_LABEL,
   type TestClockSpeed,
@@ -81,12 +82,14 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
     }
   }
 
-  const setClock = (u: InvestorRow, speed: TestClockSpeed | null) =>
-    run(`clock-${u.uid}`, async () => {
-      await adminSetTestClock(u.uid, speed);
+  // Per placement. Without a placementId it applies to every active placement of the member.
+  const setClock = (u: InvestorRow, speed: TestClockSpeed | null, placementId?: string) =>
+    run(`clock-${u.uid}-${placementId ?? "all"}`, async () => {
+      const r = await adminSetTestClock(u.uid, speed, placementId);
+      const what = placementId ?? `all ${r.placements.length} placement${r.placements.length === 1 ? "" : "s"}`;
       return speed
-        ? `${u.name} is on the ${speed} test clock (${TEST_CLOCK_LABEL[speed]}). It switches off by itself after the final payout.`
-        : `${u.name}'s test clock is off — placements continue at normal speed from where they are.`;
+        ? `${what} on the ${speed} test clock (${TEST_CLOCK_LABEL[speed]}). It switches off by itself after that placement's final payout; ${u.name}'s other placements keep real time.`
+        : `Test clock off for ${what} — it continues at normal speed from where it is.`;
     });
 
   return (
@@ -125,8 +128,10 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
             {investors.map((u) => {
               const mine = byUser.get(u.uid) ?? [];
               const clock = clocks.get(u.uid);
+              const activeMine = mine.filter((p) => p.status === "active");
+              const onClock = activeMine.filter((p) => placementClock(clock, p.id)).length;
               const isOpen = open === u.uid;
-              const clockBusy = busy === `clock-${u.uid}`;
+              const clockBusy = busy === `clock-${u.uid}-all`;
               return (
                 <Fragment key={u.uid}>
                   <tr className={cn("border-t border-border transition", isOpen ? "bg-card-elev/40" : "hover:bg-card-elev/50")}>
@@ -142,29 +147,20 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
                     <td className="py-2 px-1 text-right font-mono">{u.completedPlansCount}</td>
                     <td className="py-2 px-1 text-right font-mono text-vault">{u.totalEarned > 0 ? `+${formatPHP(u.totalEarned, { short: true })}` : formatPHP(0)}</td>
                     <td className="py-2 px-1">
-                      {clock ? (
+                      {/* Summary only — the Fast / Medium switches live on each plan row below. */}
+                      {onClock > 0 ? (
                         <div className="flex items-center gap-1.5">
                           <span className="text-[9px] font-semibold bg-gold/15 text-gold px-1.5 py-0.5 rounded-full flex items-center gap-1 whitespace-nowrap">
-                            <Zap className="w-2.5 h-2.5" /> {TEST_CLOCK_LABEL[clock.speed]}
+                            <Zap className="w-2.5 h-2.5" /> {onClock} of {activeMine.length} plan{activeMine.length === 1 ? "" : "s"}
                           </span>
-                          <button onClick={() => setClock(u, null)} disabled={clockBusy} className="text-[9px] px-1.5 py-0.5 rounded-md bg-card-elev text-text-muted hover:text-red disabled:opacity-50">
-                            {clockBusy ? "…" : "Off"}
+                          <button onClick={() => setClock(u, null)} disabled={clockBusy} title="Stop every test clock for this member" className="text-[9px] px-1.5 py-0.5 rounded-md bg-card-elev text-text-muted hover:text-red disabled:opacity-50">
+                            {clockBusy ? "…" : "All off"}
                           </button>
                         </div>
+                      ) : activeMine.length > 0 ? (
+                        <button onClick={() => setOpen(u.uid)} className="text-[9px] text-text-subtle hover:text-gold">per plan ▸</button>
                       ) : (
-                        <div className="flex items-center gap-1">
-                          {(["fast", "medium"] as TestClockSpeed[]).map((s) => (
-                            <button
-                              key={s}
-                              onClick={() => setClock(u, s)}
-                              disabled={clockBusy}
-                              title={`Test clock: ${TEST_CLOCK_LABEL[s]}`}
-                              className="text-[9px] px-1.5 py-0.5 rounded-md bg-card-elev border border-border text-text-muted hover:text-gold hover:border-gold/40 capitalize disabled:opacity-50"
-                            >
-                              {s}
-                            </button>
-                          ))}
-                        </div>
+                        <span className="text-[9px] text-text-subtle">—</span>
                       )}
                     </td>
                   </tr>
@@ -183,6 +179,8 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
                               const key = `${u.uid}-${p.id}`;
                               const active = p.status === "active";
                               const isEditing = editing?.key === key;
+                              const pc = active ? placementClock(clock, p.id) : null;
+                              const pcBusy = busy === `clock-${u.uid}-${p.id}`;
                               return (
                                 <div key={key} className="bg-canvas border border-border rounded-lg px-3 py-2 flex flex-wrap items-center gap-x-4 gap-y-2">
                                   <div className="min-w-[150px]">
@@ -205,8 +203,8 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
                                   </div>
                                   <div className="text-[10px] text-text-muted min-w-[120px]">
                                     {active ? (
-                                      clock ? (
-                                        <span className="text-gold flex items-center gap-1"><Zap className="w-3 h-3" /> on test clock</span>
+                                      pc ? (
+                                        <span className="text-gold flex items-center gap-1"><Zap className="w-3 h-3" /> {TEST_CLOCK_LABEL[pc.speed]}</span>
                                       ) : (
                                         <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> next in {formatCountdown(nextPayoutAt(p) - now)}</span>
                                       )
@@ -244,6 +242,29 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
                                       <>
                                         {active && (
                                           <>
+                                            {/* Test clock for THIS plan only */}
+                                            {pc ? (
+                                              <button
+                                                onClick={() => setClock(u, null, p.id)}
+                                                disabled={busy !== null}
+                                                title="Stop the test clock for this plan"
+                                                className="text-[10px] px-2 py-1 rounded-md bg-gold/15 border border-gold/40 text-gold hover:bg-red/10 hover:text-red hover:border-red/30 inline-flex items-center gap-1 disabled:opacity-50 whitespace-nowrap"
+                                              >
+                                                {pcBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />} {pc.speed} · off
+                                              </button>
+                                            ) : (
+                                              (["fast", "medium"] as TestClockSpeed[]).map((s) => (
+                                                <button
+                                                  key={s}
+                                                  onClick={() => setClock(u, s, p.id)}
+                                                  disabled={busy !== null}
+                                                  title={`Test clock for ${p.id}: ${TEST_CLOCK_LABEL[s]}`}
+                                                  className="text-[10px] px-2 py-1 rounded-md bg-card-elev border border-border text-text-muted hover:text-gold hover:border-gold/40 inline-flex items-center gap-1 capitalize disabled:opacity-50"
+                                                >
+                                                  {pcBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3" />} {s}
+                                                </button>
+                                              ))
+                                            )}
                                             <ToolButton
                                               icon={SkipForward}
                                               label="Next payout"
@@ -294,7 +315,7 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
       </div>
 
       <p className="text-[9px] text-text-subtle m-0 mt-3 leading-relaxed">
-        <span className="text-gold">Test clock</span> runs a member&apos;s placements on accelerated time and credits real payouts through the normal engine; it switches off by itself once the final payout (capital back) is credited.
+        <span className="text-gold">Test clock</span> is set per plan (Fast / Medium on the plan row): only that plan runs on accelerated time and credits real payouts through the normal engine, while the member&apos;s other plans keep the real calendar; it switches off by itself once that plan&apos;s final payout (capital back) is credited.
         Fast-forward and the test clock never change a placement&apos;s start date — history is always dated by the schedule. <span className="text-text-muted">Edit start date</span> moves the whole schedule, and every history date of that placement follows.
       </p>
     </Card>

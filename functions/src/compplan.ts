@@ -476,17 +476,21 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
 // Payout engine
 // ============================================================================
 
-/** Test-clock tick: how much real time passed, and how long one payout cycle takes in real time. */
-type ClockTick = { realDeltaMs: number; cycleRealMs: number };
+/**
+ * Test-clock tick, per placement: how much real time passed since that
+ * placement's clock last ticked, and how long one payout cycle takes in real
+ * time for it. Placements not in the map run on the real calendar.
+ */
+type ClockTick = Record<string, { realDeltaMs: number; cycleRealMs: number }>;
 
 export async function processPlacementsForUser(
   uid: string,
   cfg: CompPlanConfig,
   now: number,
   tick?: ClockTick,
-): Promise<{ payouts: number; completed: number; notified: boolean; active: number }> {
+): Promise<{ payouts: number; completed: number; notified: boolean; active: number; activeIds: string[] }> {
   return db.runTransaction(async (tx) => {
-    const none = { payouts: 0, completed: 0, notified: false, active: 0 };
+    const none = { payouts: 0, completed: 0, notified: false, active: 0, activeIds: [] as string[] };
     const snap = await tx.get(userRef(uid));
     if (!snap.exists) return none;
     const user = snap.data() as UserDoc;
@@ -506,10 +510,11 @@ export async function processPlacementsForUser(
       const cur: Placement = { ...p };
       const cycleMs = cycleMsOf(p);
 
-      // Test clock: one real `cycleRealMs` should feel like one full cycle.
-      if (tick && tick.realDeltaMs > 0 && tick.cycleRealMs > 0) {
-        const factor = cycleMs / tick.cycleRealMs;
-        cur.clockAdvanceMs = (cur.clockAdvanceMs ?? 0) + Math.round(tick.realDeltaMs * Math.max(0, factor - 1));
+      // Test clock (this placement only): one real `cycleRealMs` should feel like one full cycle.
+      const t = tick?.[p.id];
+      if (t && t.realDeltaMs > 0 && t.cycleRealMs > 0) {
+        const factor = cycleMs / t.cycleRealMs;
+        cur.clockAdvanceMs = (cur.clockAdvanceMs ?? 0) + Math.round(t.realDeltaMs * Math.max(0, factor - 1));
         changed = true;
       }
 
@@ -679,7 +684,7 @@ export async function processPlacementsForUser(
 
     patches.flush(tx);
     for (const w of writes) tx.set(w.ref, w.data);
-    return { payouts, completed: finished.length, notified, active: remaining.length };
+    return { payouts, completed: finished.length, notified, active: remaining.length, activeIds: remaining.map((p) => p.id) };
   });
 }
 
@@ -1001,51 +1006,88 @@ export const adminResetEconomy = onCall({ timeoutSeconds: 540, memory: "512MiB" 
 // ============================================================================
 //
 // `test_clocks/{uid}` is admin-only (NOT on the user doc, which members can
-// edit — otherwise anyone could speed up their own payouts). A per-minute job
-// advances only those accounts. It stops by itself once the account's last
-// placement has paid its final payout, and after 24 h as a backstop.
+// edit — otherwise anyone could speed up their own payouts). One doc per
+// member holds a clock PER PLACEMENT (`clocks[placementId]`), so an admin can
+// fast-run one plan while the member's other plans stay on the real calendar.
+// A per-minute job advances only the flagged placements. Each clock removes
+// itself once its placement has paid the final payout, and after 24 h as a
+// backstop; the doc goes when its last clock does.
 
 const TEST_CLOCK_SPEEDS = { fast: 60_000, medium: 300_000 } as const; // real ms per payout cycle
 const TEST_CLOCK_MAX_MS = 24 * 3_600_000;
 const MAX_TICK_MS = 10 * 60_000; // never jump more than 10 real minutes in one tick
 
-type TestClock = {
+type PlacementClock = {
   speed: keyof typeof TEST_CLOCK_SPEEDS;
   cycleRealMs: number;
   enabledAt: number;
   lastTickAt: number;
   enabledBy: string;
+};
+type TestClock = {
   name: string;
-  /** True once this clock has seen a running placement — so "none left" means "finished", not "not started yet". */
-  sawActive: boolean;
+  clocks: Record<string, PlacementClock>;
+  // Legacy member-level shape (before per-placement clocks). Migrated on the
+  // next tick: it applied to every placement, so each one gets its own entry.
+  speed?: keyof typeof TEST_CLOCK_SPEEDS;
+  cycleRealMs?: number;
+  enabledAt?: number;
+  lastTickAt?: number;
+  enabledBy?: string;
 };
 
 export const adminSetTestClock = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
   await assertAdmin(request.auth.uid);
-  const { userId, speed } = (request.data ?? {}) as { userId?: string; speed?: keyof typeof TEST_CLOCK_SPEEDS | null };
+  const { userId, placementId, speed } = (request.data ?? {}) as {
+    userId?: string;
+    placementId?: string;
+    speed?: keyof typeof TEST_CLOCK_SPEEDS | null;
+  };
   if (!userId) throw new HttpsError("invalid-argument", "userId is required.");
-  const ref = db.collection("test_clocks").doc(userId);
-  if (!speed) {
-    await ref.delete();
-    return { ok: true, enabled: false };
-  }
-  if (!(speed in TEST_CLOCK_SPEEDS)) throw new HttpsError("invalid-argument", "speed must be fast or medium.");
+  if (speed && !(speed in TEST_CLOCK_SPEEDS)) throw new HttpsError("invalid-argument", "speed must be fast or medium.");
   const member = await userRef(userId).get();
   if (!member.exists) throw new HttpsError("not-found", "Member not found.");
+  const user = member.data() as UserDoc;
+  const activeIds = (user.placements ?? []).map((p) => p.id);
+  // No placementId = every active placement (the old member-level behaviour).
+  const targets = placementId ? [placementId] : activeIds;
+  if (placementId && !activeIds.includes(placementId)) {
+    throw new HttpsError("failed-precondition", `${placementId} is not an active placement of this member.`);
+  }
+
+  const ref = db.collection("test_clocks").doc(userId);
   const now = Date.now();
-  const clock: TestClock = {
-    speed,
-    cycleRealMs: TEST_CLOCK_SPEEDS[speed],
-    enabledAt: now,
-    lastTickAt: now,
-    enabledBy: request.auth.uid,
-    name: displayName(member.data() as UserDoc, userId),
-    sawActive: ((member.data() as UserDoc).placements ?? []).length > 0,
-  };
-  await ref.set(clock);
-  return { ok: true, enabled: true, speed };
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const clocks = migrateClocks(snap.exists ? (snap.data() as TestClock) : null, activeIds, now);
+    for (const id of targets) {
+      if (speed) {
+        clocks[id] = { speed, cycleRealMs: TEST_CLOCK_SPEEDS[speed], enabledAt: now, lastTickAt: now, enabledBy: request.auth!.uid };
+      } else {
+        delete clocks[id];
+      }
+    }
+    if (Object.keys(clocks).length === 0) tx.delete(ref);
+    else tx.set(ref, { name: displayName(user, userId), clocks });
+  });
+  return { ok: true, enabled: !!speed, speed: speed ?? null, placements: targets };
 });
+
+/** Per-placement clocks from a doc, converting the legacy member-level shape (one clock for all placements). */
+function migrateClocks(doc: TestClock | null, activeIds: string[], now: number): Record<string, PlacementClock> {
+  if (!doc) return {};
+  if (doc.clocks) return { ...doc.clocks };
+  if (!doc.speed) return {};
+  const legacy: PlacementClock = {
+    speed: doc.speed,
+    cycleRealMs: doc.cycleRealMs ?? TEST_CLOCK_SPEEDS[doc.speed],
+    enabledAt: doc.enabledAt ?? now,
+    lastTickAt: doc.lastTickAt ?? now,
+    enabledBy: doc.enabledBy ?? "",
+  };
+  return Object.fromEntries(activeIds.map((id) => [id, { ...legacy }]));
+}
 
 // The one per-minute scheduler job. It carries two independent chores so we pay for
 // a single Cloud Scheduler job: the Color Game safety-net sweep, then test clocks.
@@ -1061,20 +1103,32 @@ export const tickTestClocks = onSchedule("every 1 minutes", async () => {
   if (snap.empty) return;
   const cfg = await loadCompPlan();
   for (const d of snap.docs) {
-    const clock = d.data() as TestClock;
     const now = Date.now();
     try {
-      if (now - clock.enabledAt > TEST_CLOCK_MAX_MS) {
-        await d.ref.delete();
-        continue;
+      const doc = d.data() as TestClock;
+      const member = await userRef(d.id).get();
+      const activeIds = member.exists ? ((member.data() as UserDoc).placements ?? []).map((p) => p.id) : [];
+      const clocks = migrateClocks(doc, activeIds, now);
+
+      // Expired (24 h backstop) or pointing at a placement that no longer runs
+      // (completed by an earlier tick, "Complete now", or a reset): drop it.
+      for (const [id, c] of Object.entries(clocks)) {
+        if (now - c.enabledAt > TEST_CLOCK_MAX_MS || !activeIds.includes(id)) delete clocks[id];
       }
-      const realDeltaMs = Math.min(Math.max(0, now - (clock.lastTickAt ?? now)), MAX_TICK_MS);
-      const r = await processPlacementsForUser(d.id, cfg, now, { realDeltaMs, cycleRealMs: clock.cycleRealMs });
-      // Done: the final payout (capital back) has been credited and nothing is left
-      // running — whether this tick completed it or an admin pressed "Complete now".
-      const sawActive = clock.sawActive || r.active > 0 || r.completed > 0;
-      if (sawActive && r.active === 0) await d.ref.delete();
-      else await d.ref.update({ lastTickAt: now, sawActive });
+
+      const tick: ClockTick = {};
+      for (const [id, c] of Object.entries(clocks)) {
+        tick[id] = { realDeltaMs: Math.min(Math.max(0, now - c.lastTickAt), MAX_TICK_MS), cycleRealMs: c.cycleRealMs };
+      }
+      const r = Object.keys(tick).length ? await processPlacementsForUser(d.id, cfg, now, tick) : { activeIds };
+
+      // A clock is done the moment its placement's final payout (capital back) is credited.
+      for (const id of Object.keys(clocks)) {
+        if (!r.activeIds.includes(id)) delete clocks[id];
+        else clocks[id].lastTickAt = now;
+      }
+      if (Object.keys(clocks).length === 0) await d.ref.delete();
+      else await d.ref.set({ name: doc.name ?? (member.exists ? displayName(member.data() as UserDoc, d.id) : d.id), clocks });
     } catch (err) {
       logger.error(`test clock tick failed for ${d.id}`, err);
     }

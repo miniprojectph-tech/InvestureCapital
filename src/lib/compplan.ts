@@ -51,7 +51,25 @@ export type CompletedPlacement = Placement & {
 };
 
 export type TestClockSpeed = "fast" | "medium";
-export type TestClock = { uid: string; speed: TestClockSpeed; cycleRealMs: number; enabledAt: number; lastTickAt: number; name: string };
+export type PlacementClock = { speed: TestClockSpeed; cycleRealMs: number; enabledAt: number; lastTickAt: number; enabledBy?: string };
+/** One doc per member; a clock per placement, so only the plans an admin picks run fast. */
+export type TestClock = { uid: string; name: string; clocks: Record<string, PlacementClock> };
+
+/** Read a `test_clocks` doc, tolerating the old member-level shape (one clock for every placement). */
+function toTestClock(uid: string, data: Record<string, unknown>): TestClock {
+  const name = (data.name as string) ?? uid;
+  if (data.clocks && typeof data.clocks === "object") return { uid, name, clocks: data.clocks as Record<string, PlacementClock> };
+  if (data.speed) {
+    // Legacy: no placement ids on the doc — mark it with "*" (= all placements) until the server migrates it.
+    return { uid, name, clocks: { "*": { speed: data.speed as TestClockSpeed, cycleRealMs: data.cycleRealMs as number, enabledAt: data.enabledAt as number, lastTickAt: data.lastTickAt as number } } };
+  }
+  return { uid, name, clocks: {} };
+}
+/** The clock running a given placement, if any. */
+export function placementClock(clock: TestClock | null | undefined, placementId: string): PlacementClock | null {
+  if (!clock) return null;
+  return clock.clocks[placementId] ?? clock.clocks["*"] ?? null;
+}
 export const TEST_CLOCK_LABEL: Record<TestClockSpeed, string> = { fast: "1 payout / min", medium: "1 payout / 5 min" };
 
 export type AppNotification = {
@@ -283,9 +301,16 @@ export function earningsRequiringActive(cfg: CompPlanConfig): string[] {
   ].filter((x): x is string => x !== null);
 }
 
-/** Put an account on accelerated time (null = off). Stops itself after the final payout. */
-export function adminSetTestClock(userId: string, speed: TestClockSpeed | null) {
-  return adminCall<{ userId: string; speed: TestClockSpeed | null }, { ok: boolean; enabled: boolean }>("adminSetTestClock", { userId, speed });
+/**
+ * Put one placement on accelerated time (null = off). Omit placementId to apply
+ * to every active placement of the member. Each clock stops itself after that
+ * placement's final payout.
+ */
+export function adminSetTestClock(userId: string, speed: TestClockSpeed | null, placementId?: string) {
+  return adminCall<{ userId: string; speed: TestClockSpeed | null; placementId?: string }, { ok: boolean; enabled: boolean; placements: string[] }>(
+    "adminSetTestClock",
+    { userId, speed, ...(placementId ? { placementId } : {}) },
+  );
 }
 
 /** Admin: every account currently on a test clock, keyed by uid. */
@@ -298,7 +323,7 @@ export function useTestClocks(enabled: boolean): Map<string, TestClock> {
     if (!db) return;
     return onSnapshot(
       collection(db, "test_clocks"),
-      (snap) => setClocks(new Map(snap.docs.map((d) => [d.id, { uid: d.id, ...(d.data() as Omit<TestClock, "uid">) }]))),
+      (snap) => setClocks(new Map(snap.docs.map((d) => [d.id, toTestClock(d.id, d.data())]))),
       () => {},
     );
   }, [user, enabled]);
@@ -315,7 +340,7 @@ export function useMyTestClock(): TestClock | null {
     if (!db) return;
     return onSnapshot(
       doc(db, "test_clocks", user.uid),
-      (s) => setClock(s.exists() ? { uid: user.uid, ...(s.data() as Omit<TestClock, "uid">) } : null),
+      (s) => setClock(s.exists() ? toTestClock(user.uid, s.data()) : null),
       () => setClock(null),
     );
   }, [user]);

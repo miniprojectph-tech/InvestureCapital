@@ -12,6 +12,7 @@ import {
   placementFinalExtra,
   formatCountdown,
   useMyTestClock,
+  placementClock,
   TEST_CLOCK_LABEL,
   peso,
 } from "@/lib/compplan";
@@ -90,9 +91,9 @@ export function ActivePlacements() {
                   <span>
                     <span className="font-mono text-text-muted">{p.cyclesPaid}</span> of {p.cycles} payouts credited
                   </span>
-                  {testClock ? (
+                  {placementClock(testClock, p.id) ? (
                     <span className="flex items-center gap-1 text-right text-gold">
-                      <Zap className="w-2.5 h-2.5" /> Test clock · {TEST_CLOCK_LABEL[testClock.speed]}
+                      <Zap className="w-2.5 h-2.5" /> Test clock · {TEST_CLOCK_LABEL[placementClock(testClock, p.id)!.speed]}
                     </span>
                   ) : (
                     <span className="flex items-center gap-1 text-right">
