@@ -16,6 +16,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { cn, formatPHP } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -265,7 +266,7 @@ export default function AdminTransactionsPage() {
               : "No transactions match the current filter."}
           </p>
         ) : (
-          <div className="overflow-x-auto -mx-1">
+          <ResponsiveTable>
             <table className="w-full text-[11px] table-fixed min-w-[700px]">
               <colgroup>
                 <col style={{ width: "26%" }} />
@@ -340,7 +341,7 @@ export default function AdminTransactionsPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTable>
         )}
       </Card>
 

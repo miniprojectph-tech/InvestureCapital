@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Loader2, Save, Search } from "lucide-react";
 import { Card, CardHeader } from "@/components/Card";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { getFirebase } from "@/lib/firebase";
 import { listInvestors } from "@/lib/adminQueries";
 import { adminListGameStates, adminSaveGameState } from "@/lib/game";
@@ -106,7 +107,7 @@ export function PlayerPointsPanel() {
       ) : filtered.length === 0 ? (
         <p className="text-[11px] text-text-subtle text-center py-6 m-0">No players found.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <ResponsiveTable>
           <table className="w-full text-[12px]">
             <thead>
               <tr className="text-text-muted text-[10px] uppercase tracking-wider border-b border-border">
@@ -149,7 +150,7 @@ export function PlayerPointsPanel() {
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       )}
     </Card>
   );

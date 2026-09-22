@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Play, FastForward, RefreshCw, Search, AlertTriangle, CheckCircle2, AlertCircle, Clock } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -121,7 +122,7 @@ export default function AdminPlacementsPage() {
         ) : filtered.length === 0 ? (
           <p className="text-[11px] text-text-subtle text-center py-8 m-0">Nothing here.</p>
         ) : (
-          <div className="overflow-x-auto">
+          <ResponsiveTable>
             <table className="w-full text-[11px] min-w-[760px]">
               <thead>
                 <tr className="text-[9px] uppercase tracking-wider text-text-subtle text-left">
@@ -177,7 +178,7 @@ export default function AdminPlacementsPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTable>
         )}
       </Card>
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Search, Users, Zap, Award, XCircle, Coins, Loader2 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { formatPHP, cn } from "@/lib/utils";
 import { useCompPlan, useAllCommissions, adminPaySkippedCommission, type Commission } from "@/lib/compplan";
@@ -93,7 +94,7 @@ export default function AdminReferralsPage() {
 
       <Card>
         <CardHeader title="Ledger" subtitle="Every commission and bonus the engine evaluated — paid or skipped with the reason" right={<Users className="w-4 h-4 text-text-subtle" />} />
-        <div className="overflow-x-auto">
+        <ResponsiveTable>
           <table className="w-full text-[11px] min-w-[720px]">
             <thead>
               <tr className="text-[9px] uppercase tracking-wider text-text-subtle text-left">
@@ -146,7 +147,7 @@ export default function AdminReferralsPage() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       </Card>
     </div>
   );

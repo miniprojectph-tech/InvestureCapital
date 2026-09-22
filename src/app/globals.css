@@ -245,3 +245,35 @@ body {
   50%      { transform: translate(18px, -14px); }
 }
 
+
+/* ===== Responsive admin tables (see components/ResponsiveTable.tsx) =====
+   Below md every row becomes a card and each cell shows its column heading
+   (data-label) on the left, so nothing sits off-screen to the right. */
+@media (max-width: 767px) {
+  .rt { overflow-x: visible; }
+  .rt table, .rt tbody, .rt tr, .rt td { display: block; width: 100% !important; min-width: 0 !important; }
+  .rt table { table-layout: auto; }
+  .rt thead { display: none; }
+  .rt tbody > tr {
+    background: var(--color-canvas);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
+  }
+  .rt td {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 5px 0 !important; text-align: right !important;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .rt td:last-child { border-bottom: 0; }
+  .rt td[data-label]::before {
+    content: attr(data-label);
+    flex: 0 0 auto; font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--color-text-subtle); text-align: left;
+  }
+  .rt td[data-label] > * { text-align: right; }
+  .rt td:not([data-label]) { display: block; text-align: left !important; }
+  .rt td:not([data-label]):empty { display: none; }
+  .rt td[colspan] { padding: 8px 0 4px !important; }
+}

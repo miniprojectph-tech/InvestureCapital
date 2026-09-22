@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Save, Loader2, Plus, X, Play, Zap, Search, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -225,7 +226,7 @@ export default function AdminCompPlanPage() {
       {/* ===== Preview ===== */}
       <Card className="mt-3">
         <CardHeader title={`What a ₱${unit.toLocaleString()} placement pays`} subtitle="Live preview of the numbers above" />
-        <div className="overflow-x-auto">
+        <ResponsiveTable>
           <table className="w-full text-[11px]">
             <thead>
               <tr className="text-[9px] uppercase tracking-wider text-text-subtle">
@@ -261,7 +262,7 @@ export default function AdminCompPlanPage() {
               })}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       </Card>
 
       <TestTools cfg={mergeCompPlan(settings.compPlan)} demoMode={demoMode} />

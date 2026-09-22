@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Zap, Loader2, SkipForward, FastForward, CalendarClock, RotateCcw, CheckCircle2, AlertCircle, Clock, X, Check } from "lucide-react";
 import { Card, CardHeader } from "@/components/Card";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { formatPHP, cn } from "@/lib/utils";
 import { getFirebase } from "@/lib/firebase";
 import { listAllPlacements, type InvestorRow, type PlacementRow } from "@/lib/adminQueries";
@@ -110,7 +111,7 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
         </p>
       )}
 
-      <div className="overflow-x-auto -mx-1">
+      <ResponsiveTable>
         <table className="w-full text-[11px] min-w-[900px]">
           <thead>
             <tr className="text-text-subtle text-left">
@@ -135,12 +136,12 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
               return (
                 <Fragment key={u.uid}>
                   <tr className={cn("border-t border-border transition", isOpen ? "bg-card-elev/40" : "hover:bg-card-elev/50")}>
-                    <td className="py-2 px-1">
+                    <td className="py-2 px-1 max-md:!hidden">
                       <button onClick={() => setOpen(isOpen ? null : u.uid)} className="text-text-subtle hover:text-text" aria-label={isOpen ? "Collapse" : "Expand"}>
                         {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                       </button>
                     </td>
-                    <td className="py-2 px-1"><button onClick={() => setOpen(isOpen ? null : u.uid)} className="m-0 text-[11px] font-medium text-left hover:text-gold">{u.name}</button></td>
+                    <td className="py-2 px-1"><button onClick={() => setOpen(isOpen ? null : u.uid)} className="m-0 text-[11px] font-medium text-left hover:text-gold inline-flex items-center gap-1">{u.name}<ChevronDown className={cn("w-3 h-3 md:hidden transition-transform", isOpen && "rotate-180")} /></button></td>
                     <td className="py-2 px-1 text-[10px] text-text-muted">{u.email}</td>
                     <td className="py-2 px-1 text-right font-mono">{u.activePlansCount > 0 ? <span className="text-green">{u.activePlansCount}</span> : <span className="text-text-subtle">0</span>}</td>
                     <td className="py-2 px-1 text-right font-mono text-green">{formatPHP(u.deployed, { short: true })}</td>
@@ -312,7 +313,7 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
             )}
           </tbody>
         </table>
-      </div>
+      </ResponsiveTable>
 
       <p className="text-[9px] text-text-subtle m-0 mt-3 leading-relaxed">
         <span className="text-gold">Test clock</span> is set per plan (Fast / Medium on the plan row): only that plan runs on accelerated time and credits real payouts through the normal engine, while the member&apos;s other plans keep the real calendar; it switches off by itself once that plan&apos;s final payout (capital back) is credited.

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Loader2, Dice1, Trophy, Coins, Users } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { KpiCard } from "@/components/KpiCard";
 import { useAuth } from "@/lib/auth";
@@ -320,7 +321,7 @@ export default function AdminColorGamePage() {
               <Loader2 className="w-4 h-4 animate-spin text-vault" />
             </div>
           ) : (
-            <div className="overflow-x-auto -mx-1">
+            <ResponsiveTable>
               <table className="w-full text-[11px] table-fixed min-w-[500px]">
                 <thead>
                   <tr className="text-text-subtle text-left">
@@ -362,7 +363,7 @@ export default function AdminColorGamePage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ResponsiveTable>
           )}
         </Card>
       )}
@@ -370,7 +371,7 @@ export default function AdminColorGamePage() {
       {tab === "leaderboard" && (
         <Card>
           <CardHeader title="Top players" />
-          <div className="overflow-x-auto -mx-1">
+          <ResponsiveTable>
             <table className="w-full text-[11px] table-fixed min-w-[500px]">
               <thead>
                 <tr className="text-text-subtle text-left">
@@ -409,7 +410,7 @@ export default function AdminColorGamePage() {
                 )}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTable>
         </Card>
       )}
     </div>

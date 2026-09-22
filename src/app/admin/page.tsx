@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Users, ArrowDownRight, Coins, Clock, Loader2, ShieldCheck } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { KpiCard } from "@/components/KpiCard";
 import { formatPHP } from "@/lib/utils";
@@ -218,7 +219,7 @@ export default function AdminDashboard() {
           title={isUsingMock ? "Latest investors (demo)" : `All investors (${rows?.length ?? 0})`}
           right={<span className="text-[10px] text-vault">Export</span>}
         />
-        <div className="overflow-x-auto -mx-1">
+        <ResponsiveTable>
           <table className="w-full text-[11px] table-fixed min-w-[520px]">
             <thead>
               <tr className="text-text-subtle text-left">
@@ -260,7 +261,7 @@ export default function AdminDashboard() {
               ))}
             </tbody>
           </table>
-        </div>
+        </ResponsiveTable>
       </Card>
     </div>
   );

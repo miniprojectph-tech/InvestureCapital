@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { InvestorPlansPanel } from "@/components/admin/InvestorPlansPanel";
 import { formatPHP, cn } from "@/lib/utils";
@@ -374,7 +375,7 @@ export default function AdminInvestorsPage() {
             ) : gameLoading ? (
               <div className="flex justify-center py-10"><Loader2 className="w-5 h-5 text-gold animate-spin" /></div>
             ) : (
-              <div className="overflow-x-auto -mx-1">
+              <ResponsiveTable>
                 <table className="w-full text-[11px] min-w-[860px]">
                   <thead>
                     <tr className="text-text-subtle text-left">
@@ -438,7 +439,7 @@ export default function AdminInvestorsPage() {
                     )}
                   </tbody>
                 </table>
-              </div>
+              </ResponsiveTable>
             )}
           </Card>
         </>
@@ -448,7 +449,7 @@ export default function AdminInvestorsPage() {
       {sortKey === "vault" && (
         <Card>
           <CardHeader title={`Bonuses overview (${filtered.length})`} subtitle="Capital placed, Locked-In Bonuses due, and total earned per member" />
-          <div className="overflow-x-auto -mx-1">
+          <ResponsiveTable>
             <table className="w-full text-[11px] table-fixed min-w-[820px]">
               <colgroup>
                 <col style={{ width: "14%" }} />
@@ -497,7 +498,7 @@ export default function AdminInvestorsPage() {
                 )}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTable>
         </Card>
       )}
 
@@ -505,7 +506,7 @@ export default function AdminInvestorsPage() {
       {sortKey === "wallet" && (
         <Card>
           <CardHeader title={`Wallet overview (${filtered.length})`} subtitle="Wallet balances, deployed capital, and total portfolio" />
-          <div className="overflow-x-auto -mx-1">
+          <ResponsiveTable>
             <table className="w-full text-[11px] table-fixed min-w-[780px]">
               <colgroup>
                 <col style={{ width: "14%" }} />
@@ -553,7 +554,7 @@ export default function AdminInvestorsPage() {
                 )}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTable>
         </Card>
       )}
 
@@ -564,7 +565,7 @@ export default function AdminInvestorsPage() {
       {sortKey === "joined" && (
         <Card>
           <CardHeader title={`All investors (${filtered.length})`} subtitle="Account overview sorted by join date" />
-          <div className="overflow-x-auto -mx-1">
+          <ResponsiveTable>
             <table className="w-full text-[11px] table-fixed min-w-[780px]">
               <colgroup>
                 <col style={{ width: "14%" }} />
@@ -609,7 +610,7 @@ export default function AdminInvestorsPage() {
                 )}
               </tbody>
             </table>
-          </div>
+          </ResponsiveTable>
         </Card>
       )}
     </div>
