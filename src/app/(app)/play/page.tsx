@@ -13,6 +13,7 @@ import {
   useGamesSettings,
   useFish,
   useFishOfHour,
+  useLeaderboard,
   castLine,
   claimQuest,
   claimDailyEnergy,
@@ -64,7 +65,7 @@ const HOT = {
 const TOP_ICON_LABELS = [
   { key: "quests", left: "63.4%", text: "Quests" },
   { key: "collection", left: "67.8%", text: "Collection" },
-  { key: "ranking", left: "72.2%", text: "Catch log" },
+  { key: "ranking", left: "72.2%", text: "Ranking" },
   { key: "shop", left: "76.6%", text: "Shop" },
 ];
 const TOP_ICON_LABEL_TOP = "7.6%";
@@ -1542,11 +1543,18 @@ export default function PlayPage() {
         )}
       </AnimatePresence>
 
-      {/* Daily catch log */}
+      {/* Ranking: weekly leaderboard (prizes paid every Monday) + today's catch log */}
       <AnimatePresence>
         {rankingOpen && (
-          <ModalShell key="catchlog" title="Daily catch log" subtitle="Resets at midnight" onClose={() => setRankingOpen(false)}>
-            <DailyCatchLog catches={state?.dailyCatches ?? []} rarities={config.rarities} energy={state?.energy ?? dailyCredits} maxEnergy={dailyCredits} />
+          <ModalShell key="ranking" title="Ranking" subtitle="Weekly prizes are paid every Monday at midnight" onClose={() => setRankingOpen(false)}>
+            <RankingPanel
+              myUid={user?.uid ?? null}
+              myWeekly={state?.weeklyScore ?? 0}
+              prizes={config.leaderboardPrizes}
+              catchLog={
+                <DailyCatchLog catches={state?.dailyCatches ?? []} rarities={config.rarities} energy={state?.energy ?? dailyCredits} maxEnergy={dailyCredits} />
+              }
+            />
           </ModalShell>
         )}
       </AnimatePresence>
@@ -2102,6 +2110,135 @@ function CollectionBook({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/** Time left until the weekly reset — Monday 00:00 Manila, when weeklyReef pays the prizes. */
+function msToWeeklyReset(now: number): string {
+  const d = new Date(now + 8 * 3_600_000);
+  const dow = d.getUTCDay(); // 0 = Sunday
+  const daysLeft = dow === 0 ? 1 : dow === 1 ? 7 : 8 - dow;
+  const into = ((d.getUTCHours() * 60 + d.getUTCMinutes()) * 60 + d.getUTCSeconds()) * 1000;
+  const left = daysLeft * 86_400_000 - into;
+  const days = Math.floor(left / 86_400_000);
+  const h = Math.floor((left % 86_400_000) / 3_600_000);
+  const m = Math.floor((left % 3_600_000) / 60_000);
+  return days > 0 ? `${days}d ${h}h` : `${h}h ${m}m`;
+}
+
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+function RankingPanel({
+  myUid,
+  myWeekly,
+  prizes,
+  catchLog,
+}: {
+  myUid: string | null;
+  myWeekly: number;
+  prizes: number[];
+  catchLog: React.ReactNode;
+}) {
+  const [tab, setTab] = useState<"week" | "today">("week");
+  const { rows, loading } = useLeaderboard(20);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const myIndex = rows.findIndex((r) => r.uid === myUid);
+  // Position among everyone with a score this week — exact inside the top 20,
+  // otherwise "below #20".
+  const myRank = myIndex >= 0 ? myIndex + 1 : null;
+  const inPrizes = myRank !== null && myRank <= prizes.length;
+  const prizePool = prizes.reduce((s, p) => s + p, 0);
+
+  return (
+    <div>
+      <div className="flex gap-1 mb-3 bg-canvas rounded-lg p-1">
+        {(["week", "today"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={cn(
+              "flex-1 py-1.5 rounded-md text-[11px] font-medium transition-colors",
+              tab === t ? "bg-card text-text" : "text-text-subtle hover:text-text"
+            )}
+          >
+            {t === "week" ? "This week" : "Today's catches"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "today" ? (
+        catchLog
+      ) : (
+        <div>
+          {/* Summary row */}
+          <div className="flex gap-2 mb-3">
+            <div className="flex-1 bg-canvas rounded-lg p-2 text-center">
+              <div className="text-[16px] font-mono font-medium text-gold">{myWeekly.toLocaleString()}</div>
+              <div className="text-[9px] text-text-subtle uppercase tracking-wide">My score</div>
+            </div>
+            <div className="flex-1 bg-canvas rounded-lg p-2 text-center">
+              <div className="text-[16px] font-mono font-medium" style={{ color: inPrizes ? "#5CE0D2" : undefined }}>
+                {myRank ? `#${myRank}` : myWeekly > 0 ? "20+" : "—"}
+              </div>
+              <div className="text-[9px] text-text-subtle uppercase tracking-wide">My rank</div>
+            </div>
+            <div className="flex-1 bg-canvas rounded-lg p-2 text-center">
+              <div className="text-[16px] font-mono font-medium">{msToWeeklyReset(now)}</div>
+              <div className="text-[9px] text-text-subtle uppercase tracking-wide">Until payout</div>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-text-subtle m-0 mb-2">
+            Top {prizes.length} share <span className="text-gold font-mono">{prizePool.toLocaleString()} GP</span> every Monday:{" "}
+            {prizes.map((p, i) => `#${i + 1} ${p}`).join(" · ")}. Every catch and quest counts toward your score.
+          </p>
+
+          {loading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-4 h-4 animate-spin text-text-subtle" /></div>
+          ) : rows.length === 0 ? (
+            <p className="text-[11px] text-text-subtle text-center py-8 m-0">
+              Nobody has scored yet this week. First cast takes the lead!
+            </p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {rows.map((r, i) => {
+                const me = r.uid === myUid;
+                const prize = prizes[i];
+                return (
+                  <div
+                    key={r.uid}
+                    className={cn(
+                      "flex items-center gap-2.5 py-2 px-2.5 rounded-lg",
+                      me ? "bg-gold/10 border border-gold/40" : "bg-canvas"
+                    )}
+                  >
+                    <div className="w-7 text-center text-[12px] font-mono text-text-subtle">
+                      {MEDALS[i] ?? `#${i + 1}`}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className={cn("text-[12px] truncate", me ? "text-gold font-medium" : "text-text")}>
+                        {r.name || "Angler"}{me && <span className="text-[9px] text-text-subtle ml-1">(you)</span>}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[12px] font-mono text-text">{r.weeklyScore.toLocaleString()}</div>
+                      {prize ? (
+                        <div className="text-[9px] font-mono" style={{ color: "#5CE0D2" }}>+{prize} GP</div>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
