@@ -530,14 +530,24 @@ export const weeklyReef = onSchedule(
     const config = await loadConfig();
     const prizes = config.leaderboardPrizes ?? [];
     const lbSnap = await db.collection("leaderboard").orderBy("weeklyScore", "desc").get();
-    const batch = db.batch();
+    // A batch holds at most 500 writes (~2–3 per player), so commit in chunks —
+    // one batch for everyone would fail outright past ~200 players.
+    const BATCH_LIMIT = 450;
+    let batch = db.batch();
+    let ops = 0;
+    const flush = async () => {
+      if (ops === 0) return;
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    };
     let rank = 0;
     for (const d0 of lbSnap.docs) {
       const data = d0.data() as { uid: string; weeklyScore?: number };
       const stateRef = db.doc(`users/${data.uid}/game/state`);
+      if (ops + 3 > BATCH_LIMIT) await flush();
       if (rank < prizes.length && (data.weeklyScore ?? 0) > 0) {
         const prize = prizes[rank];
-        batch.set(stateRef, { points: FieldValue.increment(prize) }, { merge: true });
         const actRef = db.collection("users").doc(data.uid).collection("activity").doc();
         batch.set(actRef, {
           type: "reinvest",
@@ -547,12 +557,17 @@ export const weeklyReef = onSchedule(
           amountKind: "in",
           at: FieldValue.serverTimestamp(),
         });
+        batch.set(stateRef, { points: FieldValue.increment(prize), weeklyScore: 0 }, { merge: true });
+        ops += 2;
+      } else {
+        batch.set(stateRef, { weeklyScore: 0 }, { merge: true });
+        ops += 1;
       }
       batch.set(d0.ref, { weeklyScore: 0 }, { merge: true });
-      batch.set(stateRef, { weeklyScore: 0 }, { merge: true });
+      ops += 1;
       rank++;
     }
-    await batch.commit();
+    await flush();
     logger.info("Weekly Reef reset complete", { players: lbSnap.size });
   }
 );

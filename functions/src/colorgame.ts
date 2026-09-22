@@ -18,6 +18,8 @@ const BET_MS = DEFAULT_COLOR_CONFIG.betWindowMs;
 const MAX_HISTORY = 20;
 
 const roundRef = (id: string) => gameDb.doc(`color_rounds/${id}`);
+const betsCol = (id: string) => roundRef(id).collection("bets");
+const betRef = (id: string, uid: string, color: DieColor) => betsCol(id).doc(`${uid}_${color}`);
 const gameStateRef = () => gameDb.doc(`color_game/state`);
 const configRef = () => gameDb.doc(`color_game/config`);
 const leaderRef = (uid: string) => gameDb.doc(`color_game_leaderboard/${uid}`);
@@ -130,59 +132,40 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
     tx.update(userStateRef(uid), { points: pts - amount });
   });
 
-  // Record bet on gameDb — keyed by uid_color so players can bet on multiple colors.
-  // (No client listeners on this doc anymore — clients read the aggregated totals
-  //  from Realtime Database below, which is bandwidth-priced instead of per-read.)
+  // Record the bet on gameDb. Each (player, colour) has its OWN document under
+  // color_rounds/{rid}/bets, so simultaneous bettors never write the same doc —
+  // the old design funnelled every bet through the round doc and the shared
+  // jackpot doc, which throttled a round to ~15 bets. The round doc is only
+  // created once (first bet) and the jackpot pool is settled at resolve time.
+  // The transaction still READS the round doc, so a bet can't slip in after the
+  // dice have been rolled (that read conflicts with the resolve and retries).
   // The points are already deducted (different database, so it can't share this
   // transaction). If recording the bet fails for ANY reason — contention, the
   // round resolving in the gap, a crash-free error — give the points straight back.
   const isNewKey = await gameDb.runTransaction(async (tx) => {
-    // Firestore requires ALL reads before ANY writes — read the round and the
-    // game-state (jackpot) docs up front, then do both writes afterward.
     const rSnap = await tx.get(roundRef(rid));
-    const gsSnap = await tx.get(gameStateRef());
+    const bRef = betRef(rid, uid, color);
+    const bSnap = await tx.get(bRef);
 
-    let round: ColorRound;
     if (rSnap.exists) {
-      round = rSnap.data() as ColorRound;
+      const round = rSnap.data() as ColorRound;
       if (round.dice || round.phase !== "betting") {
         throw new HttpsError("failed-precondition", "Betting window closed for this round.");
       }
     } else {
-      round = {
-        roundId: rid,
-        phase: "betting",
-        bettingDeadline: start + BET_MS,
-        bets: {},
-      };
+      // Open work for the server sweeper: `pending` stays true until the round
+      // is resolved AND its winners are credited (see sweepColorRounds).
+      tx.create(roundRef(rid), {
+        roundId: rid, phase: "betting", bettingDeadline: start + BET_MS, bets: {}, pending: true,
+      });
     }
-    // Open work for the server sweeper: stays true until the round is resolved
-    // AND its winners are credited (see sweepColorRounds).
-    round.pending = true;
-    const betKey = `${uid}_${color}`;
-    const existing = round.bets[betKey];
-    const bet: ColorBet = {
-      uid,
-      name,
-      color,
-      amount: (existing?.amount ?? 0) + amount,
+    tx.set(bRef, {
+      uid, name, color,
+      amount: FieldValue.increment(amount),
+      contribution: FieldValue.increment(contribution),
       placedAt: now,
-    };
-    round.bets[betKey] = bet;
-
-    const gs = gsSnap.exists
-      ? (gsSnap.data() as ColorGameState)
-      : { jackpotPool: 0, totalRounds: 0, totalWagered: 0, history: [] };
-
-    // Writes (after all reads)
-    tx.set(roundRef(rid), round, { merge: true });
-    tx.set(gameStateRef(), {
-      ...gs,
-      jackpotPool: gs.jackpotPool + contribution,
-      totalWagered: (gs.totalWagered ?? 0) + amount,
     }, { merge: true });
-
-    return !existing;
+    return !bSnap.exists;
   }).catch(async (err) => {
     try {
       await userStateRef(uid).update({ points: FieldValue.increment(amount) });
@@ -225,6 +208,27 @@ const SWEEP_GRACE_MS = 5_000; // let the players' own call go first
 const PAYOUT_MARKER_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 const payoutMarkerRef = (roundId: string) => db.doc(`color_payouts/${roundId}`);
+
+const LIVE_KEEP_ROUNDS = 40; // ≈ 20 minutes of RTDB `color/live` (clients only read the current round)
+const ROUND_DOC_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Drop finished rounds nobody can read any more, so the game DB and RTDB don't grow forever. */
+async function pruneColorHistory(now: number): Promise<void> {
+  const rtdb = getDatabase();
+  const cutoff = String(Math.floor(now / ROUND_MS) - LIVE_KEEP_ROUNDS);
+  const live = await rtdb.ref("color/live").orderByKey().endAt(cutoff).limitToFirst(300).once("value");
+  if (live.exists()) {
+    const gone: Record<string, null> = {};
+    live.forEach((c) => { if (c.key) gone[c.key] = null; });
+    await rtdb.ref("color/live").update(gone);
+  }
+  const old = await gameDb.collection("color_rounds").where("resolvedAt", "<", now - ROUND_DOC_TTL_MS).limit(100).get();
+  for (const d of old.docs) {
+    const r = d.data() as ColorRound;
+    if (r.pending === true || r.stuck) continue; // still owed, or parked for a human
+    await gameDb.recursiveDelete(d.ref); // takes the bets subcollection with it
+  }
+}
 
 type CoreResult = {
   dice?: [DieColor, DieColor, DieColor];
@@ -303,7 +307,17 @@ async function resolveRoundCore(roundId: string, now: number): Promise<CoreResul
       throw new HttpsError("failed-precondition", "Betting window still open.");
     }
 
-    const bets = round.bets ?? {};
+    // Bets live in the per-bet subcollection; `round.bets` is only still read for
+    // rounds written by the previous version.
+    const bets: Record<string, ColorBet> = { ...(round.bets ?? {}) };
+    let roundContribution = 0;
+    let roundWagered = 0;
+    for (const d of (await tx.get(betsCol(roundId))).docs) {
+      const b = d.data() as ColorBet & { contribution?: number };
+      bets[d.id] = { uid: b.uid, name: b.name, color: b.color, amount: b.amount, placedAt: b.placedAt };
+      roundContribution += b.contribution ?? 0;
+      roundWagered += b.amount;
+    }
     const betEntries = Object.values(bets);
     const totalPool = betEntries.reduce((s, b) => s + b.amount, 0);
 
@@ -328,9 +342,16 @@ async function resolveRoundCore(roundId: string, now: number): Promise<CoreResul
     // Firestore requires ALL reads before ANY writes. Read the game-state doc
     // and every bettor's leaderboard row up front, then compute + write below.
     const gsSnap = await tx.get(gameStateRef());
-    const gs = gsSnap.exists
+    const gs0 = gsSnap.exists
       ? (gsSnap.data() as ColorGameState)
       : { jackpotPool: 0, totalRounds: 0, totalWagered: 0, history: [] };
+    // This round's jackpot contributions and wagers are folded into the shared
+    // state HERE, once per round, instead of once per bet (see placeColorBet).
+    const gs: ColorGameState = {
+      ...gs0,
+      jackpotPool: (gs0.jackpotPool ?? 0) + roundContribution,
+      totalWagered: (gs0.totalWagered ?? 0) + roundWagered,
+    };
 
     const leaderSnaps = new Map<string, FirebaseFirestore.DocumentSnapshot>();
     for (const b of betEntries) {
@@ -492,6 +513,9 @@ export const resolveColorRound = onCall({ region: GAME_REGION }, async (request)
  * bet on but never resolved, or resolved but winners not yet credited.
  */
 export async function sweepColorRounds(now = Date.now()): Promise<{ swept: number; failed: number }> {
+  // Housekeeping every 5th minute: nothing here is needed after a round is over.
+  if (Math.floor(now / 60_000) % 5 === 0) await pruneColorHistory(now).catch((e) => console.error("color prune failed", e));
+
   const snap = await gameDb.collection("color_rounds").where("pending", "==", true).limit(25).get();
   let swept = 0, failed = 0;
   for (const d of snap.docs) {

@@ -7,7 +7,8 @@
     },
     {
       "database": "game-live-asia",
-      "rules": "firestore.game.rules"
+      "rules": "firestore.game.rules",
+      "indexes": "firestore.game.indexes.json"
     }
   ],
   "storage": {
@@ -20,8 +21,16 @@
     {
       "source": "functions",
       "codebase": "default",
-      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log", "*.local"],
-      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"]
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ],
+      "predeploy": [
+        "npm --prefix \"$RESOURCE_DIR\" run build"
+      ]
     }
   ]
 }

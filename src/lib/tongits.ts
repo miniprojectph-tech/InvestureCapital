@@ -199,9 +199,13 @@ export function useMyActiveRoom(uid: string | null) {
     }
     const { gameDb: db } = getFirebase();
     if (!db) return;
+    // Filter to live statuses on the server (composite index playerUids+status),
+    // so a player's pile of finished rooms can never push the live one past the
+    // limit — which is how a dropped player could fail to be shepherded back.
     const q = query(
       collection(db, "game_rooms"),
       where("playerUids", "array-contains", uid),
+      where("status", "in", ["in_game", "ready", "full", "open", "post_game"]),
       limit(5)
     );
     return onSnapshot(
@@ -210,10 +214,8 @@ export function useMyActiveRoom(uid: string | null) {
         const rows = snap.docs.map((d) => d.data() as TongitsRoom);
         // Prefer in-progress states first, then open/ready, then post_game.
         const rank = (s: string) =>
-          s === "in_game" ? 0 : s === "ready" ? 1 : s === "open" ? 2 : s === "post_game" ? 3 : 99;
-        const live = rows
-          .filter((r) => r.status !== "cancelled" && r.status !== "completed")
-          .sort((a, b) => rank(a.status) - rank(b.status));
+          s === "in_game" ? 0 : s === "ready" ? 1 : s === "full" ? 2 : s === "open" ? 3 : s === "post_game" ? 4 : 99;
+        const live = rows.sort((a, b) => rank(a.status) - rank(b.status));
         setRoom(live[0] ?? null);
       },
       () => setRoom(null)

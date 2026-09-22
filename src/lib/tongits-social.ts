@@ -133,7 +133,11 @@ export function rowPoints(r: TongitsLeaderRow, period: LbPeriod): number {
   return (r[PERIOD_FIELD[period].rp] as number) ?? 0;
 }
 
-/** Live leaderboard for a period. Stale period buckets are filtered client-side. */
+/**
+ * Live leaderboard for a period. The period bucket is filtered on the server
+ * (composite index {period}Key + {period}RP), so the board stays exact no matter
+ * how many stale rows from earlier days/weeks/months exist.
+ */
 export function useTongitsLeaderboard(period: LbPeriod, top = 50) {
   const { demoMode } = useAuth();
   const [rows, setRows] = useState<TongitsLeaderRow[]>([]);
@@ -152,15 +156,22 @@ export function useTongitsLeaderboard(period: LbPeriod, top = 50) {
       return;
     }
     const field = PERIOD_FIELD[period];
-    const q = query(collection(db, "tongits_leaderboard"), orderBy(field.rp as string, "desc"), limit(top + 50));
     const keys = currentPeriodKeys();
     const curKey = period === "day" ? keys.day : period === "week" ? keys.week : keys.month;
+    const q = field.key
+      ? query(
+          collection(db, "tongits_leaderboard"),
+          where(field.key as string, "==", curKey),
+          orderBy(field.rp as string, "desc"),
+          limit(top)
+        )
+      : query(collection(db, "tongits_leaderboard"), orderBy(field.rp as string, "desc"), limit(top));
     const unsub = onSnapshot(
       q,
       (snap) => {
-        let list = snap.docs.map((d) => d.data() as TongitsLeaderRow);
-        if (field.key) list = list.filter((r) => r[field.key!] === curKey);
-        list = list.filter((r) => rowPoints(r, period) > 0).slice(0, top);
+        const list = snap.docs
+          .map((d) => d.data() as TongitsLeaderRow)
+          .filter((r) => rowPoints(r, period) > 0);
         setRows(list);
         setLoading(false);
       },
