@@ -29,7 +29,7 @@ type Box = { l: number; t: number; w: number; h: number };
 
 // Slot coordinates on the 1774x887 blank table base.
 // Iterate these against the painted base if any drift shows up.
-// Coordinates snapped to the placeholder-free base (public/tongits/table.png).
+// Coordinates snapped to the placeholder-free base (public/tongits/table.webp).
 // Percent values measured with scripts/measure-table.cjs on the 1774x887 asset.
 const S = {
   pot: { l: 42, t: 5, w: 16, h: 7 } as Box,

@@ -25,7 +25,7 @@ import { ColorRoundTimer } from "@/components/colorgame/ColorRoundTimer";
 import { ColorCoinParticles } from "@/components/colorgame/ColorCoinParticles";
 import { ColorResultOverlay } from "@/components/colorgame/ColorResultOverlay";
 
-const BG_URL = "/colorgame/bg-full.png?v=3";
+const BG_URL = "/colorgame/bg-full.webp?v=4";
 const IMG_AR = 2; // 2880 / 1440
 
 function useBgReady() {

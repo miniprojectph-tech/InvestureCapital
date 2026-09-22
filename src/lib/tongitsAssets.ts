@@ -24,16 +24,16 @@ export const TONGITS_ASSET_SLOTS: {
   def: string;
   hint?: string;
 }[] = [
-  { key: "lobbyFull", label: "Lobby — full art", def: "/tongits/lobby-full.png", hint: "16:9, whole lobby; controls overlaid on top" },
-  { key: "waitingRoom", label: "Waiting room — base", def: "/tongits/waiting-room.png", hint: "16:9 plain table (no seats)" },
-  { key: "seatOccupied", label: "Seat — occupied", def: "/tongits/seat-occupied.png", hint: "transparent PNG (ring + panel + READY/AGREED)" },
-  { key: "seatEmpty", label: "Seat — waiting", def: "/tongits/seat-empty.png", hint: "transparent PNG (ring + WAITING FOR PLAYER)" },
+  { key: "lobbyFull", label: "Lobby — full art", def: "/tongits/lobby-full.webp", hint: "16:9, whole lobby; controls overlaid on top" },
+  { key: "waitingRoom", label: "Waiting room — base", def: "/tongits/waiting-room.webp", hint: "16:9 plain table (no seats)" },
+  { key: "seatOccupied", label: "Seat — occupied", def: "/tongits/seat-occupied.webp", hint: "transparent PNG (ring + panel + READY/AGREED)" },
+  { key: "seatEmpty", label: "Seat — waiting", def: "/tongits/seat-empty.webp", hint: "transparent PNG (ring + WAITING FOR PLAYER)" },
   { key: "logo", label: "Logo", def: "/tongits/logo.png", hint: "transparent PNG wordmark" },
   { key: "lobbyBg", label: "Lobby background", def: "/tongits/lobby-bg.webp", hint: "wide background behind the lobby" },
-  { key: "table", label: "In-game table — base", def: "/tongits/table.png", hint: "16:9 blank playing table (slots visible, no cards)" },
-  { key: "actionButtons4", label: "Action buttons — 4-pill", def: "/tongits/action-buttons-4.png", hint: "transparent PNG: Drop/Fight/UnGroup/Dump (no Sapaw)" },
-  { key: "actionButtons5", label: "Action buttons — 5-pill", def: "/tongits/action-buttons-5.png", hint: "transparent PNG: Drop/Fight/UnGroup/Dump/Sapaw" },
-  { key: "victoryPopup", label: "Victory popup — base", def: "/tongits/victory-popup.png", hint: "transparent PNG frame: VICTORY ribbon + winner/runner-up slots + CONTINUE/QUIT" },
+  { key: "table", label: "In-game table — base", def: "/tongits/table.webp", hint: "16:9 blank playing table (slots visible, no cards)" },
+  { key: "actionButtons4", label: "Action buttons — 4-pill", def: "/tongits/action-buttons-4.webp", hint: "transparent PNG: Drop/Fight/UnGroup/Dump (no Sapaw)" },
+  { key: "actionButtons5", label: "Action buttons — 5-pill", def: "/tongits/action-buttons-5.webp", hint: "transparent PNG: Drop/Fight/UnGroup/Dump/Sapaw" },
+  { key: "victoryPopup", label: "Victory popup — base", def: "/tongits/victory-popup.webp", hint: "transparent PNG frame: VICTORY ribbon + winner/runner-up slots + CONTINUE/QUIT" },
 ];
 
 export type TongitsAssets = Record<TongitsAssetKey, string>;

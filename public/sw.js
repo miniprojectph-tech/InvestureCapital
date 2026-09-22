@@ -1,21 +1,21 @@
 // Investure service worker — offline shell + cache-first for static + game asset pre-cache
-const CACHE = "investure-v6";
+const CACHE = "investure-v7";
 const APP_SHELL = ["/", "/login", "/dashboard"];
 
 // Game assets pre-cached at install so Reef and Tongits load instantly on
 // repeat visits — same experience as a downloaded native app.
 const GAME_ASSETS = [
   // Tongits
-  "/tongits/lobby-full.png",
-  "/tongits/waiting-room.png",
-  "/tongits/seat-occupied.png",
-  "/tongits/seat-empty.png",
-  "/tongits/action-buttons-4.png",
-  "/tongits/action-buttons-5.png",
-  "/tongits/table.png",
-  "/tongits/victory-popup.png",
+  "/tongits/lobby-full.webp",
+  "/tongits/waiting-room.webp",
+  "/tongits/seat-occupied.webp",
+  "/tongits/seat-empty.webp",
+  "/tongits/action-buttons-4.webp",
+  "/tongits/action-buttons-5.webp",
+  "/tongits/table.webp",
+  "/tongits/victory-popup.webp",
   // Color Game
-  "/colorgame/bg-full.png",
+  "/colorgame/bg-full.webp",
   "/colorgame/dice/die_face_red.png",
   "/colorgame/dice/die_face_blue.png",
   "/colorgame/dice/die_face_yellow.png",
