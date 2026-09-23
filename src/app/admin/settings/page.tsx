@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Save,
   AlertTriangle,
@@ -15,6 +15,10 @@ import {
   Bot,
   Eye,
   EyeOff,
+  CalendarClock,
+  Wallet,
+  Sliders,
+  Power,
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
@@ -43,6 +47,15 @@ import {
 } from "@/lib/withdrawalSchedule";
 
 
+type Tab = "general" | "payments" | "withdrawals" | "ai" | "state";
+const TABS: { id: Tab; label: string; icon: typeof Sliders }[] = [
+  { id: "general", label: "General", icon: Sliders },
+  { id: "payments", label: "Payment methods", icon: Wallet },
+  { id: "withdrawals", label: "Withdrawals", icon: CalendarClock },
+  { id: "ai", label: "AI Trading", icon: Bot },
+  { id: "state", label: "Platform state", icon: Power },
+];
+
 const methodIcons = {
   gotyme: Building2,
   gcash: Smartphone,
@@ -63,6 +76,22 @@ export default function AdminSettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uploadingQr, setUploadingQr] = useState<PaymentMethodId | null>(null);
+  // One group at a time — no long page. #withdrawal-schedule (from the queue's "Edit schedule") opens that tab.
+  const [tab, setTab] = useState<Tab>("general");
+  useEffect(() => {
+    if (window.location.hash === "#withdrawal-schedule") setTab("withdrawals");
+  }, []);
+
+  const baseline = useMemo(
+    () => ({
+      ...settings,
+      paymentMethods: { ...DEFAULT_PAYMENT_METHODS, ...settings.paymentMethods },
+      aiTrading: { ...DEFAULT_AI_TRADING, ...settings.aiTrading },
+      withdrawalSchedule: mergeWithdrawalSchedule(settings.withdrawalSchedule),
+    }),
+    [settings],
+  );
+  const dirty = !loading && JSON.stringify(draft) !== JSON.stringify(baseline);
 
   useEffect(() => {
     if (!loading)
@@ -195,7 +224,55 @@ export default function AdminSettingsPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
+      {/* Tab bar + Save, pinned so every group is one click away and Save is never off-screen */}
+      <div className="sticky top-0 z-10 -mx-1 px-1 py-2 mb-3 bg-canvas/95 backdrop-blur-sm flex flex-wrap items-center gap-2">
+        <div className="flex gap-1 p-1 rounded-xl bg-card border border-border overflow-x-auto max-w-full [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          {TABS.map((t) => {
+            const Icon = t.icon;
+            const on = tab === t.id;
+            const hint =
+              t.id === "payments" ? `${(Object.values(draft.paymentMethods ?? DEFAULT_PAYMENT_METHODS).filter((m) => m.enabled).length)} of 3 on`
+              : t.id === "withdrawals" ? (schedule.enabled && schedule.releaseDays.length ? schedule.releaseDays.slice().sort().map((d) => DAY_SHORT[d]).join(" · ") : "off")
+              : t.id === "ai" ? (draft.aiTrading?.enabled ? "on" : "off")
+              : t.id === "state" ? (draft.maintenanceMode ? "maintenance" : "live")
+              : null;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={cnInline(
+                  "flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] whitespace-nowrap transition",
+                  on ? "bg-gold/15 text-gold font-medium" : "text-text-muted hover:text-text"
+                )}
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {t.label}
+                {hint && (
+                  <span className={cnInline("text-[9px] px-1.5 py-0.5 rounded-full", on ? "bg-gold/15" : "bg-card-elev text-text-subtle", t.id === "state" && !draft.maintenanceMode && "text-green")}>
+                    {hint}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          {saved && <span className="text-[11px] text-green">Saved</span>}
+          {dirty && !saved && <span className="text-[10px] px-2 py-1 rounded-full bg-[#F5C66B]/10 border border-[#F5C66B]/30 text-[#F5C66B]">Unsaved changes</span>}
+          <button
+            onClick={save}
+            disabled={saving || !dirty}
+            className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center gap-2 hover:brightness-110 transition disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            {saving ? "Saving…" : "Save changes"}
+          </button>
+        </div>
+      </div>
+
+      {tab === "general" && (
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">
         <Card>
           <CardHeader title="Compounding mechanics" />
           <div className="flex flex-col gap-4">
@@ -256,15 +333,38 @@ export default function AdminSettingsPage() {
             </Field>
           </div>
         </Card>
-      </div>
 
-      {/* Payment methods config */}
+        <Card>
+          <CardHeader title="At a glance" subtitle="Current values of the other groups — tap a row to open it" />
+          <div className="flex flex-col gap-2">
+            {([
+              ["payments", "Payment methods", `${(Object.values(draft.paymentMethods ?? DEFAULT_PAYMENT_METHODS).filter((m) => m.enabled).length)} of 3 enabled`],
+              ["withdrawals", "Withdrawal release", schedule.enabled && schedule.releaseDays.length ? schedule.releaseDays.slice().sort().map((d) => DAY_SHORT[d]).join(" & ") : "Off"],
+              ["ai", "AI Trading", draft.aiTrading?.enabled ? `On · ${draft.aiTrading.provider}` : "Off"],
+              ["state", "Maintenance mode", draft.maintenanceMode ? "ON — investors blocked" : "Off · live"],
+            ] as [Tab, string, string][]).map(([id, label, value]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTab(id)}
+                className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-canvas border border-border text-left hover:border-gold/40 transition"
+              >
+                <span className="text-[11px] text-text-muted">{label}</span>
+                <span className={cnInline("text-[11px]", id === "state" && (draft.maintenanceMode ? "text-red" : "text-green"))}>{value}</span>
+              </button>
+            ))}
+          </div>
+        </Card>
+      </div>
+      )}
+
+      {tab === "payments" && (
       <Card className="mb-3">
         <CardHeader
           title="Payment methods"
           subtitle="Enable the channels investors can use to send funds. They'll see the account details when submitting a top-up."
         />
-        <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           {(["gotyme", "gcash", "bankTransfer"] as PaymentMethodId[]).map((id) => {
             const Icon = methodIcons[id];
             const cfg = draft.paymentMethods?.[id] ?? DEFAULT_PAYMENT_METHODS[id];
@@ -296,8 +396,8 @@ export default function AdminSettingsPage() {
                   <Toggle on={cfg.enabled} onChange={(v) => patchMethod(id, { enabled: v })} />
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-[1fr_140px] gap-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-2.5">
                     {id === "bankTransfer" && (
                       <Field label="Bank name">
                         <input
@@ -330,9 +430,8 @@ export default function AdminSettingsPage() {
                   </div>
 
                   {/* QR code uploader */}
-                  <div className="flex flex-col items-stretch gap-2">
-                    <label className="text-[11px] font-medium text-text">QR code</label>
-                    <div className="relative w-[140px] h-[140px] rounded-lg overflow-hidden border border-border bg-canvas flex items-center justify-center self-center lg:self-start">
+                  <div className="flex items-center gap-3 pt-3 border-t border-border">
+                    <div className="relative w-[72px] h-[72px] rounded-lg overflow-hidden border border-border bg-canvas flex items-center justify-center shrink-0">
                       {cfg.qrCodeUrl ? (
                         <>
                           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -353,6 +452,8 @@ export default function AdminSettingsPage() {
                         <ImageOff className="w-6 h-6 text-text-dim" />
                       )}
                     </div>
+                    <div className="flex flex-col gap-1.5 flex-1 min-w-0">
+                    <label className="text-[11px] font-medium text-text">QR code</label>
                     <div className="flex gap-1.5">
                       <label
                         className={cnInline(
@@ -388,9 +489,8 @@ export default function AdminSettingsPage() {
                         </button>
                       )}
                     </div>
-                    <p className="text-[9px] text-text-subtle m-0 text-center">
-                      PNG / JPG · max 2 MB
-                    </p>
+                    <p className="text-[9px] text-text-subtle m-0">PNG / JPG · max 2 MB</p>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -398,8 +498,9 @@ export default function AdminSettingsPage() {
           })}
         </div>
       </Card>
+      )}
 
-      {/* AI Trading config */}
+      {tab === "ai" && (
       <Card className="mb-3">
         <CardHeader
           title="AI Trading engine"
@@ -569,8 +670,9 @@ export default function AdminSettingsPage() {
           receive them in the browser.
         </p>
       </Card>
+      )}
 
-      {/* Withdrawal release schedule */}
+      {tab === "withdrawals" && (
       <Card className="mb-3">
         <div id="withdrawal-schedule" className="scroll-mt-4" />
         <CardHeader
@@ -643,7 +745,9 @@ export default function AdminSettingsPage() {
           </div>
         </div>
       </Card>
+      )}
 
+      {tab === "state" && (
       <Card className="mb-3">
         <CardHeader title="Platform state" />
         <div className="flex items-center justify-between gap-3 p-3 bg-canvas border border-border rounded-lg">
@@ -669,18 +773,7 @@ export default function AdminSettingsPage() {
           <Toggle on={draft.maintenanceMode} onChange={(v) => setDraft({ ...draft, maintenanceMode: v })} />
         </div>
       </Card>
-
-      <div className="flex items-center justify-end gap-3">
-        {saved && <span className="text-[11px] text-green">Saved to Firestore</span>}
-        <button
-          onClick={save}
-          disabled={saving}
-          className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center gap-2 hover:brightness-110 transition disabled:opacity-60"
-        >
-          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-          {saving ? "Saving…" : "Save changes"}
-        </button>
-      </div>
+      )}
     </div>
   );
 }
