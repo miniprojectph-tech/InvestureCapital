@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Loader2, CheckCircle2, AlertCircle, Wallet, Building2, Smartphone } from "lucide-react";
 import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
@@ -42,17 +42,21 @@ export function PayoutMethodModal({ open, onClose, current, onSave }: Props) {
   const [stage, setStage] = useState<Stage>("form");
   const [error, setError] = useState<string | null>(null);
 
-  // Re-seed the form whenever it's opened (or the current method changes).
+  // Re-seed the form when the modal OPENS — not when `current` changes, because
+  // `current` changes the moment a save lands, which used to reset the modal
+  // from its "saved" screen straight back to the form.
+  const latest = useRef(current);
+  latest.current = current;
   useEffect(() => {
-    if (open) {
-      setType(current?.type ?? "gcash");
-      setAccountName(current?.accountName ?? "");
-      setAccountNumber(current?.accountNumber ?? "");
-      setBankName(current?.bankName ?? "");
-      setStage("form");
-      setError(null);
-    }
-  }, [open, current]);
+    if (!open) return;
+    const c = latest.current;
+    setType(c?.type ?? "gcash");
+    setAccountName(c?.accountName ?? "");
+    setAccountNumber(c?.accountNumber ?? "");
+    setBankName(c?.bankName ?? "");
+    setStage("form");
+    setError(null);
+  }, [open]);
 
   async function submit() {
     const draft = { type, accountName, accountNumber, bankName };

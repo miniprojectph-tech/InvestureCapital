@@ -107,7 +107,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           doc(db, "users", u.uid),
           (snap) => {
             const isAdmin = snap.exists() && snap.data().isAdmin === true;
-            setUser((prev) => (prev ? { ...prev, isAdmin } : prev));
+            // Only produce a NEW user object when the role actually changed. The
+            // doc updates on every wallet/placement/payout-method write, and a
+            // fresh object each time made every hook keyed on `user` re-subscribe
+            // (pages flashed their loading state and open modals lost their
+            // "success" screen).
+            setUser((prev) => (prev && prev.isAdmin !== isAdmin ? { ...prev, isAdmin } : prev));
             setLoading(false);
           },
           (err) => {

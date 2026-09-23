@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Unsubscribe } from "firebase/firestore";
 import { useAuth } from "./auth";
 import { getFirebase } from "./firebase";
@@ -31,6 +31,7 @@ export function useUserState() {
   const { user, demoMode } = useAuth();
   const [state, setState] = useState<UserState | null>(null);
   const [loading, setLoading] = useState(true);
+  const hasStateRef = useRef(false);
 
   useEffect(() => {
     if (demoMode) {
@@ -50,7 +51,10 @@ export function useUserState() {
       return;
     }
 
-    setLoading(true);
+    // Only show the loading state before the FIRST snapshot. A re-subscribe
+    // (auth object refreshed) keeps the current state on screen instead of
+    // flashing a spinner and unmounting whatever the member had open.
+    if (!hasStateRef.current) setLoading(true);
     let unsubscribe: Unsubscribe | undefined;
     let cancelled = false;
 
@@ -73,6 +77,7 @@ export function useUserState() {
           clearTimeout(fallbackTimer);
           // If doc somehow still missing (race), keep mock until it lands.
           setState(s ?? MOCK_STATE);
+          hasStateRef.current = true;
           setLoading(false);
         });
       } catch (err) {
