@@ -1,12 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, X, Clock, AlertCircle, Loader2, Send } from "lucide-react";
+import Link from "next/link";
+import { Check, X, Clock, AlertCircle, Loader2, Send, CalendarClock } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
+import { useSettings } from "@/lib/settings";
+import { mergeWithdrawalSchedule, releaseDateFor, describeSchedule, formatReleaseDate, relativeReleaseLabel } from "@/lib/withdrawalSchedule";
 import {
   useWithdrawals,
   approveWithdrawal,
@@ -36,7 +39,17 @@ export default function AdminWithdrawalsPage() {
     [rows]
   );
 
-  const filtered = rows.filter((r) => r.status === tab);
+  const { settings } = useSettings();
+  const schedule = mergeWithdrawalSchedule(settings.withdrawalSchedule);
+  const todayStart = (() => { const d = new Date(Date.now() + 8 * 3_600_000); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - 8 * 3_600_000; })();
+  const releaseOf = (r: { createdAt: number; scheduledReleaseAt?: number | null }) => r.scheduledReleaseAt ?? releaseDateFor(r.createdAt, schedule);
+
+  // Pending: due-first, so today's releases sit at the top of the queue.
+  const filtered = rows
+    .filter((r) => r.status === tab)
+    .sort((a, b) => (tab === "pending" ? (releaseOf(a) ?? a.createdAt) - (releaseOf(b) ?? b.createdAt) : 0));
+  const dueNow = rows.filter((r) => r.status === "pending" && (releaseOf(r) ?? 0) <= todayStart);
+  const dueTotal = dueNow.reduce((s, r) => s + r.amount, 0);
 
   async function approve(id: string) {
     const { db } = getFirebase();
@@ -113,6 +126,20 @@ export default function AdminWithdrawalsPage() {
         })}
       </div>
 
+      {/* Release schedule + what is due today */}
+      <div className={cn("mb-3 flex flex-wrap items-center gap-3 px-3 py-2.5 rounded-lg border", dueNow.length ? "bg-gold/[0.06] border-gold/30" : "bg-card border-border")}>
+        <CalendarClock className={cn("w-4 h-4 shrink-0", dueNow.length ? "text-gold" : "text-text-subtle")} />
+        <div className="flex-1 min-w-[200px]">
+          <p className="text-[12px] m-0 text-text">
+            {dueNow.length
+              ? <><span className="font-medium text-gold">{dueNow.length} withdrawal{dueNow.length === 1 ? "" : "s"} due for release today</span> · {formatPHP(dueTotal)}</>
+              : "Nothing due for release today."}
+          </p>
+          <p className="text-[10px] text-text-subtle m-0 mt-0.5">{describeSchedule(schedule)}</p>
+        </div>
+        <Link href="/admin/settings#withdrawal-schedule" className="text-[10px] text-gold hover:underline shrink-0">Edit schedule</Link>
+      </div>
+
       <Card>
         <CardHeader
           title={`${statusMeta[tab].label} withdrawals`}
@@ -139,6 +166,8 @@ export default function AdminWithdrawalsPage() {
 
         {filtered.map((r, i) => {
           const isBusy = busyId === r.id;
+          const releaseAt = r.status === "pending" ? releaseOf(r) : null;
+          const due = releaseAt != null && releaseAt <= todayStart;
           const initials =
             (r.userName?.[0] ?? "?").toUpperCase() +
             (r.userName?.split(" ")?.[1]?.[0] ?? "").toUpperCase();
@@ -167,6 +196,11 @@ export default function AdminWithdrawalsPage() {
               <div className="text-right shrink-0">
                 <p className="text-[13px] font-medium font-mono m-0">{formatPHP(r.amount)}</p>
                 <p className="text-[9px] text-text-subtle m-0 mt-0.5">{timeAgo(r.createdAt)}</p>
+                {releaseAt != null && (
+                  <p className={cn("text-[9px] m-0 mt-0.5 font-medium", due ? "text-gold" : "text-text-muted")}>
+                    {due ? "Due" : "Releases"} {formatReleaseDate(releaseAt)} · {relativeReleaseLabel(releaseAt)}
+                  </p>
+                )}
               </div>
               {tab === "pending" ? (
                 <div className="flex gap-1.5 ml-auto sm:ml-0">

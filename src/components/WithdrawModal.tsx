@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Building2, CheckCircle2, Loader2, AlertCircle, Wallet } from "lucide-react";
+import { ArrowRight, Building2, CheckCircle2, Loader2, AlertCircle, Wallet, CalendarClock } from "lucide-react";
 import { Modal } from "./Modal";
 import { formatPHP, cn } from "@/lib/utils";
 import {
@@ -9,12 +9,21 @@ import {
   PAYOUT_METHOD_LABELS,
   shortPayoutLabel,
 } from "@/lib/payoutMethod";
+import {
+  describeSchedule,
+  formatReleaseDate,
+  releaseDateFor,
+  relativeReleaseLabel,
+  type WithdrawalScheduleConfig,
+} from "@/lib/withdrawalSchedule";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   availableBalance: number;
   payoutMethod?: PayoutMethod;
+  /** Release schedule shown to the member before they confirm. */
+  schedule?: WithdrawalScheduleConfig;
   onSetUpPayout?: () => void;
   onSubmit?: (amount: number) => Promise<void>;
 };
@@ -26,6 +35,7 @@ export function WithdrawModal({
   onClose,
   availableBalance,
   payoutMethod,
+  schedule,
   onSetUpPayout,
   onSubmit,
 }: Props) {
@@ -34,6 +44,7 @@ export function WithdrawModal({
   const [error, setError] = useState<string | null>(null);
 
   const hasPayout = !!payoutMethod;
+  const releaseAt = schedule ? releaseDateFor(Date.now(), schedule) : null;
 
   function close() {
     onClose();
@@ -151,9 +162,25 @@ export function WithdrawModal({
               <span className="text-text-muted">You&apos;ll receive</span>
               <span className="font-mono font-medium">{formatPHP(amount)}</span>
             </div>
-            <p className="text-[10px] text-text-subtle mt-2 m-0">
-              Withdrawals typically settle in 1–2 business days.
-            </p>
+          </div>
+
+          {/* Release schedule — the member sees exactly when this payout is due before confirming. */}
+          <div className={cn("rounded-lg p-3 border flex gap-3", releaseAt ? "bg-gold/[0.06] border-gold/30" : "bg-canvas/50 border-border")}>
+            <CalendarClock className={cn("w-4 h-4 shrink-0 mt-0.5", releaseAt ? "text-gold" : "text-text-subtle")} />
+            <div className="min-w-0">
+              {releaseAt ? (
+                <>
+                  <p className="text-[12px] m-0 text-text">
+                    Scheduled release: <span className="font-medium text-gold">{formatReleaseDate(releaseAt)}</span>
+                    <span className="text-text-subtle"> ({relativeReleaseLabel(releaseAt)})</span>
+                  </p>
+                  <p className="text-[10px] text-text-subtle mt-1 m-0">{describeSchedule(schedule!)}</p>
+                  {schedule?.note && <p className="text-[10px] text-text-subtle mt-1 m-0">{schedule.note}</p>}
+                </>
+              ) : (
+                <p className="text-[10px] text-text-subtle m-0">Released once approved by the admin.</p>
+              )}
+            </div>
           </div>
 
           <div className="flex gap-2">
@@ -198,7 +225,9 @@ export function WithdrawModal({
               {payoutMethod ? ` to ${shortPayoutLabel(payoutMethod)}` : ""}
             </p>
             <p className="text-[10px] text-text-subtle mt-1 m-0">
-              Pending admin approval — funds are held until then.
+              {releaseAt
+                ? <>Scheduled for release on <span className="text-gold">{formatReleaseDate(releaseAt, { withYear: true })}</span> — funds are held until then.</>
+                : "Pending admin approval — funds are held until then."}
             </p>
           </div>
           <button

@@ -33,6 +33,14 @@ import {
   type AiTradingProvider,
 } from "@/lib/settings";
 import { uploadPaymentMethodQr, deletePaymentMethodQr } from "@/lib/storage";
+import {
+  mergeWithdrawalSchedule,
+  describeSchedule,
+  releaseDateFor,
+  formatReleaseDate,
+  DAY_SHORT,
+  type WithdrawalScheduleConfig,
+} from "@/lib/withdrawalSchedule";
 
 
 const methodIcons = {
@@ -62,8 +70,13 @@ export default function AdminSettingsPage() {
         ...settings,
         paymentMethods: { ...DEFAULT_PAYMENT_METHODS, ...settings.paymentMethods },
         aiTrading: { ...DEFAULT_AI_TRADING, ...settings.aiTrading },
+        withdrawalSchedule: mergeWithdrawalSchedule(settings.withdrawalSchedule),
       });
   }, [loading, settings]);
+
+  const schedule = mergeWithdrawalSchedule(draft.withdrawalSchedule);
+  const patchSchedule = (p: Partial<WithdrawalScheduleConfig>) =>
+    setDraft({ ...draft, withdrawalSchedule: mergeWithdrawalSchedule({ ...schedule, ...p }) });
 
   const [showSecret, setShowSecret] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -555,6 +568,80 @@ export default function AdminSettingsPage() {
           they should be kept server-side (Cloud Function or backend proxy) so investors never
           receive them in the browser.
         </p>
+      </Card>
+
+      {/* Withdrawal release schedule */}
+      <Card className="mb-3">
+        <div id="withdrawal-schedule" className="scroll-mt-4" />
+        <CardHeader
+          title="Withdrawal release schedule"
+          subtitle="Members can request any day; this decides which day their payout is released and is shown to them before they confirm"
+          right={<Toggle on={schedule.enabled} onChange={(v) => patchSchedule({ enabled: v })} />}
+        />
+        <div className={cnInline("flex flex-col gap-4", !schedule.enabled && "opacity-50 pointer-events-none")}>
+          <Field label="Release days" hint="Payouts go out on these days. A request is released on the next release day after the day it was made.">
+            <div className="flex flex-wrap gap-1.5">
+              {[1, 2, 3, 4, 5, 6, 0].map((d) => {
+                const on = schedule.releaseDays.includes(d);
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => patchSchedule({ releaseDays: on ? schedule.releaseDays.filter((x) => x !== d) : [...schedule.releaseDays, d] })}
+                    className={cnInline(
+                      "px-3 py-1.5 rounded-full text-[11px] border transition",
+                      on ? "bg-gold/15 border-gold/40 text-gold font-medium" : "bg-canvas border-border text-text-muted hover:text-text"
+                    )}
+                  >
+                    {DAY_SHORT[d]}
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="Same-day cutoff (optional)" hint="If set, a request made on a release day before this time is released that same day. Leave empty so every request waits for the next release day.">
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={schedule.sameDayCutoff ?? ""}
+                  onChange={(e) => patchSchedule({ sameDayCutoff: e.target.value || null })}
+                  className="bg-canvas border border-border rounded-md px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-gold/40 [color-scheme:dark]"
+                />
+                {schedule.sameDayCutoff && (
+                  <button type="button" onClick={() => patchSchedule({ sameDayCutoff: null })} className="text-[10px] text-text-subtle hover:text-red">Clear</button>
+                )}
+              </div>
+            </Field>
+            <Field label="Note to members (optional)" hint="Shown under the schedule on the withdrawal page and in the request form.">
+              <input
+                type="text"
+                value={schedule.note}
+                maxLength={140}
+                onChange={(e) => patchSchedule({ note: e.target.value })}
+                placeholder="e.g. Bank holidays move to the next release day"
+                className="w-full bg-canvas border border-border rounded-md px-3 py-2 text-[12px] text-text outline-none focus:border-gold/40"
+              />
+            </Field>
+          </div>
+
+          <div className="px-3 py-2.5 bg-canvas border border-border rounded-lg">
+            <p className="text-[11px] m-0 text-text">{describeSchedule(schedule)}</p>
+            {(() => {
+              const next = releaseDateFor(Date.now(), schedule);
+              return (
+                <p className="text-[10px] text-text-subtle m-0 mt-1">
+                  {schedule.releaseDays.length === 0
+                    ? "Pick at least one release day."
+                    : next
+                      ? `A request made right now would be released on ${formatReleaseDate(next, { withYear: true })}.`
+                      : ""}
+                </p>
+              );
+            })()}
+          </div>
+        </div>
       </Card>
 
       <Card className="mb-3">

@@ -30,6 +30,8 @@ export type WithdrawalRequest = {
   destination: string;
   status: WithdrawalStatus;
   createdAt: number;
+  /** Manila midnight of the day this payout is due, per the release schedule at request time. */
+  scheduledReleaseAt?: number | null;
   processedAt?: number;
   processedBy?: string;
   note?: string;
@@ -53,6 +55,7 @@ export async function requestWithdrawal(
     amount: number;
     type?: WithdrawalKind;
     destination?: string;
+    scheduledReleaseAt?: number | null;
   }
 ): Promise<string> {
   const { userId, amount } = args;
@@ -76,6 +79,7 @@ export async function requestWithdrawal(
     destination: args.destination ?? "BPI ···· 3421",
     status: "pending",
     createdAt: Date.now(),
+    scheduledReleaseAt: args.scheduledReleaseAt ?? null,
   });
   return ref.id;
 }

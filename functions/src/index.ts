@@ -27,6 +27,7 @@ export {
   tickTestClocks,
 } from "./compplan";
 export { getReferralStats } from "./referral-stats";
+export { onWithdrawalWritten } from "./withdrawals";
 
 // Community Tongits (Phase 1): room + economy callables + stale-room reaper.
 import { reapStaleTongitsRooms } from "./tongits";

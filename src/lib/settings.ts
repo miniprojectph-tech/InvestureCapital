@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { doc, onSnapshot, setDoc, type Firestore } from "firebase/firestore";
 import { getFirebase } from "./firebase";
 import { DEFAULT_COMP_PLAN, type CompPlanConfig } from "./compplan-config";
+import { DEFAULT_WITHDRAWAL_SCHEDULE, type WithdrawalScheduleConfig } from "./withdrawalSchedule";
 
 export type PaymentMethodConfig = {
   enabled: boolean;
@@ -67,6 +68,8 @@ export type PlatformSettings = {
   gameAccess?: GameAccessRequirement;
   /** Compensation plan numbers (rates, terms, bonuses, referral levels). */
   compPlan?: Partial<CompPlanConfig>;
+  /** When requested withdrawals are released (e.g. Mon–Thu → Friday, Fri–Sun → Monday). */
+  withdrawalSchedule?: WithdrawalScheduleConfig;
   updatedAt?: number;
   updatedBy?: string;
 };
@@ -90,6 +93,7 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   aiTrading: DEFAULT_AI_TRADING,
   gameAccess: DEFAULT_GAME_ACCESS,
   compPlan: DEFAULT_COMP_PLAN,
+  withdrawalSchedule: DEFAULT_WITHDRAWAL_SCHEDULE,
 };
 
 export type PaymentMethodId = "gotyme" | "gcash" | "bankTransfer";
