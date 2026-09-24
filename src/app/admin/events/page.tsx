@@ -353,7 +353,7 @@ function EventForm({
             /* eslint-disable-next-line @next/next/no-img-element */
             <img src={draft.bannerUrl} alt="" className="w-full h-full object-cover" />
           ) : (
-            <span className="text-[9px] text-text-subtle text-center">1200 × 600</span>
+            <span className="text-[9px] text-text-subtle text-center">1200 × 675</span>
           )}
           {busy === "banner" && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><Loader2 className="w-4 h-4 text-gold animate-spin" /></div>}
         </div>
@@ -363,7 +363,7 @@ function EventForm({
             <Upload className="w-3 h-3" /> {draft.bannerUrl ? "Replace" : "Upload"}
             <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onUploadBanner(f); e.currentTarget.value = ""; }} />
           </label>
-          <p className="text-[9px] text-text-subtle m-0 mt-1">PNG / JPG / WebP · 1200 × 600 · max 3 MB · no text baked in</p>
+          <p className="text-[9px] text-text-subtle m-0 mt-1">PNG / JPG / WebP · 1200 × 675 (16:9), shown whole · keep the top-right corner clear (close button) · max 3 MB</p>
         </div>
       </div>
 

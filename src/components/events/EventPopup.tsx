@@ -145,31 +145,34 @@ export function EventBody({
 
   return (
     <div className="flex flex-col">
-      {/* banner */}
-      <div className="relative h-40 sm:h-44 overflow-hidden rounded-t-3xl bg-canvas">
+      {/* banner — shown whole, at the image's own aspect ratio, so nothing baked into the art is cropped */}
+      <div className="relative overflow-hidden rounded-t-3xl bg-canvas">
         {event.bannerUrl ? (
           /* eslint-disable-next-line @next/next/no-img-element */
-          <img src={event.bannerUrl} alt="" className="absolute inset-0 w-full h-full object-cover" />
+          <img src={event.bannerUrl} alt="" className="block w-full h-auto" />
         ) : (
-          <div className="absolute inset-0" style={{ background: `radial-gradient(120% 90% at 20% 10%, ${accent}66, transparent 60%), radial-gradient(90% 90% at 90% 90%, #4F8EF755, transparent 60%), #0E1A2C` }} />
-        )}
-        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-card" />
-        <span className="absolute top-3 left-3 text-[10px] font-bold tracking-[0.1em] uppercase px-2.5 py-1 rounded-full" style={{ background: accent, color: "#052418" }}>
-          {isSlot ? "Limited event" : "Referral event"}
-        </span>
-        {ends && (
-          <span className="absolute top-3 right-3 text-[10px] px-2.5 py-1 rounded-full bg-black/60 text-text flex items-center gap-1">
-            <Clock className="w-3 h-3" /> Ends in {ends}
-          </span>
+          <div className="h-36" style={{ background: `radial-gradient(120% 90% at 20% 10%, ${accent}66, transparent 60%), radial-gradient(90% 90% at 90% 90%, #4F8EF755, transparent 60%), #0E1A2C` }} />
         )}
         {onDismiss && (
-          <button onClick={() => onDismiss()} aria-label="Close" className="absolute top-3 right-3 translate-y-8 w-7 h-7 rounded-full bg-black/60 text-text flex items-center justify-center hover:bg-black/80">
-            <X className="w-3.5 h-3.5" />
+          <button onClick={() => onDismiss()} aria-label="Close" className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/60 text-text flex items-center justify-center hover:bg-black/80 ring-1 ring-white/15">
+            <X className="w-4 h-4" />
           </button>
         )}
       </div>
 
-      <div className="px-5 pb-5 -mt-2 flex flex-col gap-3">
+      {/* status row — kept OFF the artwork */}
+      <div className="flex items-center justify-between gap-2 px-5 pt-3">
+        <span className="text-[10px] font-bold tracking-[0.1em] uppercase px-2.5 py-1 rounded-full" style={{ background: accent, color: "#052418" }}>
+          {isSlot ? "Limited event" : "Referral event"}
+        </span>
+        {ends && (
+          <span className="text-[10px] px-2.5 py-1 rounded-full bg-canvas border border-border text-text-muted flex items-center gap-1">
+            <Clock className="w-3 h-3" /> Ends in {ends}
+          </span>
+        )}
+      </div>
+
+      <div className="px-5 pb-5 pt-3 flex flex-col gap-3">
         <div>
           <h2 className="font-display text-[22px] leading-tight m-0 text-text">{event.name}</h2>
           {event.tagline && <p className="text-[12px] text-text-muted m-0 mt-1">{event.tagline}</p>}
