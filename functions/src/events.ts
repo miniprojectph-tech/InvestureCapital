@@ -20,6 +20,7 @@ import {
   manilaDayKey,
   spinWindowAt,
   pickWedge,
+  spinEligibility,
 } from "./events-config";
 
 // ============================================================================
@@ -91,6 +92,7 @@ function cleanEvent(input: Partial<InvestureEvent>): Omit<InvestureEvent, "id" |
         windowsPerDay: ([1, 2, 3, 4].includes(Number(sp.windowsPerDay)) ? Number(sp.windowsPerDay) : 2) as 1 | 2 | 3 | 4,
         carryOver: sp.carryOver !== false,
         maxBankedBonus: Math.round(Number(sp.maxBankedBonus ?? 5)),
+        minActive: Math.max(0, Math.round(Number(sp.minActive) || 0)),
         bonusFor: { placement: !!sp.bonusFor?.placement, referral: !!sp.bonusFor?.referral, withdrawal: !!sp.bonusFor?.withdrawal },
         spent: Number(sp.spent ?? 0),
         spins: Number(sp.spins ?? 0),
@@ -409,6 +411,12 @@ export const spinWheel = onCall(async (request) => {
       tx.get(gameStateRef(uid)),
     ]);
     if (!memberSnap.exists) throw new HttpsError("not-found", "Member not found.");
+    const elig = spinEligibility(ev, (memberSnap.data() as UserDoc).placements);
+    if (!elig.ok) {
+      throw new HttpsError("failed-precondition", elig.need > 0
+        ? `Requires ${peso(elig.need)} active in ${elig.where} — you have ${peso(elig.have)}.`
+        : `Requires an active ${elig.termsLabel} placement.`);
+    }
 
     // Window ledger — created on first spin of the window; unspent budget rolls in if carryOver.
     let w: SpinWindow;

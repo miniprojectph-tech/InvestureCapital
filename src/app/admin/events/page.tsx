@@ -473,6 +473,18 @@ function EventForm({
             <Num label="Daily budget (GP)" value={sp.dailyBudget} onChange={(v) => setSpin({ dailyBudget: v })} step={100} gold />
             <Num label="Max banked bonus" value={sp.maxBankedBonus} onChange={(v) => setSpin({ maxBankedBonus: v })} />
           </div>
+          <div className="grid grid-cols-[1fr_1.6fr] gap-2 items-end">
+            <Num label="Min. active investment ₱" value={sp.minActive} onChange={(v) => setSpin({ minActive: v })} step={500} gold />
+            <p className="text-[10px] text-text-subtle m-0 pb-2">
+              Who can spin:{" "}
+              {sp.minActive > 0
+                ? `members with at least ${formatPHP(sp.minActive, { short: true })} active in ${draft.terms.length ? draft.terms.map((t) => `${t}-mo`).join(" / ") : "any"} placements`
+                : draft.terms.length
+                  ? `members with an active ${draft.terms.map((t) => `${t}-mo`).join(" / ")} placement`
+                  : "everyone"}
+              . Set the terms with the chips below.
+            </p>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="text-[11px] font-medium text-text block mb-1">Prize windows per day</label>
@@ -519,7 +531,7 @@ function EventForm({
       )}
 
       <div>
-        <label className="text-[11px] font-medium text-text block mb-1">Allowed terms</label>
+        <label className="text-[11px] font-medium text-text block mb-1">{draft.kind === "spin" ? "Placement terms that count (eligibility)" : "Allowed terms"}</label>
         <div className="flex flex-wrap gap-1.5">
           <Chip on={draft.terms.length === 0} onClick={() => patch({ terms: [] })}>All</Chip>
           {cfg.terms.map((t) => (

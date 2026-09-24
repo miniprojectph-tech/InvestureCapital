@@ -35,6 +35,8 @@ export type SpinEventConfig = {
   windowsPerDay: 1 | 2 | 3 | 4;
   carryOver: boolean; // unspent window budget rolls into the next window
   maxBankedBonus: number;
+  /** ₱ of ACTIVE placements (on the allowed terms, if any) a member must hold to spin. 0 = no requirement. */
+  minActive: number;
   bonusFor: { placement: boolean; referral: boolean; withdrawal: boolean };
   // live counters (server-written)
   spent: number;
@@ -66,6 +68,7 @@ export const DEFAULT_SPIN: SpinEventConfig = {
   windowsPerDay: 2,
   carryOver: true,
   maxBankedBonus: 5,
+  minActive: 0,
   bonusFor: { placement: true, referral: true, withdrawal: false },
   spent: 0,
   spins: 0,
@@ -198,6 +201,7 @@ export function validateEvent(e: Partial<InvestureEvent>): string | null {
     if (!(s.dailyBudget >= 1)) return "Set a daily prize budget (GP).";
     if (![1, 2, 3, 4].includes(s.windowsPerDay)) return "Windows per day must be 1, 2, 3 or 4.";
     if (!(Number.isInteger(s.maxBankedBonus) && s.maxBankedBonus >= 0 && s.maxBankedBonus <= 50)) return "Max banked bonus spins must be 0–50.";
+    if (!(s.minActive >= 0)) return "Minimum active investment can't be negative.";
     if (e.endsAt == null) return "A spin event needs an end date.";
   } else {
     const r = e.referral;
@@ -223,4 +227,23 @@ export function pickWedge(wedges: SpinWedge[], remaining: number, rnd = Math.ran
     if (r <= 0) return x.i;
   }
   return ok[ok.length - 1].i;
+}
+
+/**
+ * Spin eligibility: active placements (still running) on the event's allowed
+ * terms must add up to at least . With terms selected and minActive 0,
+ * one active placement on those terms is enough.
+ */
+export function spinEligibility(
+  e: Pick<InvestureEvent, "terms"> & { spin?: Pick<SpinEventConfig, "minActive"> },
+  placements: { capital: number; termMonths: number }[] | undefined,
+): { ok: boolean; have: number; need: number; termsLabel: string; where: string } {
+  const need = e.spin?.minActive ?? 0;
+  const eligible = (placements ?? []).filter((p) => eventAllowsTerm(e, p.termMonths));
+  const have = eligible.reduce((s, p) => s + (p.capital ?? 0), 0);
+  const termsLabel = e.terms.length ? e.terms.map((t) => `${t}-month`).join(" / ") : "any term";
+  /** "3-month placements" / "placements of any term" — for the "Requires ₱X active in …" sentence. */
+  const where = e.terms.length ? `${termsLabel} placements` : "placements of any term";
+  const ok = need > 0 ? have >= need : e.terms.length === 0 ? true : eligible.length > 0;
+  return { ok, have, need, termsLabel, where };
 }

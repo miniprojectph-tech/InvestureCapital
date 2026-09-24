@@ -2,14 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Loader2, Clock, Sparkles } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, formatPHP } from "@/lib/utils";
 import { useGameState } from "@/lib/game";
+import { useUserState } from "@/lib/useUserState";
+import Link from "next/link";
+import { Lock } from "lucide-react";
 import {
   spinWheel,
   useSpinner,
   useSpinWindow,
   countdown,
   spinChanceTotal,
+  spinEligibility,
   type InvestureEvent,
   type SpinResult,
   type SpinWedge,
@@ -79,6 +83,8 @@ export function SpinPanel({ event, now }: { event: InvestureEvent; now: number }
   const spinner = useSpinner(event.id);
   const win = useSpinWindow(event.id, sp.windowsPerDay, now);
   const { state: gameState } = useGameState();
+  const { state: userState } = useUserState();
+  const elig = spinEligibility(event, userState?.placements);
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -94,7 +100,7 @@ export function SpinPanel({ event, now }: { event: InvestureEvent; now: number }
   const freeUsed = spinner && spinner.freeDay === today ? spinner.freeUsed : 0;
   const freeLeft = Math.max(0, sp.freeSpinsPerDay - freeUsed);
   const bonus = spinner?.bonus ?? 0;
-  const canSpin = freeLeft + bonus > 0 && !busy && !spinning;
+  const canSpin = elig.ok && freeLeft + bonus > 0 && !busy && !spinning;
   const share = Math.floor(sp.dailyBudget / sp.windowsPerDay);
   const poolLeft = win.ledger ? Math.max(0, win.ledger.budget + win.ledger.carriedIn - win.ledger.spent) : share;
   const poolTotal = win.ledger ? win.ledger.budget + win.ledger.carriedIn : share;
@@ -181,6 +187,21 @@ export function SpinPanel({ event, now }: { event: InvestureEvent; now: number }
 
       {error && <p className="text-[11px] text-red m-0 text-center">{error}</p>}
 
+      {!elig.ok && (
+        <div className="w-full flex items-start gap-2.5 px-3 py-2.5 rounded-xl bg-canvas border border-[#F5C66B]/40">
+          <Lock className="w-4 h-4 text-[#F5C66B] shrink-0 mt-0.5" />
+          <div className="text-[11px] text-text-muted">
+            <span className="text-text">
+              {elig.need > 0
+                ? `Requires ${formatPHP(elig.need, { short: true })} active in ${elig.where}`
+                : `Requires an active ${elig.termsLabel} placement`}
+            </span>
+            {elig.need > 0 && <> · you have <span className="font-mono text-text">{formatPHP(elig.have, { short: true })}</span></>}
+            <Link href="/plans" className="block mt-1 text-[#F5C66B] font-semibold">Place capital →</Link>
+          </div>
+        </div>
+      )}
+
       <button
         type="button"
         onClick={spin}
@@ -188,7 +209,7 @@ export function SpinPanel({ event, now }: { event: InvestureEvent; now: number }
         className="w-full py-3 rounded-xl text-[13px] font-extrabold tracking-wide bg-[#F5C66B] text-[#2A1D05] hover:brightness-110 transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
       >
         {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-        {spinning ? "SPINNING…" : won ? (freeLeft + bonus > 0 ? `SPIN AGAIN (${freeLeft + bonus} left)` : "NO SPINS LEFT") : freeLeft + bonus > 0 ? "SPIN NOW" : "NO SPINS LEFT"}
+        {!elig.ok ? "LOCKED" : spinning ? "SPINNING…" : won ? (freeLeft + bonus > 0 ? `SPIN AGAIN (${freeLeft + bonus} left)` : "NO SPINS LEFT") : freeLeft + bonus > 0 ? "SPIN NOW" : "NO SPINS LEFT"}
       </button>
       {(sp.bonusFor.placement || sp.bonusFor.referral || sp.bonusFor.withdrawal) && (
         <p className="text-[10px] text-text-subtle m-0 text-center">
