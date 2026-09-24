@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { collection, doc, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
-import type { InvestureEvent, EventClaim, EventStatus } from "./events-config";
+import { spinWindowAt, type InvestureEvent, type EventClaim, type EventStatus, type Spinner, type SpinWindow, type SpinRecord } from "./events-config";
 
 export * from "./events-config";
 
@@ -177,4 +177,65 @@ export function countdown(to: number, now = Date.now()): string {
   if (d > 0) return `${d}d ${h}h`;
   if (h > 0) return `${h}h ${m}m`;
   return `${m}m`;
+}
+
+// ===== Spin the wheel =====
+
+export type SpinResult =
+  | { ok: true; status: "spun"; wedge: number; label: string; points: number; kind: "free" | "bonus"; spinsLeft: { free: number; bonus: number }; windowRemaining: number; nextWindowAt: number }
+  | { ok: true; status: "exhausted"; nextWindowAt: number; remaining: number };
+
+export const spinWheel = (eventId: string) => call<{ eventId: string }, SpinResult>("spinWheel", { eventId });
+
+/** This member's spin state on an event (free spins used today, banked bonus spins). */
+export function useSpinner(eventId: string | null): Spinner | null {
+  const { user } = useAuth();
+  const [s, setS] = useState<Spinner | null>(null);
+  useEffect(() => {
+    if (!user || !eventId) {
+      setS(null);
+      return;
+    }
+    const { db } = getFirebase();
+    if (!db) return;
+    return onSnapshot(doc(db, "events", eventId, "spinners", user.uid), (snap) => setS(snap.exists() ? (snap.data() as Spinner) : null), () => setS(null));
+  }, [user, eventId]);
+  return s;
+}
+
+/** The current prize window's ledger (null until the first spin of the window creates it). */
+export function useSpinWindow(eventId: string | null, windowsPerDay: number, now: number): { key: string; startsAt: number; endsAt: number; ledger: SpinWindow | null } {
+  const { user } = useAuth();
+  const win = useMemo(() => spinWindowAt(now, windowsPerDay), [now, windowsPerDay]);
+  const [ledger, setLedger] = useState<SpinWindow | null>(null);
+  useEffect(() => {
+    if (!user || !eventId) {
+      setLedger(null);
+      return;
+    }
+    const { db } = getFirebase();
+    if (!db) return;
+    return onSnapshot(doc(db, "events", eventId, "windows", win.key), (snap) => setLedger(snap.exists() ? (snap.data() as SpinWindow) : null), () => setLedger(null));
+  }, [user, eventId, win.key]);
+  return { ...win, ledger };
+}
+
+/** Admin: the latest spins on an event. */
+export function useSpinLog(eventId: string | null, max = 50): SpinRecord[] {
+  const { user } = useAuth();
+  const [rows, setRows] = useState<SpinRecord[]>([]);
+  useEffect(() => {
+    if (!user || !eventId) {
+      setRows([]);
+      return;
+    }
+    const { db } = getFirebase();
+    if (!db) return;
+    return onSnapshot(
+      query(collection(db, "events", eventId, "spins"), orderBy("at", "desc"), limit(max)),
+      (snap) => setRows(snap.docs.map((d) => ({ ...(d.data() as SpinRecord), id: d.id }))),
+      () => setRows([]),
+    );
+  }, [user, eventId, max]);
+  return rows;
 }

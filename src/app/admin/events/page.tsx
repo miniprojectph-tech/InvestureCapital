@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-import { AlertCircle, CheckCircle2, Loader2, Plus, Sparkles, Users, Upload, Eye, Power, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Plus, Sparkles, Users, Upload, Eye, Power, X, Dices, Trash2 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
@@ -25,6 +25,13 @@ import {
   formatEventDate,
   DEFAULT_SLOT,
   DEFAULT_REFERRAL,
+  DEFAULT_SPIN,
+  WEDGE_COLORS,
+  spinChanceTotal,
+  spinAveragePayout,
+  spinWindowAt,
+  useSpinLog,
+  type SpinWedge,
   type InvestureEvent,
   type EventKind,
   type PopupFrequency,
@@ -53,14 +60,20 @@ function blankDraft(kind: EventKind): Draft {
     tagline: "",
     mechanics: kind === "slot"
       ? ["Choose 1–3 slots and a term.", "Pay from your wallet (instant) or send a payment — slots are held for 24 h while we verify.", "Capital back, Locked-In Bonus and referral commissions work as usual."]
-      : ["Applies to every placement your referrals activate before the end date.", "Fast-Start and Leadership bonuses are unchanged."],
+      : kind === "spin"
+        ? ["One free spin a day — every prize goes straight to your Game Points.", "Earn bonus spins for placements and referrals.", "Prizes are split across the day so there is always something to win."]
+        : ["Applies to every placement your referrals activate before the end date.", "Fast-Start and Leadership bonuses are unchanged."],
     bannerUrl: "",
     bannerPath: "",
     startsAt: now,
-    endsAt: kind === "referral" ? now + 7 * 24 * HOUR : null,
+    endsAt: kind === "slot" ? null : now + 7 * 24 * HOUR,
     terms: [],
     popupFrequency: "daily",
-    ...(kind === "slot" ? { slot: { ...DEFAULT_SLOT } } : { referral: { ...DEFAULT_REFERRAL, levelMultipliers: [...DEFAULT_REFERRAL.levelMultipliers] } }),
+    ...(kind === "slot"
+      ? { slot: { ...DEFAULT_SLOT } }
+      : kind === "spin"
+        ? { spin: { ...DEFAULT_SPIN, wedges: DEFAULT_SPIN.wedges.map((w) => ({ ...w })), bonusFor: { ...DEFAULT_SPIN.bonusFor } } }
+        : { referral: { ...DEFAULT_REFERRAL, levelMultipliers: [...DEFAULT_REFERRAL.levelMultipliers] } }),
   };
 }
 
@@ -83,6 +96,7 @@ export default function AdminEventsPage() {
   const live = events.filter((e) => e.status === "live");
   const selectedEvent = events.find((e) => e.id === selected) ?? live[0] ?? null;
   const claims = useEventClaims(selectedEvent?.kind === "slot" ? selectedEvent.id : null, "all");
+  const spinLog = useSpinLog(selectedEvent?.kind === "spin" ? selectedEvent.id : null, 40);
 
   async function run(key: string, fn: () => Promise<string>) {
     setBusy(key);
@@ -155,17 +169,20 @@ export default function AdminEventsPage() {
         <button onClick={() => setDraft(blankDraft("referral"))} className="px-3.5 py-2 border border-border-strong rounded-lg text-[12px] text-text flex items-center gap-1.5 hover:bg-card-elev">
           <Plus className="w-3.5 h-3.5" /> New referral event
         </button>
+        <button onClick={() => setDraft(blankDraft("spin"))} className="px-3.5 py-2 bg-[#F5C66B] text-[#2A1D05] rounded-lg text-[12px] font-medium flex items-center gap-1.5 hover:brightness-110">
+          <Dices className="w-3.5 h-3.5" /> New spin event
+        </button>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.25fr_1fr] gap-3">
         <div className="flex flex-col gap-3 min-w-0">
           {/* Live / selected event */}
           {selectedEvent && (
-            <Card className={cn(selectedEvent.kind === "slot" ? "border-gold/35" : "border-vault/35")}>
+            <Card className={cn(selectedEvent.kind === "slot" ? "border-gold/35" : selectedEvent.kind === "spin" ? "border-[#F5C66B]/35" : "border-vault/35")}>
               <div className="flex flex-wrap items-start justify-between gap-2 mb-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className={cn("w-11 h-11 rounded-xl flex items-center justify-center shrink-0", selectedEvent.kind === "slot" ? "bg-gold/15 text-gold" : "bg-vault/15 text-vault")}>
-                    {selectedEvent.kind === "slot" ? <Sparkles className="w-5 h-5" /> : <Users className="w-5 h-5" />}
+                  <span className={cn("w-11 h-11 rounded-xl flex items-center justify-center shrink-0", selectedEvent.kind === "slot" ? "bg-gold/15 text-gold" : selectedEvent.kind === "spin" ? "bg-[#F5C66B]/15 text-[#F5C66B]" : "bg-vault/15 text-vault")}>
+                    {selectedEvent.kind === "slot" ? <Sparkles className="w-5 h-5" /> : selectedEvent.kind === "spin" ? <Dices className="w-5 h-5" /> : <Users className="w-5 h-5" />}
                   </span>
                   <div className="min-w-0">
                     <p className="text-[14px] font-medium m-0 flex items-center gap-2">
@@ -175,7 +192,9 @@ export default function AdminEventsPage() {
                     <p className="text-[11px] text-text-muted m-0 mt-0.5">
                       {selectedEvent.kind === "slot" && selectedEvent.slot
                         ? `Slot event · ×${selectedEvent.slot.payoutMultiplier} payouts · ${formatPHP(selectedEvent.slot.price, { short: true })} per slot · max ${selectedEvent.slot.maxPerMember} per member`
-                        : `Referral event · ${selectedEvent.referral?.levelMultipliers.map((m, i) => (m > 1 ? `L${i + 1} ×${m}` : null)).filter(Boolean).join(" · ") || "no boost"}`}
+                        : selectedEvent.kind === "spin" && selectedEvent.spin
+                          ? `Spin event · ${selectedEvent.spin.freeSpinsPerDay} free/day · ${selectedEvent.spin.dailyBudget.toLocaleString()} GP/day in ${selectedEvent.spin.windowsPerDay} window${selectedEvent.spin.windowsPerDay === 1 ? "" : "s"} · avg ${spinAveragePayout(selectedEvent.spin.wedges)} GP/spin`
+                          : `Referral event · ${selectedEvent.referral?.levelMultipliers.map((m, i) => (m > 1 ? `L${i + 1} ×${m}` : null)).filter(Boolean).join(" · ") || "no boost"}`}
                       {selectedEvent.endsAt ? ` · ends ${formatEventDate(selectedEvent.endsAt)}` : " · no end date"}
                     </p>
                   </div>
@@ -239,6 +258,43 @@ export default function AdminEventsPage() {
             </Card>
           )}
 
+          {selectedEvent && selectedEvent.kind === "spin" && selectedEvent.spin && (
+            <Card>
+              <CardHeader title="Wheel activity" subtitle={`Current window ${spinWindowAt(now, selectedEvent.spin.windowsPerDay).index + 1} of ${selectedEvent.spin.windowsPerDay} · ${Math.floor(selectedEvent.spin.dailyBudget / selectedEvent.spin.windowsPerDay).toLocaleString()} GP per window`} />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                <Tile label="Spins" value={String(selectedEvent.spin.spins)} sub="all time" />
+                <Tile label="GP paid out" value={selectedEvent.spin.spent.toLocaleString()} sub={`${selectedEvent.spin.spins ? Math.round(selectedEvent.spin.spent / selectedEvent.spin.spins) : 0} GP avg`} tone="amber" />
+                <Tile label="Biggest win" value={String(selectedEvent.spin.biggestWin)} sub="GP" tone="gold" />
+                <Tile label="Try again" value={`${spinLog.length ? Math.round((spinLog.filter((r) => r.points === 0).length / spinLog.length) * 100) : 0}%`} sub="of last spins" />
+              </div>
+              <ResponsiveTable>
+                <table className="w-full text-[11px] min-w-[520px]">
+                  <thead>
+                    <tr className="text-text-subtle text-left">
+                      <th className="font-normal py-1.5 px-1">Member</th>
+                      <th className="font-normal py-1.5 px-1">Result</th>
+                      <th className="font-normal py-1.5 px-1">Spin</th>
+                      <th className="font-normal py-1.5 px-1">Window</th>
+                      <th className="font-normal py-1.5 px-1">When</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {spinLog.length === 0 && <tr><td colSpan={5} className="text-center text-text-subtle py-5">No spins yet.</td></tr>}
+                    {spinLog.map((r) => (
+                      <tr key={r.id} className="border-t border-border">
+                        <td className="py-1.5 px-1">{r.userName}</td>
+                        <td className={cn("py-1.5 px-1 font-mono", r.points >= 500 ? "text-[#F5C66B]" : r.points > 0 ? "text-green" : "text-text-subtle")}>{r.points > 0 ? `+${r.points} GP` : r.label}</td>
+                        <td className="py-1.5 px-1 text-text-subtle">{r.kind}</td>
+                        <td className="py-1.5 px-1 text-text-subtle">{r.window.slice(-2)}</td>
+                        <td className="py-1.5 px-1 text-text-subtle">{new Date(r.at).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </ResponsiveTable>
+            </Card>
+          )}
+
           {/* All events */}
           <Card>
             <CardHeader title={`All events (${events.length})`} subtitle="Tap one to see its details above" />
@@ -254,9 +310,9 @@ export default function AdminEventsPage() {
                     onClick={() => setSelected(e.id)}
                     className={cn("flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition", selectedEvent?.id === e.id ? "border-gold/40 bg-gold/5" : "border-border bg-canvas hover:border-border-strong")}
                   >
-                    <span className={cn("w-2 h-2 rounded-full shrink-0", e.status === "live" ? (e.kind === "slot" ? "bg-gold" : "bg-vault") : e.status === "draft" ? "bg-blue" : "bg-text-subtle")} />
+                    <span className={cn("w-2 h-2 rounded-full shrink-0", e.status === "live" ? (e.kind === "slot" ? "bg-gold" : e.kind === "spin" ? "bg-[#F5C66B]" : "bg-vault") : e.status === "draft" ? "bg-blue" : "bg-text-subtle")} />
                     <span className="flex-1 min-w-0 text-[12px] truncate">
-                      {e.name} <span className="text-text-subtle">· {e.kind === "slot" && e.slot ? `slot · ×${e.slot.payoutMultiplier} · ${e.slot.taken}/${e.slot.totalSlots}` : "referral"}</span>
+                      {e.name} <span className="text-text-subtle">· {e.kind === "slot" && e.slot ? `slot · ×${e.slot.payoutMultiplier} · ${e.slot.taken}/${e.slot.totalSlots}` : e.kind === "spin" && e.spin ? `spin · ${e.spin.spins} spins · ${e.spin.spent.toLocaleString()} GP` : "referral"}</span>
                     </span>
                     <StatusPill e={e} now={now} />
                   </button>
@@ -331,12 +387,15 @@ function EventForm({
   const isSlot = draft.kind === "slot";
   const s = draft.slot ?? DEFAULT_SLOT;
   const r = draft.referral ?? DEFAULT_REFERRAL;
+  const sp = draft.spin ?? DEFAULT_SPIN;
+  const setSpin = (p: Partial<typeof sp>) => patch({ spin: { ...sp, ...p } });
+  const chanceTotal = spinChanceTotal(sp.wedges);
   const cycles = (m: number) => Math.round((m * cfg.monthDays) / cfg.cycleDays);
   const fields = "bg-canvas border border-border rounded-md px-3 py-2 text-[12px] text-text outline-none focus:border-gold/40 w-full";
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
-        <p className="text-[13px] font-medium m-0">{draft.id ? "Edit" : "New"} {isSlot ? "slot" : "referral"} event</p>
+        <p className="text-[13px] font-medium m-0">{draft.id ? "Edit" : "New"} {isSlot ? "slot" : draft.kind === "spin" ? "spin" : "referral"} event</p>
         <button onClick={onCancel} className="text-text-subtle hover:text-text" aria-label="Cancel"><X className="w-4 h-4" /></button>
       </div>
 
@@ -386,6 +445,60 @@ function EventForm({
             Capacity <span className="font-mono text-text">{formatPHP(s.price * s.totalSlots, { short: true })}</span> · one slot pays{" "}
             <span className="font-mono text-gold">{formatPHP(s.price * cfg.cycleRate / 100 * s.payoutMultiplier)}</span> every {cfg.cycleDays} days
             {cfg.terms[0] ? ` (${cfg.terms[0].months}-mo term: ${formatPHP(s.price * cfg.cycleRate / 100 * s.payoutMultiplier * cycles(cfg.terms[0].months))} + ${formatPHP(s.price, { short: true })} back)` : ""}.
+          </div>
+        </>
+      ) : draft.kind === "spin" ? (
+        <>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-baseline justify-between">
+              <label className="text-[11px] font-medium text-text">Wheel prizes ({sp.wedges.length} of 12)</label>
+              <span className={cn("text-[10px]", Math.abs(chanceTotal - 100) < 0.05 ? "text-green" : "text-red")}>Chances total {chanceTotal}% {Math.abs(chanceTotal - 100) < 0.05 ? "✓" : "— must be 100%"}</span>
+            </div>
+            <div className="grid grid-cols-[20px_1.4fr_1fr_1fr_28px_24px] gap-1.5 px-1 text-[9px] text-text-subtle"><span /><span>Label</span><span>Game Points</span><span>Chance %</span><span /><span /></div>
+            {sp.wedges.map((w, i) => (
+              <div key={i} className="grid grid-cols-[20px_1.4fr_1fr_1fr_28px_24px] gap-1.5 items-center px-1">
+                <span className="text-[10px] text-text-subtle">{i + 1}</span>
+                <input value={w.label} maxLength={24} aria-label="Label" onChange={(e) => setSpin({ wedges: sp.wedges.map((x, j) => (j === i ? { ...x, label: e.target.value } : x)) })} className={cn("bg-canvas border rounded-md px-2 py-1.5 text-[11px] outline-none focus:border-gold/40 w-full", w.points >= 500 ? "border-[#F5C66B]/40 text-[#F5C66B]" : "border-border text-text")} />
+                <input type="number" min={0} value={w.points} aria-label="Points" onChange={(e) => setSpin({ wedges: sp.wedges.map((x, j) => (j === i ? { ...x, points: Math.max(0, Math.round(parseFloat(e.target.value) || 0)), label: x.label === `${x.points} GP` || x.label === "Try again" ? (Math.round(parseFloat(e.target.value) || 0) === 0 ? "Try again" : `${Math.round(parseFloat(e.target.value) || 0)} GP`) : x.label } : x)) })} className="bg-canvas border border-border rounded-md px-2 py-1.5 text-[11px] font-mono text-text outline-none focus:border-gold/40 w-full" />
+                <input type="number" min={0} max={100} step={0.5} value={w.chance} aria-label="Chance" onChange={(e) => setSpin({ wedges: sp.wedges.map((x, j) => (j === i ? { ...x, chance: parseFloat(e.target.value) || 0 } : x)) })} className="bg-canvas border border-border rounded-md px-2 py-1.5 text-[11px] font-mono text-text outline-none focus:border-gold/40 w-full" />
+                <input type="color" value={w.color} aria-label="Colour" onChange={(e) => setSpin({ wedges: sp.wedges.map((x, j) => (j === i ? { ...x, color: e.target.value } : x)) })} className="w-7 h-7 rounded-md bg-transparent border-0 p-0 cursor-pointer" />
+                <button type="button" aria-label="Remove wedge" disabled={sp.wedges.length <= 2} onClick={() => setSpin({ wedges: sp.wedges.filter((_, j) => j !== i) })} className="text-text-subtle hover:text-red disabled:opacity-30"><Trash2 className="w-3.5 h-3.5" /></button>
+              </div>
+            ))}
+            <button type="button" disabled={sp.wedges.length >= 12} onClick={() => setSpin({ wedges: [...sp.wedges, { label: "Try again", points: 0, chance: 0, color: WEDGE_COLORS[sp.wedges.length % WEDGE_COLORS.length] }] })} className="self-start text-[11px] px-2.5 py-1.5 rounded-md border border-dashed border-border-strong text-text-muted hover:text-text disabled:opacity-40">+ Add wedge</button>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2">
+            <Num label="Free spins / day" value={sp.freeSpinsPerDay} onChange={(v) => setSpin({ freeSpinsPerDay: v })} />
+            <Num label="Daily budget (GP)" value={sp.dailyBudget} onChange={(v) => setSpin({ dailyBudget: v })} step={100} gold />
+            <Num label="Max banked bonus" value={sp.maxBankedBonus} onChange={(v) => setSpin({ maxBankedBonus: v })} />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[11px] font-medium text-text block mb-1">Prize windows per day</label>
+              <div className="flex gap-1.5">
+                {([1, 2, 3, 4] as const).map((n) => <Chip key={n} on={sp.windowsPerDay === n} onClick={() => setSpin({ windowsPerDay: n })}>{n}</Chip>)}
+              </div>
+            </div>
+            <div>
+              <label className="text-[11px] font-medium text-text block mb-1">Unspent budget</label>
+              <div className="flex gap-1.5">
+                <Chip on={sp.carryOver} onClick={() => setSpin({ carryOver: true })}>Carries over</Chip>
+                <Chip on={!sp.carryOver} onClick={() => setSpin({ carryOver: false })}>Expires</Chip>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className="text-[11px] font-medium text-text block mb-1">Bonus spin (+1) for</label>
+            <div className="flex flex-wrap gap-1.5">
+              <Chip on={sp.bonusFor.placement} onClick={() => setSpin({ bonusFor: { ...sp.bonusFor, placement: !sp.bonusFor.placement } })}>Placement activated</Chip>
+              <Chip on={sp.bonusFor.referral} onClick={() => setSpin({ bonusFor: { ...sp.bonusFor, referral: !sp.bonusFor.referral } })}>Referral joins</Chip>
+              <Chip on={sp.bonusFor.withdrawal} onClick={() => setSpin({ bonusFor: { ...sp.bonusFor, withdrawal: !sp.bonusFor.withdrawal } })}>Withdrawal released</Chip>
+            </div>
+          </div>
+          <div className="px-3 py-2 bg-canvas border border-border rounded-lg text-[10px] text-text-muted">
+            {Math.floor(sp.dailyBudget / sp.windowsPerDay).toLocaleString()} GP per window · average payout <span className="font-mono text-[#F5C66B]">{spinAveragePayout(sp.wedges)} GP</span> per spin → about <span className="font-mono text-text">{spinAveragePayout(sp.wedges) > 0 ? Math.floor(sp.dailyBudget / sp.windowsPerDay / spinAveragePayout(sp.wedges)).toLocaleString() : "∞"}</span> winning spins per window before it runs dry.
+            {draft.endsAt ? ` Over ${Math.max(1, Math.ceil((draft.endsAt - draft.startsAt) / 86_400_000))} day(s) the event can pay at most ${(sp.dailyBudget * Math.max(1, Math.ceil((draft.endsAt - draft.startsAt) / 86_400_000))).toLocaleString()} GP.` : ""}
           </div>
         </>
       ) : (

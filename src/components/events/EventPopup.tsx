@@ -26,6 +26,7 @@ import {
   type InvestureEvent,
 } from "@/lib/events";
 import { EventSlotModal } from "./EventSlotModal";
+import { SpinPanel } from "./SpinWheel";
 
 /**
  * The "ad" members see after signing in while an event is live: banner,
@@ -83,7 +84,7 @@ export function EventPopup() {
               onClick={(e) => e.stopPropagation()}
               className={cn(
                 "w-full max-w-md max-h-[92dvh] overflow-y-auto rounded-3xl bg-card border shadow-2xl",
-                current.kind === "slot" ? "border-gold/40" : "border-vault/40",
+                current.kind === "slot" ? "border-gold/40" : current.kind === "spin" ? "border-[#F5C66B]/40" : "border-vault/40",
               )}
             >
               <EventBody
@@ -136,8 +137,9 @@ export function EventBody({
   const { state } = useUserState();
   const mine = useMyEventSlots(event.kind === "slot" ? event.id : null);
   const isSlot = event.kind === "slot" && !!event.slot;
+  const isSpin = event.kind === "spin" && !!event.spin;
   const s = event.slot;
-  const accent = isSlot ? "#3DD598" : "#A78BFA";
+  const accent = isSlot ? "#3DD598" : isSpin ? "#F5C66B" : "#A78BFA";
   const free = isSlot ? slotsFree(event) : 0;
   const ends = event.endsAt ? countdown(event.endsAt, now) : null;
   const link = state?.referralCode ? `${typeof window !== "undefined" ? window.location.origin : ""}/register?ref=${state.referralCode}` : null;
@@ -163,7 +165,7 @@ export function EventBody({
       {/* status row — kept OFF the artwork */}
       <div className="flex items-center justify-between gap-2 px-5 pt-3">
         <span className="text-[10px] font-bold tracking-[0.1em] uppercase px-2.5 py-1 rounded-full" style={{ background: accent, color: "#052418" }}>
-          {isSlot ? "Limited event" : "Referral event"}
+          {isSlot ? "Limited event" : isSpin ? "Spin event" : "Referral event"}
         </span>
         {ends && (
           <span className="text-[10px] px-2.5 py-1 rounded-full bg-canvas border border-border text-text-muted flex items-center gap-1">
@@ -195,7 +197,9 @@ export function EventBody({
           </div>
         )}
 
-        {!isSlot && event.referral && (
+        {isSpin && <SpinPanel event={event} now={now} />}
+
+        {!isSlot && !isSpin && event.referral && (
           <div className="grid grid-cols-6 gap-1.5">
             {event.referral.levelMultipliers.map((m, i) => {
               const base = cfg.referralLevels[i] ?? 0;
@@ -220,7 +224,7 @@ export function EventBody({
           <p className="text-[10px] text-text-subtle m-0">Terms: {event.terms.map((t) => `${t} mo`).join(", ")}{event.endsAt ? ` · until ${formatEventDate(event.endsAt)}` : ""}</p>
         )}
 
-        {isSlot && s ? (
+        {isSpin ? null : isSlot && s ? (
           <button
             type="button"
             onClick={onGetSlots}

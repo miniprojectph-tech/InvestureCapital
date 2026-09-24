@@ -140,6 +140,20 @@ service cloud.firestore {
         allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
         allow write: if false;
       }
+      // Spin the wheel: window ledgers are public to members (the pool bar),
+      // a member reads only their own spin state and spins; admins see all.
+      match /windows/{windowId} {
+        allow read: if isSignedIn();
+        allow write: if false;
+      }
+      match /spinners/{uid} {
+        allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+        allow write: if false;
+      }
+      match /spins/{spinId} {
+        allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+        allow write: if false;
+      }
     }
 
     // === Platform settings (readable by all signed-in, writable by admin) ===

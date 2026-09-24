@@ -28,7 +28,7 @@ export {
 } from "./compplan";
 export { getReferralStats } from "./referral-stats";
 export { onWithdrawalWritten } from "./withdrawals";
-export { adminSaveEvent, adminSetEventStatus, adminAddEventSlots, claimEventSlots, onPlanRequestWritten } from "./events";
+export { adminSaveEvent, adminSetEventStatus, adminAddEventSlots, claimEventSlots, onPlanRequestWritten, spinWheel, onUserCreatedForEvents } from "./events";
 
 // Community Tongits (Phase 1): room + economy callables + stale-room reaper.
 import { reapStaleTongitsRooms } from "./tongits";

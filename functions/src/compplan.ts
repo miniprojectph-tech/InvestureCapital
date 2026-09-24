@@ -5,6 +5,7 @@ import { logger } from "firebase-functions";
 import { db } from "./init";
 import { sweepColorRounds } from "./colorgame";
 import { eventIsLive, slotsFree, referralMultipliers, type InvestureEvent, type EventClaim } from "./events-config";
+import { grantBonusSpins } from "./events";
 import {
   mergeCompPlan,
   cyclesForTerm,
@@ -223,6 +224,8 @@ export const activatePlacement = onCall(async (request) => {
     if (!validStart(args.startedAt, now)) throw new HttpsError("invalid-argument", "Invalid start date.");
   }
   const result = await db.runTransaction((tx) => activateInTx(tx, cfg, args, callerUid, now));
+  // A live spin event may reward a placement with a bonus spin.
+  grantBonusSpins(result.userId, "placement").catch((err) => logger.error("bonus spin (placement) failed", err));
   // A backdated start may already have payouts due — credit them right away.
   if (args.startedAt !== undefined && args.startedAt < now) {
     try {

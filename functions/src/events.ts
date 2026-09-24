@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onDocumentWritten, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { FieldValue, type Transaction } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
 import { db } from "./init";
@@ -13,6 +13,13 @@ import {
   type InvestureEvent,
   type EventClaim,
   type EventStatus,
+  type SpinEventConfig,
+  type SpinWindow,
+  type Spinner,
+  WEDGE_COLORS,
+  manilaDayKey,
+  spinWindowAt,
+  pickWedge,
 } from "./events-config";
 
 // ============================================================================
@@ -38,7 +45,7 @@ async function assertAdmin(uid: string) {
 }
 
 function cleanEvent(input: Partial<InvestureEvent>): Omit<InvestureEvent, "id" | "createdAt" | "updatedAt" | "status"> {
-  const kind = input.kind === "referral" ? "referral" : "slot";
+  const kind = input.kind === "referral" ? "referral" : input.kind === "spin" ? "spin" : "slot";
   const terms = Array.isArray(input.terms) ? input.terms.filter((t) => Number.isInteger(t) && t > 0) : [];
   const base = {
     kind,
@@ -64,6 +71,30 @@ function cleanEvent(input: Partial<InvestureEvent>): Omit<InvestureEvent, "id" |
         holdHours: Number(s?.holdHours ?? 24),
         taken: Number(s?.taken ?? 0),
         reserved: Number(s?.reserved ?? 0),
+      },
+    };
+  }
+  if (kind === "spin") {
+    const sp = input.spin ?? ({} as Partial<SpinEventConfig>);
+    const wedges = (Array.isArray(sp.wedges) ? sp.wedges : []).slice(0, 12).map((w, i) => ({
+      label: String(w?.label ?? "").trim().slice(0, 24),
+      points: Math.round(Number(w?.points) || 0),
+      chance: Math.round((Number(w?.chance) || 0) * 100) / 100,
+      color: /^#[0-9a-fA-F]{6}$/.test(String(w?.color ?? "")) ? String(w.color) : WEDGE_COLORS[i % WEDGE_COLORS.length],
+    }));
+    return {
+      ...base,
+      spin: {
+        wedges,
+        freeSpinsPerDay: Math.round(Number(sp.freeSpinsPerDay ?? 1)),
+        dailyBudget: Math.round(Number(sp.dailyBudget) || 0),
+        windowsPerDay: ([1, 2, 3, 4].includes(Number(sp.windowsPerDay)) ? Number(sp.windowsPerDay) : 2) as 1 | 2 | 3 | 4,
+        carryOver: sp.carryOver !== false,
+        maxBankedBonus: Math.round(Number(sp.maxBankedBonus ?? 5)),
+        bonusFor: { placement: !!sp.bonusFor?.placement, referral: !!sp.bonusFor?.referral, withdrawal: !!sp.bonusFor?.withdrawal },
+        spent: Number(sp.spent ?? 0),
+        spins: Number(sp.spins ?? 0),
+        biggestWin: Number(sp.biggestWin ?? 0),
       },
     };
   }
@@ -104,6 +135,7 @@ export const adminSaveEvent = onCall(async (request) => {
         throw new HttpsError("failed-precondition", `Total slots can't go below the ${cur.slot.taken + cur.slot.reserved} already taken or reserved.`);
       }
     }
+    if (clean.spin && cur.spin) next.spin = { ...clean.spin, spent: cur.spin.spent, spins: cur.spin.spins, biggestWin: cur.spin.biggestWin };
     tx.update(eventRef(id), next);
   });
   return { ok: true, id };
@@ -154,7 +186,9 @@ export const adminAddEventSlots = onCall(async (request) => {
 
 async function notifyEveryone(ev: InvestureEvent, now: number): Promise<number> {
   const users = await db.collection("users").select().get();
-  const title = ev.kind === "slot"
+  const title = ev.kind === "spin"
+    ? `${ev.name} — spin the wheel for Game Points, ${ev.spin?.freeSpinsPerDay ?? 1} free spin${(ev.spin?.freeSpinsPerDay ?? 1) === 1 ? "" : "s"} a day`
+    : ev.kind === "slot"
     ? `${ev.name} — ${ev.slot?.totalSlots ?? 0} slots at ${peso(ev.slot?.price ?? 0)}, ×${ev.slot?.payoutMultiplier ?? 1} payouts`
     : `${ev.name} — referral commissions boosted until ${ev.endsAt ? new Date(ev.endsAt).toLocaleDateString("en-PH", { month: "short", day: "numeric", timeZone: "Asia/Manila" }) : "further notice"}`;
   let batch = db.batch();
@@ -293,6 +327,7 @@ export const claimEventSlots = onCall(async (request) => {
       const claim: EventClaim = { ...base, status: "active", method: "wallet", placementId: result.placementId, resolvedAt: now };
       tx.set(claimRef, claim);
       tx.update(eventRef(a.eventId), { "slot.taken": FieldValue.increment(a.slots), updatedAt: now });
+      setTimeout(() => grantBonusSpins(uid, "placement").catch(() => {}), 0);
       return { ok: true, status: "active", placementId: result.placementId, slots: a.slots, amount };
     }
 
@@ -328,4 +363,171 @@ export const claimEventSlots = onCall(async (request) => {
     });
     return { ok: true, status: "reserved", requestId: reqRef.id, slots: a.slots, amount, expiresAt };
   });
+});
+
+// ============================================================================
+// Spin the wheel
+// ============================================================================
+//
+// The result is decided HERE, in one transaction: free/bonus spin accounting,
+// the current prize window's remaining budget (the wheel never lands a prize
+// the window can't pay), the Game Points credit and the spin log. The client
+// only animates to the wedge we return.
+
+const windowRef = (eventId: string, key: string) => eventRef(eventId).collection("windows").doc(key);
+const spinnerRef = (eventId: string, uid: string) => eventRef(eventId).collection("spinners").doc(uid);
+const gameStateRef = (uid: string) => userRef(uid).collection("game").doc("state");
+
+/** Previous window's key (same day or the last window of the day before). */
+function previousWindowKey(now: number, windowsPerDay: number): string {
+  const cur = spinWindowAt(now, windowsPerDay);
+  return spinWindowAt(cur.startsAt - 1, windowsPerDay).key;
+}
+
+export const spinWheel = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const uid = request.auth.uid;
+  const { eventId } = (request.data ?? {}) as { eventId?: string };
+  if (!eventId) throw new HttpsError("invalid-argument", "eventId is required.");
+  const now = Date.now();
+  const rnd = Math.random();
+
+  return db.runTransaction(async (tx: Transaction) => {
+    const evSnap = await tx.get(eventRef(eventId));
+    if (!evSnap.exists) throw new HttpsError("not-found", "Event not found.");
+    const ev = evSnap.data() as InvestureEvent;
+    const sp = ev.spin;
+    if (ev.kind !== "spin" || !sp) throw new HttpsError("failed-precondition", "Not a spin event.");
+    if (!eventIsLive(ev, now)) throw new HttpsError("failed-precondition", "This event isn't running right now.");
+
+    const win = spinWindowAt(now, sp.windowsPerDay);
+    const [winSnap, prevSnap, spinnerSnap, memberSnap, gsSnap] = await Promise.all([
+      tx.get(windowRef(eventId, win.key)),
+      tx.get(windowRef(eventId, previousWindowKey(now, sp.windowsPerDay))),
+      tx.get(spinnerRef(eventId, uid)),
+      tx.get(userRef(uid)),
+      tx.get(gameStateRef(uid)),
+    ]);
+    if (!memberSnap.exists) throw new HttpsError("not-found", "Member not found.");
+
+    // Window ledger — created on first spin of the window; unspent budget rolls in if carryOver.
+    let w: SpinWindow;
+    if (winSnap.exists) {
+      w = winSnap.data() as SpinWindow;
+    } else {
+      const share = Math.floor(sp.dailyBudget / sp.windowsPerDay);
+      let carriedIn = 0;
+      if (sp.carryOver && prevSnap.exists) {
+        const pw = prevSnap.data() as SpinWindow;
+        // Only carry over from a window that started after the event went live.
+        if (pw.startsAt >= (ev.publishedAt ?? ev.startsAt)) carriedIn = Math.max(0, pw.budget + pw.carriedIn - pw.spent);
+      }
+      w = { key: win.key, startsAt: win.startsAt, endsAt: win.endsAt, budget: share, carriedIn, spent: 0, spins: 0 };
+    }
+    const remaining = w.budget + w.carriedIn - w.spent;
+
+    // Spin accounting: free spins reset each Manila day; bonus spins are banked.
+    const today = manilaDayKey(now);
+    const s0 = spinnerSnap.exists ? (spinnerSnap.data() as Spinner) : { userId: uid, freeDay: today, freeUsed: 0, bonus: 0, totalSpins: 0, totalWon: 0 };
+    const freeUsed = s0.freeDay === today ? s0.freeUsed : 0;
+    const kind: "free" | "bonus" | null = freeUsed < sp.freeSpinsPerDay ? "free" : s0.bonus > 0 ? "bonus" : null;
+    if (!kind) throw new HttpsError("failed-precondition", "No spins left — your free spin comes back at midnight.");
+
+    // Nothing this window can pay (no try-again wedge and budget gone): keep the spin, tell them when the next window opens.
+    const wedge = pickWedge(sp.wedges, remaining, rnd);
+    if (wedge === null || remaining <= 0) {
+      if (!winSnap.exists) tx.set(windowRef(eventId, win.key), w);
+      return { ok: true, status: "exhausted", nextWindowAt: win.endsAt, remaining: Math.max(0, remaining) };
+    }
+    const prize = sp.wedges[wedge];
+    const points = prize.points;
+
+    // ---- writes ----
+    const spinner: Spinner = {
+      userId: uid,
+      freeDay: today,
+      freeUsed: kind === "free" ? freeUsed + 1 : freeUsed,
+      bonus: kind === "bonus" ? s0.bonus - 1 : s0.bonus,
+      totalSpins: s0.totalSpins + 1,
+      totalWon: s0.totalWon + points,
+      lastSpinAt: now,
+    };
+    tx.set(spinnerRef(eventId, uid), spinner);
+    tx.set(windowRef(eventId, win.key), { ...w, spent: w.spent + points, spins: w.spins + 1 });
+    tx.update(eventRef(eventId), {
+      "spin.spent": FieldValue.increment(points),
+      "spin.spins": FieldValue.increment(1),
+      ...(points > sp.biggestWin ? { "spin.biggestWin": points } : {}),
+    });
+    const member = memberSnap.data() as UserDoc;
+    const spinRec = { userId: uid, userName: displayName(member, uid), wedge, label: prize.label, points, kind, window: win.key, at: now };
+    tx.set(eventRef(eventId).collection("spins").doc(), spinRec);
+    if (points > 0) {
+      const cur = gsSnap.exists ? ((gsSnap.data()?.points as number) ?? 0) : 0;
+      tx.set(gameStateRef(uid), { points: cur + points }, { merge: true });
+      tx.set(db.collection("game_point_transactions").doc(), {
+        userId: uid,
+        type: "spin_won",
+        amount: points,
+        eventId,
+        description: `Spin the wheel — ${prize.label} (${ev.name})`,
+        createdAt: now,
+      });
+    }
+    return {
+      ok: true,
+      status: "spun",
+      wedge,
+      label: prize.label,
+      points,
+      kind,
+      spinsLeft: { free: Math.max(0, sp.freeSpinsPerDay - spinner.freeUsed), bonus: spinner.bonus },
+      windowRemaining: Math.max(0, remaining - points),
+      nextWindowAt: win.endsAt,
+    };
+  });
+});
+
+/**
+ * Bank a bonus spin on every live spin event that rewards this action. Called
+ * after a placement activates, a referral joins, or a withdrawal is released.
+ */
+export async function grantBonusSpins(uid: string, reason: "placement" | "referral" | "withdrawal"): Promise<number> {
+  const now = Date.now();
+  const live = await db.collection("events").where("kind", "==", "spin").where("status", "==", "live").get();
+  let granted = 0;
+  for (const d of live.docs) {
+    const ev = d.data() as InvestureEvent;
+    if (!ev.spin || !eventIsLive(ev, now) || !ev.spin.bonusFor[reason]) continue;
+    const cap = ev.spin.maxBankedBonus;
+    await db.runTransaction(async (tx) => {
+      const ref = spinnerRef(ev.id, uid);
+      const snap = await tx.get(ref);
+      const s = snap.exists ? (snap.data() as Spinner) : { userId: uid, freeDay: manilaDayKey(now), freeUsed: 0, bonus: 0, totalSpins: 0, totalWon: 0 };
+      if (s.bonus >= cap) return;
+      tx.set(ref, { ...s, bonus: s.bonus + 1 });
+      tx.set(userRef(uid).collection("notifications").doc(), {
+        type: "event",
+        title: `+1 bonus spin — ${ev.name}`,
+        body: reason === "placement" ? "Your placement earned a bonus spin on the wheel." : reason === "referral" ? "A referral joined — you earned a bonus spin." : "Your withdrawal was released — enjoy a bonus spin.",
+        eventId: ev.id,
+        at: now,
+        read: false,
+      });
+      granted++;
+    });
+  }
+  return granted;
+}
+
+/** A new member who signed up with a referral link earns their sponsor a bonus spin. */
+export const onUserCreatedForEvents = onDocumentCreated("users/{uid}", async (event) => {
+  const data = event.data?.data();
+  const sponsor = data?.referredByUserId as string | undefined;
+  if (!sponsor) return;
+  try {
+    await grantBonusSpins(sponsor, "referral");
+  } catch (err) {
+    logger.error("referral bonus spin failed", err);
+  }
 });

@@ -1,6 +1,7 @@
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions";
 import { db } from "./init";
+import { grantBonusSpins } from "./events";
 import { mergeWithdrawalSchedule, releaseDateFor, formatReleaseDate, type WithdrawalScheduleConfig } from "./withdrawalSchedule";
 
 type Withdrawal = {
@@ -54,6 +55,7 @@ export const onWithdrawalWritten = onDocumentWritten("withdrawals/{id}", async (
 
   if (before.status === after.status) return;
   if (after.status === "approved") {
+    grantBonusSpins(after.userId, "withdrawal").catch(() => {});
     await write({
       type: "withdrawal",
       title: `Withdrawal released — ${peso(after.amount)}`,
