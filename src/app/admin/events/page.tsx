@@ -110,8 +110,12 @@ export default function AdminEventsPage() {
     }
   }
 
-  async function save(publish: boolean) {
+  // Editing an event that is already live: there is nothing to "publish", just save.
+  const draftIsLive = !!draft?.id && events.find((e) => e.id === draft.id)?.status === "live";
+
+  async function save(publishRequested: boolean) {
     if (!draft) return;
+    const publish = publishRequested && !draftIsLive;
     const err = validateEvent({ ...draft, id: draft.id ?? "new", status: "draft", createdAt: 0, updatedAt: 0 });
     if (err) {
       setMsg({ ok: false, text: err });
@@ -120,6 +124,10 @@ export default function AdminEventsPage() {
     await run("save", async () => {
       const { id: draftId, ...body } = draft;
       const r = await adminSaveEvent(body, draftId);
+      if (draftIsLive) {
+        setDraft(null);
+        return `${draft.name} updated — members see the new settings on their next spin.`;
+      }
       if (publish) {
         const p = await adminSetEventStatus(r.id, "live");
         setDraft(null);
@@ -156,7 +164,7 @@ export default function AdminEventsPage() {
     <div>
       <TopHeader title="Events" subtitle="Limited-slot placement boosts and time-bound referral multipliers" />
 
-      {msg && (
+      {msg && !draft && (
         <p className={cn("text-[11px] m-0 mb-3 flex items-start gap-1.5", msg.ok ? "text-green" : "text-red")}>
           {msg.ok ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />} {msg.text}
         </p>
@@ -325,7 +333,7 @@ export default function AdminEventsPage() {
         {/* Form */}
         <Card className="self-start">
           {draft ? (
-            <EventForm draft={draft} setDraft={setDraft} cfg={cfg} busy={busy} onSave={save} onUploadBanner={uploadBanner} onCancel={() => setDraft(null)} onPreview={() => previewEvent && setPreview(previewEvent)} />
+            <EventForm draft={draft} setDraft={setDraft} cfg={cfg} busy={busy} isLive={draftIsLive} msg={msg} onSave={save} onUploadBanner={uploadBanner} onCancel={() => { setDraft(null); setMsg(null); }} onPreview={() => previewEvent && setPreview(previewEvent)} />
           ) : (
             <div className="py-10 text-center">
               <Sparkles className="w-6 h-6 text-text-subtle mx-auto mb-2" />
@@ -372,12 +380,14 @@ function Tool({ icon: Icon, label, onClick, busy, danger }: { icon: typeof Eye; 
 }
 
 function EventForm({
-  draft, setDraft, cfg, busy, onSave, onUploadBanner, onCancel, onPreview,
+  draft, setDraft, cfg, busy, isLive, msg, onSave, onUploadBanner, onCancel, onPreview,
 }: {
   draft: Draft;
   setDraft: (d: Draft | null) => void;
   cfg: ReturnType<typeof useCompPlan>["cfg"];
   busy: string | null;
+  isLive: boolean;
+  msg: { ok: boolean; text: string } | null;
   onSave: (publish: boolean) => void;
   onUploadBanner: (f: File) => void;
   onCancel: () => void;
@@ -560,12 +570,26 @@ function EventForm({
         </div>
       </div>
 
+      {msg && (
+        <p className={cn("text-[11px] m-0 flex items-start gap-1.5 px-3 py-2 rounded-lg border", msg.ok ? "text-green border-green/30 bg-green/5" : "text-red border-red/30 bg-red/5")}>
+          {msg.ok ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />} {msg.text}
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-2 justify-end pt-1">
         <button onClick={onPreview} className="px-3 py-2 border border-border-strong rounded-lg text-[12px] text-text hover:bg-card-elev flex items-center gap-1.5"><Eye className="w-3.5 h-3.5" /> Preview</button>
-        <button onClick={() => onSave(false)} disabled={busy === "save"} className="px-3 py-2 border border-border-strong rounded-lg text-[12px] text-text hover:bg-card-elev disabled:opacity-50">Save draft</button>
-        <button onClick={() => onSave(true)} disabled={busy === "save"} className="px-3.5 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium hover:brightness-110 disabled:opacity-50 flex items-center gap-1.5">
-          {busy === "save" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />} {draft.id ? "Save & publish" : "Publish now"}
-        </button>
+        {isLive ? (
+          <button onClick={() => onSave(false)} disabled={busy === "save"} className="px-3.5 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium hover:brightness-110 disabled:opacity-50 flex items-center gap-1.5">
+            {busy === "save" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Save changes (live)
+          </button>
+        ) : (
+          <>
+            <button onClick={() => onSave(false)} disabled={busy === "save"} className="px-3 py-2 border border-border-strong rounded-lg text-[12px] text-text hover:bg-card-elev disabled:opacity-50">Save draft</button>
+            <button onClick={() => onSave(true)} disabled={busy === "save"} className="px-3.5 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium hover:brightness-110 disabled:opacity-50 flex items-center gap-1.5">
+              {busy === "save" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Power className="w-3.5 h-3.5" />} {draft.id ? "Save & publish" : "Publish now"}
+            </button>
+          </>
+        )}
       </div>
     </div>
   );

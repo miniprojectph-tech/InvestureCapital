@@ -194,10 +194,11 @@ export function validateEvent(e: Partial<InvestureEvent>): string | null {
     for (const w of s.wedges) {
       if (!w.label || !w.label.trim()) return "Every wedge needs a label.";
       if (!(Number.isInteger(w.points) && w.points >= 0 && w.points <= 100_000)) return `"${w.label}": points must be a whole number (0 = try again).`;
-      if (!(w.chance > 0 && w.chance <= 100)) return `"${w.label}": chance must be between 0 and 100%.`;
+      // 0% is allowed: the wedge stays on the wheel but never lands.
+      if (!(w.chance >= 0 && w.chance <= 100)) return `"${w.label}": chance must be between 0 and 100%.`;
     }
     if (Math.abs(spinChanceTotal(s.wedges) - 100) > 0.05) return `Chances add up to ${spinChanceTotal(s.wedges)}% — they must total 100%.`;
-    if (!(Number.isInteger(s.freeSpinsPerDay) && s.freeSpinsPerDay >= 0 && s.freeSpinsPerDay <= 10)) return "Free spins per day must be 0–10.";
+    if (!(Number.isInteger(s.freeSpinsPerDay) && s.freeSpinsPerDay >= 0 && s.freeSpinsPerDay <= 50)) return "Free spins per day must be 0–50.";
     if (!(s.dailyBudget >= 1)) return "Set a daily prize budget (GP).";
     if (![1, 2, 3, 4].includes(s.windowsPerDay)) return "Windows per day must be 1, 2, 3 or 4.";
     if (!(Number.isInteger(s.maxBankedBonus) && s.maxBankedBonus >= 0 && s.maxBankedBonus <= 50)) return "Max banked bonus spins must be 0–50.";
@@ -231,7 +232,7 @@ export function pickWedge(wedges: SpinWedge[], remaining: number, rnd = Math.ran
 
 /**
  * Spin eligibility: active placements (still running) on the event's allowed
- * terms must add up to at least . With terms selected and minActive 0,
+ * terms must add up to at least `minActive`. With terms selected and minActive 0,
  * one active placement on those terms is enough.
  */
 export function spinEligibility(
