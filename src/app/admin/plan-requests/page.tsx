@@ -182,6 +182,20 @@ export default function AdminPlanRequestsPage() {
               <div className="text-right shrink-0">
                 <p className="text-[13px] font-medium font-mono m-0 text-green">{formatPHP(r.amount)}</p>
                 <p className="text-[9px] text-text-subtle m-0 mt-0.5">{describe(r)} · {timeAgo(r.createdAt)}</p>
+                {r.event && (
+                  <p className={cn("text-[9px] m-0 mt-0.5 font-medium", r.event.reservationStatus === "reserved" ? "text-gold" : "text-red")}>
+                    {r.event.name} · {r.event.slots} slot{r.event.slots === 1 ? "" : "s"} ×{r.event.payoutMultiplier}
+                    {r.status === "pending"
+                      ? r.event.reservationStatus === "reserved"
+                        ? ` · held ${r.event.expiresAt > Date.now() ? `${Math.max(1, Math.round((r.event.expiresAt - Date.now()) / 3_600_000))} h more` : "— expiring"}`
+                        : " · reservation expired — approve now only if slots are still free"
+                      : r.event.outcome === "lost"
+                        ? " · activated WITHOUT event slots"
+                        : r.event.outcome
+                          ? " · event slots activated"
+                          : ""}
+                  </p>
+                )}
               </div>
               {tab === "pending" ? (
                 <div className="flex gap-1.5 ml-auto sm:ml-0 w-full sm:w-auto">

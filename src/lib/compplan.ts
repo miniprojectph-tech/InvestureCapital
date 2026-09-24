@@ -40,6 +40,8 @@ export type Placement = {
   lastAccrualDay?: string;
   requestId?: string;
   source?: "wallet";
+  /** Bought as event slots — the cycle income is multiplied (server-written). */
+  event?: { id: string; name: string; payoutMultiplier: number; slots: number };
 };
 
 export type CompletedPlacement = Placement & {
@@ -95,6 +97,10 @@ export type Commission = {
   placementId: string;
   placementAmount?: number;
   pct?: number;
+  /** Set when a referral event multiplied the level rate. */
+  basePct?: number;
+  multiplier?: number;
+  eventName?: string;
   amount: number;
   status: "paid" | "skipped";
   reason?: string | null;
@@ -143,7 +149,7 @@ export function fromDateInput(dateStr: string, timeFrom = Date.now()): number {
 }
 
 export function placementPerCycle(p: Placement): number {
-  return (p.capital * p.cycleRate) / 100;
+  return Math.round((p.capital * p.cycleRate) / 100 * (p.event?.payoutMultiplier ?? 1) * 100) / 100;
 }
 
 export function placementDailyAccrual(p: Placement): number {

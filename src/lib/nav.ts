@@ -70,6 +70,7 @@ export const adminNav: NavGroup[] = [
       { label: "Investors", href: "/admin/investors", icon: "users" },
       { label: "Compensation plan", href: "/admin/comp-plan", icon: "coins" },
       { label: "Placement requests", href: "/admin/plan-requests", icon: "coins" },
+      { label: "Events", href: "/admin/events", icon: "gift" },
       { label: "Withdrawals", href: "/admin/withdrawals", icon: "withdraw" },
       { label: "Referrals", href: "/admin/referrals", icon: "share" },
     ],

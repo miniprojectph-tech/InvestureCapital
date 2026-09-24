@@ -28,9 +28,11 @@ export {
 } from "./compplan";
 export { getReferralStats } from "./referral-stats";
 export { onWithdrawalWritten } from "./withdrawals";
+export { adminSaveEvent, adminSetEventStatus, adminAddEventSlots, claimEventSlots, onPlanRequestWritten } from "./events";
 
 // Community Tongits (Phase 1): room + economy callables + stale-room reaper.
 import { reapStaleTongitsRooms } from "./tongits";
+import { expireEventReservations } from "./events";
 export {
   createTongitsRoom,
   joinTongitsRoom,
@@ -78,6 +80,14 @@ async function runMaintenance(): Promise<{
     if (reaped > 0) logger.info(`reaped ${reaped} stale Tongits room(s)`);
   } catch (err) {
     logger.error("reapStaleTongitsRooms failed", err);
+  }
+
+  // Event slot reservations whose hold ran out go back to the pool.
+  try {
+    const expired = await expireEventReservations(now);
+    if (expired > 0) logger.info(`released ${expired} expired event reservation(s)`);
+  } catch (err) {
+    logger.error("expireEventReservations failed", err);
   }
 
   const usersSnap = await db.collection("users").get();

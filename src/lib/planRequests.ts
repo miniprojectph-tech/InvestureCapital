@@ -43,6 +43,18 @@ export type PlanRequest = {
   note?: string;
   /** Set by activatePlacement on approval. */
   placementId?: string;
+  /** Event-slot purchase (created by claimEventSlots): the reservation this request carries. */
+  event?: {
+    id: string;
+    name: string;
+    slots: number;
+    claimId: string;
+    payoutMultiplier: number;
+    expiresAt: number;
+    reservationStatus: "reserved" | "expired" | "released";
+    /** Set on approval: activate (reservation honoured) · retake (expired but slots were free) · lost (no slots — normal placement). */
+    outcome?: "activate" | "retake" | "lost";
+  };
   // Legacy fields (old plan templates) — display only.
   planId?: string;
   planName?: string;

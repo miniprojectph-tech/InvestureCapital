@@ -15,7 +15,13 @@ service cloud.firestore {
 
     // === Users ===
     match /users/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read, create, delete: if isSignedIn() && request.auth.uid == userId;
+      // The owner edits their own doc, but never the fields only Cloud Functions
+      // write: placements (carry the event payout multiplier), completed
+      // placements, Fast-Start ledger and the admin flag.
+      allow update: if isSignedIn() && request.auth.uid == userId
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['placements', 'completedPlacements', 'fastStart', 'isAdmin']);
       allow read, write: if isAdmin();
 
       match /activity/{activityId} {
@@ -120,8 +126,20 @@ service cloud.firestore {
         && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.status == 'pending';
+        && request.resource.data.status == 'pending'
+        && !('event' in request.resource.data); // event-slot requests are created by claimEventSlots
       allow update, delete: if isAdmin();
+    }
+
+    // === Limited events (slot boosts / referral multipliers) ===
+    // Members see live events; admins see all. Every write goes through Functions.
+    match /events/{eventId} {
+      allow read: if isSignedIn() && (resource.data.status == 'live' || isAdmin());
+      allow write: if false;
+      match /claims/{claimId} {
+        allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+        allow write: if false;
+      }
     }
 
     // === Platform settings (readable by all signed-in, writable by admin) ===

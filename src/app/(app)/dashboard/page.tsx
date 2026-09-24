@@ -4,6 +4,7 @@ import Link from "next/link";
 import { motion, type Variants } from "framer-motion";
 import { ArrowDownRight, Lock, Loader2, ArrowUpRight, Clock } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { EventBanner } from "@/components/events/EventBanner";
 import { Card } from "@/components/Card";
 import { StatStrip } from "@/components/StatStrip";
 import { PortfolioDonut } from "@/components/PortfolioDonut";
@@ -80,6 +81,7 @@ export default function DashboardPage() {
       />
 
       <motion.div variants={stagger} initial="hidden" animate="show">
+        <EventBanner className="mb-3" />
         <motion.div variants={item} className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-3 mb-3">
           <Card className="!p-0">
             <StatStrip

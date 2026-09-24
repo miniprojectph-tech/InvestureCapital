@@ -70,8 +70,15 @@ export function ActivePlacements() {
               <div key={p.id} className={cn("px-5 py-4", i < placements.length - 1 && "border-b border-border", i % 2 === 1 && "bg-card-elev/30")}>
                 <div className="flex justify-between items-baseline mb-1 gap-2">
                   <span className="text-[12px] font-medium text-text font-mono">{p.id}</span>
-                  <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-card-elev text-text-muted shrink-0">
-                    {p.termMonths}-month · started {new Date(p.startedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
+                  <span className="flex items-center gap-1 shrink-0">
+                    {p.event && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-gold/15 text-gold font-medium" title={p.event.name}>
+                        ×{p.event.payoutMultiplier} event
+                      </span>
+                    )}
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-card-elev text-text-muted">
+                      {p.termMonths}-month · started {new Date(p.startedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}
+                    </span>
                   </span>
                 </div>
 

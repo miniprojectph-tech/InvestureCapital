@@ -4,6 +4,7 @@ import { FieldValue, Timestamp, type DocumentReference, type Transaction } from 
 import { logger } from "firebase-functions";
 import { db } from "./init";
 import { sweepColorRounds } from "./colorgame";
+import { eventIsLive, slotsFree, referralMultipliers, type InvestureEvent, type EventClaim } from "./events-config";
 import {
   mergeCompPlan,
   cyclesForTerm,
@@ -56,7 +57,12 @@ export type Placement = {
   lastAccrualDay?: string; // "YYYY-MM-DD" (Asia/Manila, virtual) of the last accrual notice
   requestId?: string;
   source?: "wallet"; // reinvested from the member's wallet (no payment proof)
+  /** Bought as event slots: the cycle income is multiplied. Written by the server only. */
+  event?: { id: string; name: string; payoutMultiplier: number; slots: number };
 };
+
+/** A placement's income per cycle, including any event multiplier. */
+export const perCycleOf = (p: Placement) => Math.round((p.capital * p.cycleRate) / 100 * (p.event?.payoutMultiplier ?? 1) * 100) / 100;
 
 export type CompletedPlacement = Placement & {
   completedAt: number; // scheduled completion date (follows startedAt)
@@ -194,6 +200,8 @@ type ActivateArgs = {
   startedAt?: number;
   /** Member self-service: pay for the placement from their own wallet. */
   fromWallet?: boolean;
+  /** Server-only (claimEventSlots): stamp the placement as event slots. Never accepted from a client. */
+  event?: { id: string; name: string; payoutMultiplier: number; slots: number; claimId: string };
 };
 
 const MIN_START = Date.UTC(2020, 0, 1);
@@ -205,6 +213,7 @@ function validStart(ms: unknown, now: number): ms is number {
 export const activatePlacement = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
   const args = (request.data ?? {}) as ActivateArgs;
+  delete args.event; // only claimEventSlots may stamp a placement with an event
   const callerUid = request.auth.uid;
   if (!args.fromWallet) await assertAdmin(callerUid);
   const cfg = await loadCompPlan();
@@ -225,12 +234,18 @@ export const activatePlacement = onCall(async (request) => {
   return result;
 });
 
-async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: ActivateArgs, callerUid: string, now: number) {
+export async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: ActivateArgs, callerUid: string, now: number) {
   // ---------- reads (all before any write) ----------
   let reqRef: DocumentReference | null = null;
   let userId = args.userId;
   let amount = args.amount;
   let termMonths = args.termMonths;
+  let eventStamp = args.event ? { id: args.event.id, name: args.event.name, payoutMultiplier: args.event.payoutMultiplier, slots: args.event.slots } : undefined;
+  // Event slots reserved by a payment request: resolved on approval (below).
+  let claimRef: DocumentReference | null = null;
+  let claimOutcome: "activate" | "retake" | "lost" | null = null;
+  let claimSlots = 0;
+  let evRef: DocumentReference | null = null;
 
   if (args.fromWallet) {
     // Reinvest: the caller places for themselves and pays from their wallet.
@@ -242,12 +257,40 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
     reqRef = db.collection("plan_requests").doc(args.requestId);
     const reqSnap = await tx.get(reqRef);
     if (!reqSnap.exists) throw new HttpsError("not-found", "Request not found.");
-    const req = reqSnap.data() as { userId: string; amount: number; termMonths?: number; status: string };
+    const req = reqSnap.data() as {
+      userId: string; amount: number; termMonths?: number; status: string;
+      event?: { id: string; name: string; slots: number; claimId: string; payoutMultiplier: number };
+    };
     if (req.status !== "pending") throw new HttpsError("failed-precondition", `Request is already ${req.status}.`);
     userId = req.userId;
     amount = req.amount;
     termMonths = req.termMonths ?? termMonths;
+
+    if (req.event?.claimId) {
+      // Is the reservation still good? Reserved → activate as event slots. Expired or
+      // released → take fresh slots if the event is live and has room, else the
+      // placement goes in as a normal (non-event) placement and the admin is told.
+      evRef = db.collection("events").doc(req.event.id);
+      claimRef = evRef.collection("claims").doc(req.event.claimId);
+      const [evSnap, claimSnap] = await Promise.all([tx.get(evRef), tx.get(claimRef)]);
+      const ev = evSnap.exists ? (evSnap.data() as InvestureEvent) : null;
+      const claim = claimSnap.exists ? (claimSnap.data() as EventClaim) : null;
+      claimSlots = claim?.slots ?? req.event.slots;
+      if (ev?.slot && claim?.status === "reserved") {
+        claimOutcome = "activate";
+        eventStamp = { id: ev.id, name: ev.name, payoutMultiplier: ev.slot.payoutMultiplier, slots: claimSlots };
+      } else if (ev?.slot && claim && (claim.status === "expired" || claim.status === "released") && eventIsLive(ev, now) && slotsFree(ev) >= claimSlots) {
+        claimOutcome = "retake";
+        eventStamp = { id: ev.id, name: ev.name, payoutMultiplier: ev.slot.payoutMultiplier, slots: claimSlots };
+      } else if (claim && claim.status !== "active") {
+        claimOutcome = "lost";
+      }
+    }
   }
+
+  // Live referral events multiply the level rates for placements activated now.
+  const refEventsSnap = await tx.get(db.collection("events").where("kind", "==", "referral").where("status", "==", "live"));
+  const liveRefEvents = refEventsSnap.docs.map((d) => d.data() as InvestureEvent);
 
   if (!userId) throw new HttpsError("invalid-argument", "userId is required.");
   if (typeof amount !== "number") throw new HttpsError("invalid-argument", "amount is required.");
@@ -303,8 +346,10 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
   };
   if (args.requestId) placement.requestId = args.requestId;
   if (args.fromWallet) placement.source = "wallet";
-  const perCycle = (amount * cfg.cycleRate) / 100;
+  if (eventStamp) placement.event = eventStamp;
+  const perCycle = perCycleOf(placement);
   const memberName = displayName(member, userId);
+  const { mult: refMult, event: refEvent } = referralMultipliers(liveRefEvents, term.months, cfg.referralLevels.length, now);
   // Everything created at activation is dated to the placement's start.
   const atStart: Sched = { planId: placement.id, startedAt, offsetMs: 0 };
 
@@ -314,13 +359,14 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
   // ---------- member ----------
   patches.set(userId, { placements: [...(member.placements ?? []), placement] });
   if (args.fromWallet) patches.credit(userId, -amount);
+  const eventTag = eventStamp ? ` · ${eventStamp.name} ×${eventStamp.payoutMultiplier}` : "";
   activity(
     writes,
     userId,
     {
       type: args.fromWallet ? "reinvest" : "placement-activate",
       title: `${args.fromWallet ? "Reinvested into" : "Placement activated —"} ${placement.id}`,
-      subtitle: `${peso(amount)} · ${term.months}-month term · ${cycles} payouts of ${peso(perCycle)}`,
+      subtitle: `${peso(amount)} · ${term.months}-month term · ${cycles} payouts of ${peso(perCycle)}${eventTag}`,
       amount,
       amountKind: "out",
     },
@@ -328,8 +374,8 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
   );
   notify(writes, userId, now, {
     type: "placement",
-    title: `${placement.id} is active`,
-    body: `${peso(perCycle)} every ${cfg.cycleDays} days for ${cycles} payouts${placement.lockedBonus > 0 ? ` · Locked-In Bonus ${peso(placement.lockedBonus)} on the final payout` : ""}.`,
+    title: `${placement.id} is active${eventStamp ? ` — ${eventStamp.slots} event slot${eventStamp.slots === 1 ? "" : "s"}` : ""}`,
+    body: `${peso(perCycle)} every ${cfg.cycleDays} days for ${cycles} payouts${eventStamp ? ` (×${eventStamp.payoutMultiplier}, ${eventStamp.name})` : ""}${placement.lockedBonus > 0 ? ` · Locked-In Bonus ${peso(placement.lockedBonus)} on the final payout` : ""}.`,
     amount,
     planId: placement.id,
   });
@@ -340,14 +386,36 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
       processedBy: callerUid,
       placementId: placement.id,
       ...(args.note ? { note: args.note } : {}),
+      ...(claimOutcome ? { "event.outcome": claimOutcome } : {}),
     });
+  }
+  // Settle the event's slot counters for a payment-request purchase.
+  if (claimRef && evRef && claimOutcome) {
+    if (claimOutcome === "activate") {
+      tx.update(claimRef, { status: "active", placementId: placement.id, resolvedAt: now });
+      tx.update(evRef, { "slot.reserved": FieldValue.increment(-claimSlots), "slot.taken": FieldValue.increment(claimSlots) });
+    } else if (claimOutcome === "retake") {
+      tx.update(claimRef, { status: "active", placementId: placement.id, resolvedAt: now });
+      tx.update(evRef, { "slot.taken": FieldValue.increment(claimSlots) });
+    } else {
+      notify(writes, userId, now, {
+        type: "event",
+        title: `${placement.id} activated without event slots`,
+        body: "Your slot reservation had expired and the event is full or over, so this placement earns the normal rate.",
+        planId: placement.id,
+      });
+    }
   }
 
   // ---------- six-level referral commission ----------
   let commissionsPaid = 0;
   uplines.forEach((up, i) => {
-    const pct = cfg.referralLevels[i] ?? 0;
+    const basePct = cfg.referralLevels[i] ?? 0;
+    const mult = refMult[i] ?? 1;
+    const pct = basePct * mult;
     const commission = Math.round(((amount * pct) / 100) * 100) / 100;
+    const boost = mult > 1 && refEvent ? { basePct, multiplier: mult, eventId: refEvent.id, eventName: refEvent.name } : {};
+    const boostTag = mult > 1 && refEvent ? ` ×${mult} — ${refEvent.name}` : "";
     // Referral commission is paid to every upline; the "must be active" rule is
     // opt-in per earning type (by default it applies to the Leadership Bonus only).
     const active = !cfg.requireActiveReferral || isActiveUpline(up.data, cfg);
@@ -364,6 +432,7 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
         placementId: placement.id,
         placementAmount: amount,
         pct,
+        ...boost,
         amount: commission,
         status: paid ? "paid" : "skipped",
         reason: paid ? null : active ? "zero commission" : `upline has no active placement of ${peso(cfg.uplineMinActive)}`,
@@ -380,8 +449,8 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
       up.uid,
       {
         type: "referral-commission",
-        title: `Level ${i + 1} commission — ${memberName}`,
-        subtitle: `${pct}% of ${peso(amount)} placement ${placement.id}`,
+        title: `Level ${i + 1} commission — ${memberName}${boostTag}`,
+        subtitle: `${pct}% of ${peso(amount)} placement ${placement.id}${mult > 1 ? ` (${basePct}% × ${mult})` : ""}`,
         amount: commission,
         amountKind: "in",
       },
@@ -389,7 +458,7 @@ async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: Activate
     );
     notify(writes, up.uid, now, {
       type: "commission",
-      title: `Level ${i + 1} commission +${peso(commission)}`,
+      title: `Level ${i + 1} commission +${peso(commission)}${boostTag}`,
       body: `${memberName} placed ${peso(amount)} (${placement.id}).`,
       amount: commission,
       planId: placement.id,
@@ -520,7 +589,8 @@ export async function processPlacementsForUser(
 
       const virtualNow = now + (cur.clockAdvanceMs ?? 0);
       const eligible = Math.min(Math.floor((virtualNow - p.startedAt) / cycleMs), p.cycles);
-      const perCycle = (p.capital * p.cycleRate) / 100;
+      const perCycle = perCycleOf(p); // includes any event multiplier
+      const eventTag = p.event ? ` · ×${p.event.payoutMultiplier} ${p.event.name}` : "";
 
       for (let k = (p.cyclesPaid ?? 0) + 1; k <= eligible; k++) {
         const final = k === p.cycles;
@@ -538,7 +608,7 @@ export async function processPlacementsForUser(
           {
             type: "payout",
             title,
-            subtitle: `${p.cycleRate}% of ${peso(p.capital)}${final ? " · final payout" : ""}`,
+            subtitle: `${p.cycleRate}% of ${peso(p.capital)}${eventTag}${final ? " · final payout" : ""}`,
             amount: perCycle,
             amountKind: "in",
           },
