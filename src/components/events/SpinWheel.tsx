@@ -55,14 +55,20 @@ export function Wheel({ wedges, rotation, size = 250, spinning, highlight }: { w
       {paths.map((p, i) => (
         <path key={i} d={p.d} fill={p.w.color} stroke="#0A0F1F" strokeWidth="1.5" opacity={highlight == null || highlight === i ? 1 : 0.35} />
       ))}
-      {paths.map((p, i) => (
+      {paths.map((p, i) => {
+        // Flip labels that will sit on the lower half once the wheel comes to rest, so
+        // nothing reads upside-down after a spin (the label's on-screen angle is the
+        // wedge angle plus the wheel's rotation).
+        const onScreen = (((p.angle + rotation) % 360) + 360) % 360;
+        const flip = onScreen > 90 && onScreen < 270;
+        return (
         <text
           key={`t${i}`}
           x={p.lx}
           y={p.ly}
           textAnchor="middle"
           dominantBaseline="middle"
-          transform={`rotate(${p.angle > 90 && p.angle < 270 ? p.angle + 180 : p.angle} ${p.lx} ${p.ly})`}
+          transform={`rotate(${flip ? p.angle + 180 : p.angle} ${p.lx} ${p.ly})`}
           fontFamily="ui-monospace, Menlo, Consolas, monospace"
           fontSize={p.w.points === 0 ? 10 : n > 8 ? 11 : 13}
           fontWeight={700}
@@ -70,7 +76,8 @@ export function Wheel({ wedges, rotation, size = 250, spinning, highlight }: { w
         >
           {p.w.label}
         </text>
-      ))}
+        );
+      })}
       <circle cx="150" cy="150" r="26" fill="#131A2E" stroke="#F5C66B" strokeWidth="3" />
       <text x="150" y="155" textAnchor="middle" fontFamily="-apple-system, system-ui, sans-serif" fontSize="11" fontWeight={700} fill="#F5C66B">SPIN</text>
     </svg>
@@ -175,14 +182,6 @@ export function SpinPanel({ event, now }: { event: InvestureEvent; now: number }
           <div className="h-1 rounded-full bg-border overflow-hidden mt-1"><div className="h-full bg-[#F5C66B]" style={{ width: `${poolTotal > 0 ? (poolLeft / poolTotal) * 100 : 0}%` }} /></div>
           <p className="text-[9px] text-text-subtle m-0 mt-0.5 flex items-center gap-1"><Clock className="w-2.5 h-2.5" /> next window in {countdown(win.endsAt, now)}</p>
         </div>
-      </div>
-
-      <div className="w-full flex flex-wrap gap-1.5">
-        {sp.wedges.map((w, i) => (
-          <span key={i} className={cn("text-[10px] px-2 py-0.5 rounded-full border", w.points >= 500 ? "bg-[#F5C66B]/10 border-[#F5C66B]/40 text-[#F5C66B]" : "bg-canvas border-border text-text-muted")}>
-            {w.label} · {w.chance}%
-          </span>
-        ))}
       </div>
 
       {error && <p className="text-[11px] text-red m-0 text-center">{error}</p>}
