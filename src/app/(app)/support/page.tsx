@@ -150,6 +150,20 @@ export default function SupportPage() {
                 </div>
               </a>
               <a
+                href="/faq"
+                className="flex items-center gap-3 px-3 py-2.5 bg-canvas border border-border rounded-lg hover:bg-card-elev transition"
+              >
+                <div className="w-7 h-7 rounded-md bg-gold/15 flex items-center justify-center">
+                  <HelpCircle className="w-3.5 h-3.5 text-gold" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] m-0">Help &amp; FAQ</p>
+                  <p className="text-[10px] text-text-subtle mt-0.5 m-0">
+                    Answers, screenshots and walkthrough videos from the team
+                  </p>
+                </div>
+              </a>
+              <a
                 href="/community#admin"
                 className="flex items-center gap-3 px-3 py-2.5 bg-canvas border border-border rounded-lg hover:bg-card-elev transition"
               >

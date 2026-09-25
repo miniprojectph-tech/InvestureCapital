@@ -162,6 +162,19 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // === Editable content (Help & FAQ) ===
+    // content/faq is the whole FAQ in one document (one read per visit);
+    // content/faqVotes holds helpful counts, written only by the faqVote function.
+    match /content/{doc} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() && doc != 'faqVotes';
+    }
+    // A member's own FAQ votes (written by the faqVote function).
+    match /faq_voters/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
     // === Referral code index (code -> uid) ===
     // Publicly readable by signed-in users so a new signup can resolve ?ref=CODE
     // to the referrer's uid (they can't query the users collection). A user may

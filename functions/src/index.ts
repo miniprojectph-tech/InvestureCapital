@@ -14,6 +14,9 @@ export { placeColorBet, resolveColorRound, adminAdjustColorJackpot, adminSetColo
 // (History is kept forever — there is no pruning job.)
 export { ensureCommunityAdmin, ensureCommunityMember, updateCommunityStats, refreshCommunityStats, updateOnlineCount } from "./community";
 
+// Help & FAQ: one-vote-per-member "was this helpful" counters.
+export { faqVote } from "./faq";
+
 // Compensation plan: placement activation (commissions + Fast-Start) and
 // read-only downline stats for the Referrals page.
 export {

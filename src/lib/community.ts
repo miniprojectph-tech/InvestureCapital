@@ -778,11 +778,11 @@ export async function uploadChatImage(
   storage: FirebaseStorage,
   uid: string,
   file: File,
-  opts: { keepOriginal: boolean },
+  opts: { keepOriginal: boolean; folder?: string },
 ): Promise<ChatMedia> {
   if (!IMAGE_TYPES.includes(file.type)) throw new Error("Only PNG, JPG, WebP, or GIF images are allowed");
   if (file.size > MAX_IMAGE_BYTES) throw new Error(`Image too large (max ${MAX_IMAGE_BYTES / 1024 / 1024} MB)`);
-  const base = `community/${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  const base = `${opts.folder ?? `community/${uid}`}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   // GIFs stay as-is so they keep animating (small cap since they aren't compressed).
   if (file.type === "image/gif") {
@@ -814,9 +814,16 @@ export async function uploadChatImage(
 }
 
 /** Admin-only: short video (≤15 MB, ≤30 s) with a generated poster frame. */
-export async function uploadChatVideo(storage: FirebaseStorage, uid: string, file: File): Promise<ChatMedia> {
+export async function uploadChatVideo(
+  storage: FirebaseStorage,
+  uid: string,
+  file: File,
+  opts: { folder?: string; maxBytes?: number; maxSeconds?: number } = {},
+): Promise<ChatMedia> {
+  const maxBytes = opts.maxBytes ?? MAX_VIDEO_BYTES;
+  const maxSeconds = opts.maxSeconds ?? MAX_VIDEO_SECONDS;
   if (!VIDEO_TYPES.includes(file.type)) throw new Error("Only MP4, WebM, or MOV videos are allowed");
-  if (file.size > MAX_VIDEO_BYTES) throw new Error(`Video too large (max ${MAX_VIDEO_BYTES / 1024 / 1024} MB)`);
+  if (file.size > maxBytes) throw new Error(`Video too large (max ${Math.round(maxBytes / 1024 / 1024)} MB)`);
 
   const url = URL.createObjectURL(file);
   const v = document.createElement("video");
@@ -830,8 +837,8 @@ export async function uploadChatVideo(storage: FirebaseStorage, uid: string, fil
       v.onerror = () => rej(new Error("Couldn't read this video"));
     });
     const duration = v.duration;
-    if (!isFinite(duration) || duration > MAX_VIDEO_SECONDS + 0.5) {
-      throw new Error(`Videos must be ${MAX_VIDEO_SECONDS} seconds or shorter`);
+    if (!isFinite(duration) || duration > maxSeconds + 0.5) {
+      throw new Error(maxSeconds >= 60 ? `Videos must be ${Math.round(maxSeconds / 60)} minute${maxSeconds >= 120 ? "s" : ""} or shorter` : `Videos must be ${maxSeconds} seconds or shorter`);
     }
     const w = v.videoWidth;
     const h = v.videoHeight;
@@ -840,7 +847,7 @@ export async function uploadChatVideo(storage: FirebaseStorage, uid: string, fil
       v.currentTime = Math.min(0.5, Math.max(0, duration / 2));
     });
     const poster = await encodeResized(v, w, h, 800, 0.8, false);
-    const base = `community/${uid}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const base = `${opts.folder ?? `community/${uid}`}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const ext = file.type === "video/webm" ? "webm" : file.type === "video/quicktime" ? "mov" : "mp4";
     const [videoUrl, posterUrl] = await Promise.all([
       putBlob(storage, `${base}.${ext}`, file, file.type),

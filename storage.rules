@@ -88,6 +88,16 @@ service firebase.storage {
       allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
+    // ===== Help & FAQ media (admin uploads; members read) =====
+    match /faq/{file} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin()
+        && request.resource.size < 40 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+          || request.resource.contentType.matches('video/.*'));
+      allow delete: if isAdmin();
+    }
+
     // ===== catch-all (keep last) =====
     match /{allPaths=**} {
       allow read: if isSignedIn();

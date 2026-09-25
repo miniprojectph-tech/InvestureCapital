@@ -29,6 +29,7 @@ import {
   MessageCircle,
   X,
   type LucideIcon,
+  HelpCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { NavGroup, IconName } from "@/lib/nav";
@@ -55,6 +56,7 @@ const iconMap: Record<IconName, LucideIcon> = {
   spade: Spade,
   refresh: RefreshCw,
   chat: MessageCircle,
+  help: HelpCircle,
 };
 
 type SidebarProps = {
