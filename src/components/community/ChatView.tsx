@@ -39,7 +39,7 @@ import {
   summarizeReactions,
 } from "@/lib/community";
 import { findSticker, stickerSrc, QUICK_REACTIONS } from "@/lib/stickers";
-import { StickerTray, EmojiGrid, rememberSticker } from "./StickerTray";
+import { StickerTray, FullEmojiPicker, rememberSticker } from "./StickerTray";
 
 type Props = {
   messages: ChatItem[];
@@ -754,8 +754,8 @@ export function ChatView({
           <div className="flex-1 flex flex-col justify-center px-4 gap-2.5 min-h-0" onClick={(e) => e.stopPropagation()}>
             {canReact && (
               sheet.picker ? (
-                <div className="bg-[#1B2340] border border-border-strong rounded-2xl p-2 max-h-[40dvh] overflow-y-auto shadow-2xl shadow-black/60 self-stretch">
-                  <EmojiGrid compact onPick={(e) => react(sheet.item, e)} />
+                <div className="bg-card border border-border-strong rounded-2xl overflow-hidden shadow-2xl shadow-black/60 self-stretch" style={{ height: "min(340px, 42dvh)" }}>
+                  <FullEmojiPicker onPick={(e) => react(sheet.item, e)} />
                 </div>
               ) : (
                 <div className={cn("flex items-center gap-1 px-2 py-1.5 rounded-full bg-[#1B2340] border border-border-strong shadow-2xl shadow-black/60", sheet.item.senderId === meUid ? "self-end" : "self-start ml-[38px]")}>

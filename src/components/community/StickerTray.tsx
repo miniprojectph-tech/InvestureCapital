@@ -1,9 +1,38 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { Clock, Search } from "lucide-react";
+import type { Theme, EmojiStyle, SuggestionMode, EmojiClickData } from "emoji-picker-react";
 import { cn } from "@/lib/utils";
-import { STICKER_PACKS, EMOJI_GROUPS, stickerSrc } from "@/lib/stickers";
+import { STICKER_PACKS, stickerSrc } from "@/lib/stickers";
+
+// Full emoji catalogue (Recently used, Smileys & People, Animals, Food, …) with
+// search. Native emoji style: rendered by the device font, no image CDN, no
+// network. Loaded on first open only, so the chat page itself stays light.
+const EmojiPicker = dynamic(() => import("emoji-picker-react"), {
+  ssr: false,
+  loading: () => <div className="h-full flex items-center justify-center text-[11px] text-text-subtle">Loading emoji…</div>,
+});
+
+/** Emoji picker shared by the tray's Emoji tab and the "more reactions" sheet. */
+export function FullEmojiPicker({ onPick, height = "100%" }: { onPick: (emoji: string) => void; height?: number | string }) {
+  return (
+    <EmojiPicker
+      onEmojiClick={(d: EmojiClickData) => onPick(d.emoji)}
+      theme={"dark" as Theme}
+      emojiStyle={"native" as EmojiStyle}
+      suggestedEmojisMode={"recent" as SuggestionMode}
+      lazyLoadEmojis
+      skinTonesDisabled
+      previewConfig={{ showPreview: false }}
+      searchPlaceHolder="Search emoji"
+      width="100%"
+      height={height}
+      style={{ "--epr-bg-color": "transparent", "--epr-category-label-bg-color": "#131A2E", "--epr-picker-border-color": "transparent", "--epr-search-input-bg-color": "#0A0F1F", "--epr-search-input-bg-color-active": "#0A0F1F", "--epr-search-border-color": "#4F8EF7", "--epr-text-color": "#EDF0F5", "--epr-search-input-text-color": "#EDF0F5", "--epr-search-input-placeholder-color": "#6B7488", "--epr-hover-bg-color": "#1A2138", "--epr-focus-bg-color": "#1A2138", "--epr-highlight-color": "#4F8EF7", "--epr-category-icon-active-color": "#4F8EF7", "--epr-emoji-size": "26px", "--epr-header-padding": "8px 10px", "--epr-category-navigation-button-size": "24px", "--epr-horizontal-padding": "8px" } as React.CSSProperties}
+    />
+  );
+}
 
 const RECENT_KEY = "investure.recentStickers";
 
@@ -25,32 +54,6 @@ export function rememberSticker(key: string) {
   }
 }
 
-/** Emoji grid shared by the tray's Emoji tab and the "more reactions" picker. */
-export function EmojiGrid({ onPick, compact }: { onPick: (emoji: string) => void; compact?: boolean }) {
-  return (
-    <div className="flex flex-col gap-2">
-      {EMOJI_GROUPS.map((g) => (
-        <div key={g.name}>
-          {!compact && <p className="text-[10px] uppercase tracking-[0.12em] text-text-subtle m-0 mb-1 px-1">{g.name}</p>}
-          <div className={cn("grid gap-0.5", compact ? "grid-cols-8" : "grid-cols-8 sm:grid-cols-10")}>
-            {g.emojis.map((e) => (
-              <button
-                key={e}
-                type="button"
-                onClick={() => onPick(e)}
-                className="h-9 rounded-lg text-[22px] leading-none hover:bg-card-elev active:scale-95 transition"
-                aria-label={`Emoji ${e}`}
-              >
-                {e}
-              </button>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 type Props = {
   /** Sticker tapped → sent immediately. */
   onSticker: (key: string) => void;
@@ -59,7 +62,7 @@ type Props = {
 };
 
 export function StickerTray({ onSticker, onEmoji }: Props) {
-  const [tab, setTab] = useState<"stickers" | "emoji">("stickers");
+  const [tab, setTab] = useState<"stickers" | "emoji">("emoji");
   const [packId, setPackId] = useState<string>("recent");
   const [search, setSearch] = useState("");
   const [recent] = useState<string[]>(() => (typeof window === "undefined" ? [] : readRecent()));
@@ -84,9 +87,9 @@ export function StickerTray({ onSticker, onEmoji }: Props) {
   })();
 
   return (
-    <div className="border-t border-border bg-card flex flex-col" style={{ height: 300 }}>
+    <div className="border-t border-border bg-card flex flex-col" style={{ height: 320 }}>
       <div className="flex justify-center gap-7 border-b border-border">
-        {(["stickers", "emoji"] as const).map((t) => (
+        {(["emoji", "stickers"] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -156,8 +159,8 @@ export function StickerTray({ onSticker, onEmoji }: Props) {
           </div>
         </>
       ) : (
-        <div className="flex-1 overflow-y-auto px-2 py-2">
-          <EmojiGrid onPick={onEmoji} />
+        <div className="flex-1 min-h-0">
+          <FullEmojiPicker onPick={onEmoji} />
         </div>
       )}
     </div>

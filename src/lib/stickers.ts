@@ -47,12 +47,6 @@ export function stickerSrc(pack: StickerPack, sticker: Sticker): string {
   return `/stickers/${pack.id}/${sticker.file}`;
 }
 
-/** Quick-reaction bar (Messenger's six, with two Investure ones). */
+/** Quick-reaction bar (Messenger's six, with two Investure ones). The full
+ * catalogue behind "+" and the Emoji tab comes from emoji-picker-react. */
 export const QUICK_REACTIONS = ["❤️", "😆", "😮", "🔥", "💰", "👍"];
-
-/** The emoji tab: a compact, curated set (no library, no network). */
-export const EMOJI_GROUPS: { name: string; emojis: string[] }[] = [
-  { name: "Smileys", emojis: ["😀", "😁", "😂", "🤣", "😊", "😍", "🥰", "😎", "🤩", "🥳", "😉", "😋", "🤔", "🤗", "😴", "😅", "😭", "😢", "😡", "🤯", "😱", "🙄", "😏", "🤑", "🤞", "🙏", "👏", "🙌", "💪", "🫡"] },
-  { name: "Money", emojis: ["💰", "💸", "💵", "🪙", "💎", "📈", "📉", "🏦", "🔒", "🔑", "🎯", "🏆", "🥇", "🎁", "🎉", "🎊", "🚀", "⭐", "✨", "🔥"] },
-  { name: "Gestures", emojis: ["👍", "👎", "👌", "✌️", "🤝", "👋", "🫶", "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "💯", "✅", "❌", "⚡", "☕", "🍀"] },
-];

@@ -277,3 +277,25 @@ body {
   .rt td:not([data-label]):empty { display: none; }
   .rt td[colspan] { padding: 8px 0 4px !important; }
 }
+
+/* Emoji picker (emoji-picker-react) — match the dark theme; colours come from
+   the CSS variables set in StickerTray, this only trims chrome. */
+.EmojiPickerReact.epr-dark-theme,
+.EmojiPickerReact {
+  border: 0 !important;
+  border-radius: 0 !important;
+  font-family: inherit !important;
+}
+.EmojiPickerReact .epr-category-nav {
+  padding: 4px 8px 6px !important;
+}
+.EmojiPickerReact .epr-emoji-category-label {
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  height: 28px !important;
+}
+.EmojiPickerReact .epr-search-container input.epr-search {
+  border-radius: 999px !important;
+  height: 32px !important;
+  font-size: 12px !important;
+}
