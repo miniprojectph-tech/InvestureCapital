@@ -95,6 +95,32 @@ async function computeCommunityStats(): Promise<CommunityStats> {
   return stats;
 }
 
+/**
+ * "N active now": count distinct members with a live presence connection
+ * (`community/presence/{uid}/{conn}`, removed by onDisconnect) into
+ * `community/online`. Clients read the single number, never the whole node.
+ * Entries older than 12 h are dropped as leftovers of connections that died
+ * without a clean disconnect.
+ */
+export const updateOnlineCount = onSchedule("every 5 minutes", async () => {
+  const rtdb = getDatabase();
+  const snap = await rtdb.ref("community/presence").once("value");
+  const cutoff = Date.now() - 12 * 3_600_000;
+  const stale: Record<string, null> = {};
+  let online = 0;
+  snap.forEach((user) => {
+    let live = false;
+    user.forEach((conn) => {
+      const at = conn.val();
+      if (typeof at === "number" && at > cutoff) live = true;
+      else stale[`community/presence/${user.key}/${conn.key}`] = null;
+    });
+    if (live) online++;
+  });
+  const writes: Record<string, unknown> = { ...stale, "community/online": online };
+  await rtdb.ref().update(writes);
+});
+
 export const updateCommunityStats = onSchedule("every 24 hours", async () => {
   const s = await computeCommunityStats();
   logger.info("community stats", s);

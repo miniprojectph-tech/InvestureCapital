@@ -11,8 +11,11 @@ import {
   isInboxUnread,
   sendInboxMessage,
   deleteInboxMessage,
+  reactToInboxMessage,
   markInboxRead,
   formatRelative,
+  useTypingSignal,
+  useTypingNames,
   type ChatItem,
   type Sender,
 } from "@/lib/community";
@@ -40,6 +43,9 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
 
   const current = useMemo(() => threads.find((t) => t.uid === selected) ?? null, [threads, selected]);
   const currentUnread = isInboxUnread(current, "admin");
+  const typingScope = useMemo(() => (selected ? { thread: selected } : null), [selected]);
+  const typing = useTypingSignal(typingScope, "admin", staff.name);
+  const typingNames = useTypingNames(typingScope, "admin");
 
   useEffect(() => {
     if (selected && current && currentUnread) markInboxRead(selected, "admin");
@@ -116,36 +122,42 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
       {/* Thread */}
       <div className={cn(!selected && "max-lg:hidden")}>
         {selected && current ? (
-          <>
-            <div className="flex items-center gap-2 mb-2">
-              <button onClick={() => setSelected(null)} className="lg:hidden p-1.5 text-text-muted hover:text-text" aria-label="Back to inbox">
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <div className="min-w-0">
-                <p className="text-[12px] font-medium m-0 truncate">{current.name}</p>
-                {current.email && <p className="text-[10px] text-text-subtle m-0 truncate">{current.email}</p>}
+          <ChatView
+            key={selected}
+            header={
+              <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border shrink-0">
+                <button onClick={() => setSelected(null)} className="lg:hidden w-8 h-8 -ml-1 flex items-center justify-center text-blue" aria-label="Back to inbox">
+                  <ArrowLeft className="w-5 h-5" />
+                </button>
+                <div className="w-9 h-9 rounded-full bg-blue/15 text-blue text-[11px] font-extrabold flex items-center justify-center shrink-0">{initialsOf(current.name)}</div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold m-0 truncate">{current.name}</p>
+                  {current.email && <p className="text-[10px] text-text-subtle m-0 truncate">{current.email}</p>}
+                </div>
+                {threadAside}
               </div>
-              {threadAside && <div className="ml-auto">{threadAside}</div>}
-            </div>
-            <ChatView
-              key={selected}
-              messages={messages}
-              loading={loading}
-              meUid="admin"
-              uploaderUid={staff.uid}
-              emptyText="No messages in this conversation yet."
-              canSend={canSend}
-              sendDisabledReason="Moderator access is still syncing…"
-              allowVideo
-              keepOriginal
-              maxText={1000}
-              hasMore={feed.hasMore}
-              loadingOlder={feed.loadingOlder}
-              onLoadOlder={feed.loadOlder}
-              onSend={(p) => sendInboxMessage(selected, staff, p)}
-              onDelete={(m: ChatItem) => deleteInboxMessage(selected, m.id)}
-            />
-          </>
+            }
+            messages={messages}
+            loading={loading}
+            meUid="admin"
+            reactorUid={staff.uid}
+            uploaderUid={staff.uid}
+            emptyText="No messages in this conversation yet."
+            canSend={canSend}
+            sendDisabledReason="Moderator access is still syncing…"
+            allowVideo
+            keepOriginal
+            maxText={1000}
+            hasMore={feed.hasMore}
+            loadingOlder={feed.loadingOlder}
+            onLoadOlder={feed.loadOlder}
+            typingNames={typingNames}
+            onTyping={typing.ping}
+            onTypingStop={typing.stop}
+            onSend={(p) => sendInboxMessage(selected, staff, p)}
+            onReact={(m: ChatItem, emoji) => reactToInboxMessage(selected, m.id, staff.uid, emoji)}
+            onDelete={(m: ChatItem) => deleteInboxMessage(selected, m.id)}
+          />
         ) : (
           <div className="bg-card border border-border rounded-xl flex items-center justify-center" style={{ height: "calc(100dvh - 235px)", minHeight: 420 }}>
             <div className="text-center px-6">

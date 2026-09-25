@@ -14,6 +14,7 @@ import {
   remove,
   set,
   get,
+  onDisconnect,
   serverTimestamp,
 } from "firebase/database";
 import { httpsCallable } from "firebase/functions";
@@ -30,7 +31,13 @@ import { useAuth } from "./auth";
 // Clients write directly under rules — see database.rules.json — and media goes
 // to Storage under /community/{uid}/ after being compressed on-device.
 
-export type ChatKind = "text" | "image" | "video";
+export type ChatKind = "text" | "image" | "video" | "sticker";
+
+/** Quoted message a reply points at (a snapshot, so it survives deletion). */
+export type ReplyRef = { id: string; name: string; text?: string };
+
+/** One reaction per member per message, keyed by uid → emoji (Messenger style). */
+export type Reactions = Record<string, string>;
 
 export type ChatMedia = {
   url: string;
@@ -54,6 +61,10 @@ export type ChatItem = {
   admin: boolean;
   /** Posted by a chat moderator (shows a "Mod" tag instead of "Admin"). */
   mod?: boolean;
+  /** "<pack>/<id>" for kind "sticker" — see lib/stickers.ts. */
+  sticker?: string;
+  replyTo?: ReplyRef;
+  reactions?: Reactions;
 };
 
 /** A member granted chat-only moderator powers by a full admin. */
@@ -80,21 +91,22 @@ export const MAX_GIF_BYTES = 3 * 1024 * 1024;
 
 /** isAdmin = full app admin; isMod = chat-only moderator (see ChatMod). */
 export type Sender = { uid: string; name: string; isAdmin: boolean; isMod?: boolean };
-export type SendPayload = { kind: ChatKind; text?: string; media?: ChatMedia };
+export type SendPayload = { kind: ChatKind; text?: string; media?: ChatMedia; sticker?: string; replyTo?: ReplyRef };
 
-type RawRoom = { uid: string; name: string; kind: ChatKind; text?: string; media?: ChatMedia; at: number; admin?: boolean; mod?: boolean };
-type RawInbox = { from: string; name: string; kind: ChatKind; text?: string; media?: ChatMedia; at: number };
+type RawCommon = { kind: ChatKind; text?: string; media?: ChatMedia; at: number; sticker?: string; replyTo?: ReplyRef; re?: Reactions };
+type RawRoom = RawCommon & { uid: string; name: string; admin?: boolean; mod?: boolean };
+type RawInbox = RawCommon & { from: string; name: string };
 
 // ===== Hooks =====
 
 const roomToItem = (id: string, raw: unknown): ChatItem => {
   const m = raw as RawRoom;
-  return { id, senderId: m.uid, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: !!m.admin, mod: !!m.mod };
+  return { id, senderId: m.uid, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: !!m.admin, mod: !!m.mod, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
 };
 
 const inboxToItem = (id: string, raw: unknown): ChatItem => {
   const m = raw as RawInbox;
-  return { id, senderId: m.from, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: m.from === "admin" };
+  return { id, senderId: m.from, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: m.from === "admin", sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
 };
 
 const byTime = (a: ChatItem, b: ChatItem) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -452,28 +464,174 @@ function needRtdb() {
 
 function previewText(p: SendPayload): string {
   if (p.text?.trim()) return p.text.trim().slice(0, 120);
-  return p.kind === "image" ? "📷 Photo" : p.kind === "video" ? "🎬 Video" : "";
+  return p.kind === "image" ? "📷 Photo" : p.kind === "video" ? "🎬 Video" : p.kind === "sticker" ? "Sticker" : "";
+}
+
+/** The optional fields shared by room and inbox messages. */
+function optionalFields(payload: SendPayload, maxText: number): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const text = payload.text?.trim();
+  if (text) out.text = text.slice(0, maxText);
+  if (payload.media) out.media = payload.media;
+  if (payload.kind === "sticker" && payload.sticker) out.sticker = payload.sticker;
+  if (payload.replyTo) {
+    const r: ReplyRef = { id: payload.replyTo.id.slice(0, 40), name: payload.replyTo.name.slice(0, 40) };
+    if (payload.replyTo.text) r.text = payload.replyTo.text.slice(0, 120);
+    out.replyTo = r;
+  }
+  return out;
 }
 
 export async function sendRoomMessage(sender: Sender, payload: SendPayload): Promise<void> {
   const rtdb = needRtdb();
   const id = push(ref(rtdb, "community/room")).key;
   if (!id) throw new Error("Couldn't create message");
-  const text = payload.text?.trim();
   const msg: Record<string, unknown> = {
     uid: sender.uid,
     name: sender.name.slice(0, 40),
     kind: payload.kind,
     at: serverTimestamp(),
+    ...optionalFields(payload, MAX_TEXT),
   };
-  if (text) msg.text = text.slice(0, MAX_TEXT);
-  if (payload.media) msg.media = payload.media;
   if (sender.isAdmin || sender.isMod) msg.admin = true;
   if (sender.isMod && !sender.isAdmin) msg.mod = true;
   await update(ref(rtdb), {
     [`community/room/${id}`]: msg,
     [`community/lastPost/${sender.uid}`]: serverTimestamp(),
+    [`community/typing/${sender.uid}`]: null,
   });
+}
+
+/** Add, change, or clear (emoji = null) the caller's reaction on a room message. */
+export function reactToRoomMessage(msgId: string, uid: string, emoji: string | null) {
+  const r = ref(needRtdb(), `community/room/${msgId}/re/${uid}`);
+  return emoji ? set(r, emoji) : remove(r);
+}
+
+export function reactToInboxMessage(threadUid: string, msgId: string, uid: string, emoji: string | null) {
+  const r = ref(needRtdb(), `community/inbox/${threadUid}/${msgId}/re/${uid}`);
+  return emoji ? set(r, emoji) : remove(r);
+}
+
+/** Summarise reactions for display: emoji → count, plus the caller's own. */
+export function summarizeReactions(reactions: Reactions | undefined, meUid: string): { list: { emoji: string; count: number }[]; mine: string | undefined; total: number } {
+  const counts = new Map<string, number>();
+  for (const e of Object.values(reactions ?? {})) counts.set(e, (counts.get(e) ?? 0) + 1);
+  const list = [...counts.entries()].map(([emoji, count]) => ({ emoji, count })).sort((a, b) => b.count - a.count);
+  return { list, mine: reactions?.[meUid], total: Object.keys(reactions ?? {}).length };
+}
+
+/** "Today 9:15 AM", "Yesterday 3:02 PM", "Sep 21, 10:00 AM" — the separator between gaps. */
+export function formatChatStamp(at: number): string {
+  const day = formatChatDay(at);
+  const time = formatChatTime(at);
+  return day === "Today" || day === "Yesterday" ? `${day} ${time}` : `${day}, ${time}`;
+}
+
+// ===== Typing indicators & presence =====
+
+const TYPING_TTL = 5_000;
+
+/** Path for who-is-typing: the room, or a private thread (who = uid or "admin"). */
+function typingPath(scope: { room: true } | { thread: string }): string {
+  return "room" in scope ? "community/typing" : `community/inboxTyping/${scope.thread}`;
+}
+
+/**
+ * Write "I'm typing" at most every 2 s while the composer is active and clear
+ * it on send/blur. Tiny writes (name + timestamp); readers drop stale entries.
+ */
+export function useTypingSignal(scope: { room: true } | { thread: string } | null, who: string, name: string) {
+  const last = useRef(0);
+  const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stop = useCallback(() => {
+    if (!scope) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    if (clearTimer.current) clearTimeout(clearTimer.current);
+    last.current = 0;
+    remove(ref(rtdb, `${typingPath(scope)}/${who}`)).catch(() => {});
+  }, [scope, who]);
+  const ping = useCallback(() => {
+    if (!scope) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    const now = Date.now();
+    if (now - last.current > 2_000) {
+      last.current = now;
+      set(ref(rtdb, `${typingPath(scope)}/${who}`), { name: name.slice(0, 40), at: serverTimestamp() }).catch(() => {});
+    }
+    if (clearTimer.current) clearTimeout(clearTimer.current);
+    clearTimer.current = setTimeout(stop, TYPING_TTL);
+  }, [scope, who, name, stop]);
+  useEffect(() => stop, [stop]);
+  return { ping, stop };
+}
+
+/** Names of the other people typing right now (stale entries ignored). */
+export function useTypingNames(scope: { room: true } | { thread: string } | null, exclude: string): string[] {
+  const { user } = useAuth();
+  const [names, setNames] = useState<string[]>([]);
+  useEffect(() => {
+    if (!user || !scope) { setNames([]); return; }
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    let tick: ReturnType<typeof setInterval> | null = null;
+    let latest: Record<string, { name?: string; at?: number }> = {};
+    const compute = () => {
+      const cutoff = Date.now() - TYPING_TTL - 1_000;
+      setNames(
+        Object.entries(latest)
+          .filter(([who, v]) => who !== exclude && typeof v?.at === "number" && v.at > cutoff)
+          .map(([, v]) => v.name ?? "Someone")
+          .slice(0, 3),
+      );
+    };
+    const unsub = onValue(
+      ref(rtdb, typingPath(scope)),
+      (s) => { latest = (s.val() as typeof latest | null) ?? {}; compute(); },
+      () => setNames([]),
+    );
+    tick = setInterval(compute, 2_000);
+    return () => { unsub(); if (tick) clearInterval(tick); };
+  }, [user, scope, exclude]);
+  return names;
+}
+
+/**
+ * Presence: `community/presence/{uid}/{connectionId} = timestamp`, removed by
+ * the server when the socket drops. A 5-minute Cloud Function counts distinct
+ * uids into `community/online` so clients never download the whole node.
+ */
+export function usePresence(enabled: boolean) {
+  const { user } = useAuth();
+  useEffect(() => {
+    if (!user || !enabled) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    const conn = Math.random().toString(36).slice(2, 10);
+    const mine = ref(rtdb, `community/presence/${user.uid}/${conn}`);
+    const unsub = onValue(ref(rtdb, ".info/connected"), (s) => {
+      if (s.val() !== true) return;
+      onDisconnect(mine).remove().then(() => set(mine, serverTimestamp())).catch(() => {});
+    });
+    return () => {
+      unsub();
+      remove(mine).catch(() => {});
+    };
+  }, [user, enabled]);
+}
+
+export function useOnlineCount(): number | null {
+  const { user } = useAuth();
+  const [n, setN] = useState<number | null>(null);
+  useEffect(() => {
+    if (!user) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, "community/online"), (s) => setN(typeof s.val() === "number" ? s.val() : null), () => setN(null));
+  }, [user]);
+  return n;
 }
 
 export function deleteRoomMessage(id: string) {
@@ -504,19 +662,18 @@ export async function sendInboxMessage(
   if (!id) throw new Error("Couldn't create message");
   const staff = sender.isAdmin || !!sender.isMod;
   const from = staff ? "admin" : sender.uid;
-  const text = payload.text?.trim();
   const msg: Record<string, unknown> = {
     from,
     name: (sender.isAdmin ? "Admin" : sender.isMod ? "Moderator" : sender.name).slice(0, 40),
     kind: payload.kind,
     at: serverTimestamp(),
+    ...optionalFields(payload, 1000),
   };
-  if (text) msg.text = text.slice(0, 1000);
-  if (payload.media) msg.media = payload.media;
 
   const metaBase = `community/inboxMeta/${threadUid}`;
   const upd: Record<string, unknown> = {
     [`community/inbox/${threadUid}/${id}`]: msg,
+    [`community/inboxTyping/${threadUid}/${from}`]: null,
     [`${metaBase}/lastAt`]: serverTimestamp(),
     [`${metaBase}/lastText`]: previewText(payload),
     [`${metaBase}/lastFrom`]: from,
