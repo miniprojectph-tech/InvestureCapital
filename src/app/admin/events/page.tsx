@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-import { AlertCircle, CheckCircle2, Loader2, Plus, Sparkles, Users, Upload, Eye, Power, X, Dices, Trash2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Plus, Sparkles, Users, Upload, Eye, Power, X, Dices, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
@@ -38,6 +38,9 @@ import {
 } from "@/lib/events";
 
 type Draft = Omit<InvestureEvent, "id" | "createdAt" | "updatedAt" | "status"> & { id?: string };
+
+const SPIN_PAGE = 10;      // spins shown per page in Wheel activity
+const SPIN_LOG_CAP = 200;  // most recent spins kept in memory (20 pages)
 
 const HOUR = 3_600_000;
 function toLocalInput(ms: number | null): string {
@@ -96,7 +99,12 @@ export default function AdminEventsPage() {
   const live = events.filter((e) => e.status === "live");
   const selectedEvent = events.find((e) => e.id === selected) ?? live[0] ?? null;
   const claims = useEventClaims(selectedEvent?.kind === "slot" ? selectedEvent.id : null, "all");
-  const spinLog = useSpinLog(selectedEvent?.kind === "spin" ? selectedEvent.id : null, 40);
+  const spinLog = useSpinLog(selectedEvent?.kind === "spin" ? selectedEvent.id : null, SPIN_LOG_CAP);
+  const [spinPage, setSpinPage] = useState(0);
+  const spinPages = Math.max(1, Math.ceil(spinLog.length / SPIN_PAGE));
+  const spinPageSafe = Math.min(spinPage, spinPages - 1);
+  const spinRows = spinLog.slice(spinPageSafe * SPIN_PAGE, spinPageSafe * SPIN_PAGE + SPIN_PAGE);
+  useEffect(() => { setSpinPage(0); }, [selectedEvent?.id]);
 
   async function run(key: string, fn: () => Promise<string>) {
     setBusy(key);
@@ -288,7 +296,7 @@ export default function AdminEventsPage() {
                   </thead>
                   <tbody>
                     {spinLog.length === 0 && <tr><td colSpan={5} className="text-center text-text-subtle py-5">No spins yet.</td></tr>}
-                    {spinLog.map((r) => (
+                    {spinRows.map((r) => (
                       <tr key={r.id} className="border-t border-border">
                         <td className="py-1.5 px-1">{r.userName}</td>
                         <td className={cn("py-1.5 px-1 font-mono", r.points >= 500 ? "text-[#F5C66B]" : r.points > 0 ? "text-green" : "text-text-subtle")}>{r.points > 0 ? `+${r.points} GP` : r.label}</td>
@@ -300,6 +308,9 @@ export default function AdminEventsPage() {
                   </tbody>
                 </table>
               </ResponsiveTable>
+              {spinLog.length > SPIN_PAGE && (
+                <Pager page={spinPageSafe} pages={spinPages} total={spinLog.length} pageSize={SPIN_PAGE} capped={spinLog.length === SPIN_LOG_CAP} onPage={setSpinPage} />
+              )}
             </Card>
           )}
 
@@ -590,6 +601,36 @@ function EventForm({
             </button>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Numbered pager: 1 … 4 5 [6] 7 8 … 20, with Previous/Next. */
+function Pager({ page, pages, total, pageSize, capped, onPage }: { page: number; pages: number; total: number; pageSize: number; capped?: boolean; onPage: (p: number) => void }) {
+  // Always show first, last, and a window of 2 around the current page.
+  const numbers: (number | "gap")[] = [];
+  for (let i = 0; i < pages; i++) {
+    if (i === 0 || i === pages - 1 || Math.abs(i - page) <= 2) numbers.push(i);
+    else if (numbers[numbers.length - 1] !== "gap") numbers.push("gap");
+  }
+  const start = page * pageSize;
+  const btn = "min-w-[28px] h-7 px-2 rounded-md text-[11px] border flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed";
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+      <p className="text-[10px] text-text-subtle m-0">
+        Showing {start + 1}–{Math.min(start + pageSize, total)} of {total}{capped && <span className="ml-1 text-text-dim">(latest {total})</span>}
+      </p>
+      <div className="flex items-center gap-1">
+        <button onClick={() => onPage(Math.max(0, page - 1))} disabled={page === 0} aria-label="Previous page" className={cn(btn, "bg-card border-border-strong text-text-muted hover:text-text")}><ChevronLeft className="w-3 h-3" /></button>
+        {numbers.map((n, i) =>
+          n === "gap" ? (
+            <span key={`gap${i}`} className="text-[11px] text-text-subtle px-1">…</span>
+          ) : (
+            <button key={n} onClick={() => onPage(n)} aria-current={n === page ? "page" : undefined} className={cn(btn, n === page ? "bg-gold text-gold-dark border-gold font-medium" : "bg-card border-border-strong text-text-muted hover:text-text")}>{n + 1}</button>
+          ),
+        )}
+        <button onClick={() => onPage(Math.min(pages - 1, page + 1))} disabled={page >= pages - 1} aria-label="Next page" className={cn(btn, "bg-card border-border-strong text-text-muted hover:text-text")}><ChevronRight className="w-3 h-3" /></button>
       </div>
     </div>
   );
