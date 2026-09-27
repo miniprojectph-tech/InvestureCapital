@@ -111,10 +111,15 @@ export function useRoundTimer(fps = 20) {
 }
 
 // Aggregated live round, read from Realtime Database (bandwidth-priced, not per-read).
+/** One player's stake on one colour this round — public, shown on the bet board. */
+export type LiveBet = { key: string; uid: string; name: string; color: DieColor; amount: number; at: number };
+
 export type ColorLive = {
   roundId: string;
   betAmounts: Partial<Record<DieColor, number>>;
   totalBettors: number;
+  /** Everyone's bets this round, newest first. */
+  bets: LiveBet[];
   dice?: [DieColor, DieColor, DieColor];
   jackpotTriggered?: boolean;
   jackpotColor?: DieColor | null;
@@ -124,6 +129,7 @@ export type ColorLive = {
 type RtdbLive = {
   totals?: Partial<Record<DieColor, number>>;
   bettors?: number;
+  bets?: Record<string, { n?: string; c?: DieColor; a?: number; t?: number }>;
   dice?: [DieColor, DieColor, DieColor];
   jackpotTriggered?: boolean;
   jackpotColor?: DieColor | null;
@@ -155,6 +161,10 @@ export function useCurrentRound() {
           roundId: timer.roundId,
           betAmounts: v.totals ?? {},
           totalBettors: v.bettors ?? 0,
+          bets: Object.entries(v.bets ?? {})
+            .filter(([, b]) => !!b?.c && typeof b.a === "number" && b.a > 0)
+            .map(([key, b]) => ({ key, uid: key.slice(0, key.lastIndexOf("_")), name: b.n || "Player", color: b.c as DieColor, amount: b.a as number, at: b.t ?? 0 }))
+            .sort((x, y) => y.at - x.at),
           dice: v.dice,
           jackpotTriggered: v.jackpotTriggered,
           jackpotColor: v.jackpotColor,

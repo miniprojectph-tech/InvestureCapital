@@ -75,6 +75,14 @@ async function playerName(uid: string): Promise<string> {
   return p.profile?.name || p.profile?.email?.split("@")[0] || "Player";
 }
 
+/** "Josephine Santos Mendoza" → "Josephine M." for the public bet board. */
+function shortName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "Player";
+  const first = parts[0].slice(0, 14);
+  return parts.length > 1 ? `${first} ${parts[parts.length - 1][0].toUpperCase()}.` : first;
+}
+
 function currentRoundId(now: number): string {
   return String(Math.floor(now / ROUND_MS));
 }
@@ -186,6 +194,14 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
       [`color/state/totalWagered`]: ServerValue.increment(amount),
     };
     if (isNewKey) updates[`color/live/${rid}/bettors`] = ServerValue.increment(1);
+    // Public bet board: everyone at the table sees who backed which colour and
+    // for how much (one row per player per colour, amounts add up). This is the
+    // social part of the game — it carries a short display name, never an email.
+    const live = `color/live/${rid}/bets/${uid}_${color}`;
+    updates[`${live}/n`] = shortName(name);
+    updates[`${live}/c`] = color;
+    updates[`${live}/a`] = ServerValue.increment(amount);
+    updates[`${live}/t`] = now;
     await getDatabase().ref().update(updates);
   } catch (e) {
     // RTDB is a read-optimisation only — never fail the bet if it hiccups.

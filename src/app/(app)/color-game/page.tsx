@@ -24,6 +24,7 @@ import { ColorRankingBoard } from "@/components/colorgame/ColorRankingBoard";
 import { ColorRoundTimer } from "@/components/colorgame/ColorRoundTimer";
 import { ColorCoinParticles } from "@/components/colorgame/ColorCoinParticles";
 import { ColorResultOverlay } from "@/components/colorgame/ColorResultOverlay";
+import { ColorLiveBets } from "@/components/colorgame/ColorLiveBets";
 
 const BG_URL = "/colorgame/bg-full.webp?v=4";
 const IMG_AR = 2; // 2880 / 1440
@@ -174,6 +175,7 @@ export default function ColorGamePage() {
 
   const betAmounts: Record<string, number> = (isCurrent && live?.betAmounts ? live.betAmounts : {}) as Record<string, number>;
   const totalBettors = isCurrent ? (live?.totalBettors ?? 0) : 0;
+  const liveBets = isCurrent ? (live?.bets ?? []) : [];
 
   if (!bgReady || (loading && !live)) {
     return (
@@ -290,7 +292,16 @@ export default function ColorGamePage() {
             disabled={!bettingOpen || placing}
             betAmounts={betAmounts}
             results={dice}
+            bets={liveBets}
+            meUid={user?.uid}
           />
+        </div>
+
+        {/* Live bet board — on the purple table under the ranking easel.
+            Shows who just bet on what; tap to see every bet this round. */}
+        <div className="absolute z-10"
+          style={{ left: "8.2%", top: "79.2%", width: "19%", height: "18.5%" }}>
+          <ColorLiveBets bets={liveBets} meUid={user?.uid ?? ""} dice={currentDice} players={totalBettors} />
         </div>
 
         {/* Bet controls — 3 gold buttons (always mounted, fade in/out) */}
