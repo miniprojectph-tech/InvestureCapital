@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ref, onValue, query as rtdbQuery, orderByChild, limitToLast } from "firebase/database";
+import { manilaWeekKey } from "./week";
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
@@ -43,9 +44,11 @@ export type ColorGameState = {
   history: Array<{ roundId: string; dice: [DieColor, DieColor, DieColor]; at: number }>;
 };
 
+/** Weekly ranking row: totals cover `weekKey` only and restart each Monday (Manila). */
 export type ColorLeaderboardEntry = {
   uid: string;
   name: string;
+  weekKey?: string;
   totalWon: number;
   totalBet: number;
   roundsPlayed: number;
@@ -228,7 +231,9 @@ export function useColorLeaderboard(max = 20) {
     // game DB don't deliver in this app, so the server mirrors it here.
     return onValue(ref(rtdb, "color/leaderboard"), (snap) => {
       const val = (snap.val() as Record<string, ColorLeaderboardEntry> | null) ?? {};
-      setLeaders(Object.values(val).sort((a, b) => b.totalWon - a.totalWon).slice(0, max));
+      // Weekly ranking: rows written in an earlier week don't count.
+      const week = manilaWeekKey();
+      setLeaders(Object.values(val).filter((e) => e.weekKey === week).sort((a, b) => b.totalWon - a.totalWon).slice(0, max));
     });
   }, [user, max]);
 

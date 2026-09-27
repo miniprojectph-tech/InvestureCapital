@@ -277,7 +277,7 @@ export default function GamesHubPage() {
           stats={[
             { v: `${live?.totalBettors ?? 0}`, l: "Playing now" },
             { v: "5 – 500", l: "Bet range" },
-            { v: colorMine ? `${colorMine.totalWon >= 0 ? "+" : ""}${colorMine.totalWon.toLocaleString()}` : "—", l: "All-time net" },
+            { v: colorMine ? `${colorMine.totalWon >= 0 ? "+" : ""}${colorMine.totalWon.toLocaleString()}` : "—", l: "Your net this week" },
           ]}
           cta="Place a bet"
         />

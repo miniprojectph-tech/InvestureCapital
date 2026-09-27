@@ -17,6 +17,9 @@ export { ensureCommunityAdmin, ensureCommunityMember, updateCommunityStats, refr
 // Help & FAQ: one-vote-per-member "was this helpful" counters.
 export { faqVote } from "./faq";
 
+// Weekly rankings: admin reset / remove a (test) player.
+export { adminResetRankings, adminRemoveFromRanking } from "./rankings";
+
 // Compensation plan: placement activation (commissions + Fast-Start) and
 // read-only downline stats for the Referrals page.
 export {

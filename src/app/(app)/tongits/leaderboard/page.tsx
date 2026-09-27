@@ -1,18 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Trophy, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useTongitsLeaderboard, rowPoints, type LbPeriod } from "@/lib/tongits-social";
 import { TongitsShell, ArcadePanel, T } from "@/components/TongitsShell";
+import { resetsIn } from "@/lib/week";
 
-const TABS: { id: LbPeriod; label: string }[] = [
-  { id: "day", label: "Daily" },
-  { id: "week", label: "Weekly" },
-  { id: "month", label: "Monthly" },
-  { id: "all", label: "All-time" },
-];
+// Every ranking on the platform is weekly (Monday 00:00 → Sunday, Manila time).
+const PERIOD: LbPeriod = "week";
 
 function initials(name: string) {
   const p = name.trim().split(/\s+/).filter(Boolean);
@@ -21,30 +18,23 @@ function initials(name: string) {
 
 export default function TongitsLeaderboardPage() {
   const { user } = useAuth();
-  const [period, setPeriod] = useState<LbPeriod>("week");
+  const period = PERIOD;
   const { rows, loading } = useTongitsLeaderboard(period);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <TongitsShell>
-      <div className="flex items-center justify-center gap-3 mb-3">
+      <div className="flex items-center justify-center gap-3 mb-1.5">
         <Trophy className="w-5 h-5" style={{ color: T.gold }} />
-        <h2 className="text-[15px] font-bold uppercase tracking-widest m-0">Leaderboard</h2>
+        <h2 className="text-[15px] font-bold uppercase tracking-widest m-0">Weekly ranking</h2>
       </div>
-
-      <div className="flex justify-center mb-3">
-        <div className="flex items-center gap-1 rounded-full p-1" style={{ background: "#0d1a3d", border: `1px solid ${T.gold}44` }}>
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setPeriod(t.id)}
-              className="px-3.5 py-1.5 rounded-full text-[11px] font-medium transition"
-              style={period === t.id ? { background: T.gold, color: "#0a1740" } : { color: "rgba(255,255,255,0.6)" }}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <p className="text-[11px] text-white/60 text-center m-0 mb-3">
+        This week&apos;s ranking points · resets Monday 12:00 AM, in {resetsIn(now)}
+      </p>
 
       <ArcadePanel className="max-w-2xl mx-auto">
         {loading ? (
@@ -53,7 +43,7 @@ export default function TongitsLeaderboardPage() {
           </div>
         ) : rows.length === 0 ? (
           <p className="text-[12px] text-white/60 text-center py-12 m-0">
-            No ranked players yet for this period. Win some matches to appear here!
+            No ranked players yet this week. Win some matches to appear here!
           </p>
         ) : (
           <div className="flex flex-col">

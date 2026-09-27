@@ -11,6 +11,7 @@ import {
   type ColorGameState,
   type ColorLeaderboardEntry,
 } from "./colorgame-types";
+import { manilaWeekKey } from "./week";
 
 const GAME_REGION = "asia-southeast1";
 const ROUND_MS = DEFAULT_COLOR_CONFIG.roundDurationMs;
@@ -23,6 +24,7 @@ const betRef = (id: string, uid: string, color: DieColor) => betsCol(id).doc(`${
 const gameStateRef = () => gameDb.doc(`color_game/state`);
 const configRef = () => gameDb.doc(`color_game/config`);
 const leaderRef = (uid: string) => gameDb.doc(`color_game_leaderboard/${uid}`);
+// (weekly ranking periods — see ./week)
 const userStateRef = (uid: string) => db.doc(`users/${uid}/game/state`);
 
 // Admin-controlled jackpot settings (kept separate from color_game/state,
@@ -441,16 +443,20 @@ async function resolveRoundCore(roundId: string, now: number): Promise<CoreResul
 
     // Update leaderboard — once per player (not per bet entry), using the
     // aggregated payout and total bet so multi-colour bettors are counted once.
+    // The ranking is WEEKLY: a row from an earlier week starts again from zero.
+    const weekKey = manilaWeekKey(now);
     const leaderUpdates: Record<string, ColorLeaderboardEntry> = {};
     for (const uid of Object.keys(payouts)) {
       const lSnap = leaderSnaps.get(uid);
-      const existing = lSnap?.exists ? (lSnap.data() as ColorLeaderboardEntry) : null;
+      const stored = lSnap?.exists ? (lSnap.data() as ColorLeaderboardEntry) : null;
+      const existing = stored && stored.weekKey === weekKey ? stored : null;
       const won = payouts[uid] ?? 0;
       const bet = totalBetByUid[uid] ?? 0;
       const netWin = won > 0 ? won - bet : 0;
       const entry: ColorLeaderboardEntry = {
         uid,
         name: nameByUid[uid],
+        weekKey,
         totalWon: (existing?.totalWon ?? 0) + netWin,
         totalBet: (existing?.totalBet ?? 0) + bet,
         roundsPlayed: (existing?.roundsPlayed ?? 0) + 1,

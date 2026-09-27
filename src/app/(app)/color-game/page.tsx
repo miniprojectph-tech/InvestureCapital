@@ -246,6 +246,14 @@ export default function ColorGamePage() {
           <ColorJackpotDisplay amount={gs.jackpotPool} triggered={live?.jackpotTriggered} />
         </div>
 
+        {/* The ranking is weekly — say so on the paper, just under the banner */}
+        <div className="absolute z-10 flex items-center justify-center"
+          style={{ left: "9.83%", top: "24.9%", width: "15.6%", height: "2.2%" }}>
+          <span style={{ fontWeight: 800, fontSize: "min(0.78vw,1.6vh)", color: "#8A5A22", letterSpacing: "0.08em", textTransform: "uppercase", lineHeight: 1, whiteSpace: "nowrap" }}>
+            This week · resets Monday
+          </span>
+        </div>
+
         {/* Ranking rows — measured to the 6 cream slots of the wooden easel */}
         <div className="absolute z-10"
           style={{ left: "9.83%", top: "26.66%", width: "15.6%", height: "44.88%" }}>

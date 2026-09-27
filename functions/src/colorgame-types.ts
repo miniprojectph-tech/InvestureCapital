@@ -56,9 +56,11 @@ export type ColorGameState = {
   history: Array<{ roundId: string; dice: [DieColor, DieColor, DieColor]; at: number }>;
 };
 
+/** Weekly ranking row: the totals below cover `weekKey` only and restart each Monday (Manila). */
 export type ColorLeaderboardEntry = {
   uid: string;
   name: string;
+  weekKey?: string;
   totalWon: number;
   totalBet: number;
   roundsPlayed: number;
