@@ -7,6 +7,7 @@ import { getFirebase } from "./firebase";
 import { subscribeToUserState, ensureUserDoc, type UserState } from "./userState";
 import { mockActivePlans, mockBalances, mockUser } from "./mock-data";
 
+/** Sample data for DEMO MODE only (the app running with no Firebase keys). */
 const MOCK_STATE: UserState = {
   profile: {
     name: mockUser.name,
@@ -27,6 +28,16 @@ const MOCK_STATE: UserState = {
   })),
 };
 
+const RETRY_MS = 3000;
+
+/**
+ * The signed-in member's own record, live.
+ *
+ * A real member is NEVER shown sample data: if the record is slow, missing or
+ * the connection drops, the hook keeps `loading` true (pages show their
+ * spinner) and retries until the real record arrives. Sample balances and a
+ * sample name on a real account would be read as the member's own money.
+ */
 export function useUserState() {
   const { user, demoMode } = useAuth();
   const [state, setState] = useState<UserState | null>(null);
@@ -40,14 +51,15 @@ export function useUserState() {
       return;
     }
     if (!user) {
+      hasStateRef.current = false;
       setState(null);
       setLoading(false);
       return;
     }
     const { db } = getFirebase();
     if (!db) {
-      setState(MOCK_STATE);
-      setLoading(false);
+      setState(null);
+      setLoading(true);
       return;
     }
 
@@ -56,43 +68,35 @@ export function useUserState() {
     // flashing a spinner and unmounting whatever the member had open.
     if (!hasStateRef.current) setLoading(true);
     let unsubscribe: Unsubscribe | undefined;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let cancelled = false;
 
-    // Safety net: if Firestore is unreachable (database not yet created,
-    // permission denied, network), fall back to mock data after 4s.
-    const fallbackTimer = setTimeout(() => {
-      if (!cancelled) {
-        console.warn("Firestore appears unavailable — using mock state");
-        setState(MOCK_STATE);
-        setLoading(false);
-      }
-    }, 4000);
-
-    (async () => {
+    const connect = async () => {
       try {
         await ensureUserDoc(db, user.uid, user.name, user.email);
         if (cancelled) return;
+        unsubscribe?.();
         unsubscribe = subscribeToUserState(db, user.uid, (s) => {
           if (cancelled) return;
-          clearTimeout(fallbackTimer);
-          // If doc somehow still missing (race), keep mock until it lands.
-          setState(s ?? MOCK_STATE);
+          if (!s) {
+            // Record missing or the listener was refused: keep waiting and try again.
+            retryTimer = setTimeout(connect, RETRY_MS);
+            return;
+          }
+          setState(s);
           hasStateRef.current = true;
           setLoading(false);
         });
       } catch (err) {
-        console.error("Firestore unavailable, falling back to mock state:", err);
-        clearTimeout(fallbackTimer);
-        if (!cancelled) {
-          setState(MOCK_STATE);
-          setLoading(false);
-        }
+        console.error("Could not load the member record, retrying:", err);
+        if (!cancelled) retryTimer = setTimeout(connect, RETRY_MS);
       }
-    })();
+    };
+    connect();
 
     return () => {
       cancelled = true;
-      clearTimeout(fallbackTimer);
+      if (retryTimer) clearTimeout(retryTimer);
       unsubscribe?.();
     };
   }, [user, demoMode]);

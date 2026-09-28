@@ -6,14 +6,11 @@ import { ArrowUpRight, RefreshCw, ArrowDownRight, Loader2, Clock } from "lucide-
 import { Bar, BarChart, Cell, ResponsiveContainer } from "recharts";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
-import { WithdrawModal } from "@/components/WithdrawModal";
 import { ReinvestModal } from "@/components/ReinvestModal";
 import { formatPHP, cn } from "@/lib/utils";
 import { useUserState } from "@/lib/useUserState";
 import { useUserActivity } from "@/lib/userActivity";
 import { useAuth } from "@/lib/auth";
-import { getFirebase } from "@/lib/firebase";
-import { requestWithdrawal } from "@/lib/withdrawals";
 import { useNow, dailyAccrualTotal, nextPayout, formatCountdown, activatePlacement, peso } from "@/lib/compplan";
 
 // Activity types that are income (not returned capital, deposits or reinvests).
@@ -25,7 +22,6 @@ export default function WalletPage() {
   const { rows: activity } = useUserActivity();
   const { user, demoMode } = useAuth();
   const now = useNow(30_000);
-  const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [reinvestOpen, setReinvestOpen] = useState(false);
 
   const income = useMemo(() => activity.filter((e) => INCOME_TYPES.has(e.type) && e.amountKind === "in"), [activity]);
@@ -54,13 +50,6 @@ export default function WalletPage() {
   async function handleReinvest(amount: number, termMonths: number) {
     if (demoMode || !user) return;
     await activatePlacement({ fromWallet: true, amount, termMonths });
-  }
-
-  async function handleWithdraw(amount: number) {
-    if (demoMode || !user) return;
-    const { db } = getFirebase();
-    if (!db) return;
-    await requestWithdrawal(db, { userId: user.uid, userName: user.name, userEmail: user.email, amount });
   }
 
   if (loading || !state) {
@@ -95,13 +84,13 @@ export default function WalletPage() {
             )}
           </div>
           <div className="flex gap-2 mt-4 max-w-md">
-            <button
-              onClick={() => setWithdrawOpen(true)}
-              disabled={walletBalance <= 0}
-              className="flex-1 px-3.5 py-2.5 bg-transparent border border-border-strong rounded-lg text-[12px] flex items-center justify-center gap-1.5 hover:bg-card-elev transition disabled:opacity-40 disabled:cursor-not-allowed"
+            {/* Withdrawals live on their own page (payout method, release schedule, history). */}
+            <Link
+              href="/withdrawals"
+              className="flex-1 px-3.5 py-2.5 bg-transparent border border-border-strong rounded-lg text-[12px] text-text flex items-center justify-center gap-1.5 hover:bg-card-elev transition"
             >
               <ArrowUpRight className="w-3.5 h-3.5" /> Withdraw
-            </button>
+            </Link>
             <button
               onClick={() => setReinvestOpen(true)}
               disabled={walletBalance <= 0}
@@ -167,7 +156,6 @@ export default function WalletPage() {
         </div>
       </Card>
 
-      <WithdrawModal open={withdrawOpen} onClose={() => setWithdrawOpen(false)} availableBalance={walletBalance} onSubmit={handleWithdraw} />
       <ReinvestModal open={reinvestOpen} onClose={() => setReinvestOpen(false)} availableBalance={walletBalance} onSubmit={handleReinvest} />
     </div>
   );

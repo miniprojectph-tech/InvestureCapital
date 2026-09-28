@@ -1,5 +1,5 @@
 // Investure service worker — offline shell + cache-first for static + game asset pre-cache
-const CACHE = "investure-v7";
+const CACHE = "investure-v8";
 const APP_SHELL = ["/", "/login", "/dashboard"];
 
 // Game assets pre-cached at install so Reef and Tongits load instantly on
@@ -158,13 +158,16 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Network-first for navigation requests (HTML pages)
+  // Network-first for navigation requests (HTML pages). Only a GOOD response is
+  // cached, so an error page can never become the offline fallback.
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
+          if (res.ok && res.type === "basic") {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(request, copy)).catch(() => {});
+          }
           return res;
         })
         .catch(() => caches.match(request).then((r) => r || caches.match("/dashboard")))
@@ -172,7 +175,15 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Cache-first for static assets (images, JS, CSS, game assets)
+  // Data is never cached: API routes (live prices) and framework data fetches
+  // always go to the network, otherwise "live" values freeze at the first reply.
+  const url = new URL(request.url);
+  const isAsset = request.destination === "image" || request.destination === "font" || request.destination === "audio" || request.destination === "video";
+  if (url.pathname.startsWith("/api/") || !isAsset) {
+    return; // let the browser handle it normally
+  }
+
+  // Cache-first for static assets (images, fonts, game art and sounds)
   event.respondWith(
     caches.match(request).then(
       (cached) =>

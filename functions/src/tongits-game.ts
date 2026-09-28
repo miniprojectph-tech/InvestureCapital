@@ -84,7 +84,17 @@ function decodeMelds(raw: unknown): Record<string, Card[][]> {
 // ===== refs =====
 // Game state (rooms + gs + hands + deck + chat) lives on gameDb (Singapore).
 // User economy, transactions, and match history live on the default db (us-central).
-const roomRef = (code: string) => gameDb.doc(`game_rooms/${code}`);
+/**
+ * Room codes are exactly 5 digits. Anything else is refused BEFORE it reaches a
+ * document path: a code like "12345/chat/x" would otherwise address a chat
+ * message (which members can write) as if it were a room.
+ */
+const ROOM_CODE_RE = /^\d{5}$/;
+function assertRoomCode(code: string): string {
+  if (!ROOM_CODE_RE.test(code)) throw new HttpsError("invalid-argument", "Invalid room code.");
+  return code;
+}
+const roomRef = (code: string) => gameDb.doc(`game_rooms/${assertRoomCode(code)}`);
 const gsRef = (code: string) => gameDb.doc(`game_rooms/${code}/game/state`);
 const handRef = (code: string, uid: string) => gameDb.doc(`game_rooms/${code}/hands/${uid}`);
 const deckRef = (code: string) => gameDb.doc(`game_rooms/${code}/secret/deck`);
@@ -117,7 +127,7 @@ function requireUid(request: { auth?: { uid?: string } }): string {
 function codeArg(request: { data?: unknown }): string {
   const code = String((request.data as { code?: string })?.code ?? "").trim();
   if (!code) throw new HttpsError("invalid-argument", "Room code required.");
-  return code;
+  return assertRoomCode(code);
 }
 
 type Ctx = {
@@ -273,6 +283,11 @@ function settleGameStateInTx(
     if (!idleUids.includes(uid)) {
       players[uid] = { ...players[uid], isReady: false, agreedToChallenge: false };
     }
+  }
+  // The pot was just paid out, so nobody has anything left in it. Without this
+  // a later cancel would refund antes that the winner already received.
+  if (payoutJackpot) {
+    for (const uid of Object.keys(players)) players[uid] = { ...players[uid], jackpotContributed: 0 };
   }
   const winnerName = seats.find((s) => s.uid === winnerUid)?.name ?? "Winner";
 

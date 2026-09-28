@@ -160,8 +160,7 @@ export default function AdminLoginPage() {
         </div>
 
         <p className="text-[9px] text-text-dim text-center mt-4 m-0">
-          Admin role is granted manually in Firestore. Set{" "}
-          <code className="text-vault-muted">isAdmin: true</code> on your user document.
+          Admin access is granted by the platform owner.
         </p>
       </div>
     </div>

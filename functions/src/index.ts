@@ -33,7 +33,7 @@ export {
   tickTestClocks,
 } from "./compplan";
 export { getReferralStats } from "./referral-stats";
-export { onWithdrawalWritten } from "./withdrawals";
+export { onWithdrawalWritten, requestWithdrawal } from "./withdrawals";
 export { adminSaveEvent, adminSetEventStatus, adminAddEventSlots, claimEventSlots, onPlanRequestWritten, spinWheel, onUserCreatedForEvents } from "./events";
 
 // Community Tongits (Phase 1): room + economy callables + stale-room reaper.

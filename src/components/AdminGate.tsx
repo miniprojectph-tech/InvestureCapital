@@ -57,9 +57,7 @@ export function AdminGate({ children }: { children: React.ReactNode }) {
           <p className="text-[12px] text-text-muted m-0 mb-5">
             You&apos;re signed in as{" "}
             <span className="text-text">{user.email}</span>, but this account
-            doesn&apos;t have admin permissions. Ask an existing admin to flip
-            <code className="text-vault mx-1">isAdmin: true</code>
-            on your user document in Firestore.
+            doesn&apos;t have admin access.
           </p>
           <a
             href="/dashboard"

@@ -13,6 +13,8 @@ const GAME_REGION = "asia-southeast1";
 const MIN_CHALLENGE = 50;
 const MAX_PLAYERS = 3;
 const DEFAULT_ANTE = 5;
+const MAX_CHALLENGE = 1_000_000;
+const MAX_ANTE = 10_000;
 const CHALLENGE_BONUS_RATE = 0.50;
 const STALE_ROOM_MS = 30 * 60 * 1000; // rooms idle this long get reaped
 
@@ -61,7 +63,16 @@ function requireUid(request: { auth?: { uid?: string } }): string {
 }
 
 // Rooms live in the Singapore game db; user economy stays on the default db.
-const roomRef = (code: string) => gameDb.doc(`game_rooms/${code}`);
+/**
+ * Room codes are exactly 5 digits. Anything else is refused BEFORE it reaches a
+ * document path: a code like "12345/chat/x" would otherwise address a chat
+ * message (which members can write) as if it were a room.
+ */
+const ROOM_CODE_RE = /^\d{5}$/;
+const roomRef = (code: string) => {
+  if (!ROOM_CODE_RE.test(code)) throw new HttpsError("invalid-argument", "Invalid room code.");
+  return gameDb.doc(`game_rooms/${code}`);
+};
 const stateRef = (uid: string) => db.doc(`users/${uid}/game/state`);
 const txnCol = () => db.collection("game_point_transactions");
 
@@ -248,10 +259,15 @@ export const createTongitsRoom = onCall({ region: GAME_REGION }, async (request)
   const uid = requireUid(request);
   const data = (request.data ?? {}) as { challengePoints?: number; jackpotAnte?: number; isPrivate?: boolean };
   const challengePoints = Math.floor(Number(data.challengePoints));
-  const jackpotAnte = data.jackpotAnte == null ? DEFAULT_ANTE : Math.max(0, Math.floor(Number(data.jackpotAnte)));
+  const jackpotAnte = data.jackpotAnte == null ? DEFAULT_ANTE : Math.floor(Number(data.jackpotAnte));
   const isPrivate = data.isPrivate === true;
-  if (!Number.isFinite(challengePoints) || challengePoints < MIN_CHALLENGE) {
-    throw new HttpsError("invalid-argument", `Challenge must be at least ${MIN_CHALLENGE} points.`);
+  if (!Number.isFinite(challengePoints) || challengePoints < MIN_CHALLENGE || challengePoints > MAX_CHALLENGE) {
+    throw new HttpsError("invalid-argument", `Challenge must be between ${MIN_CHALLENGE} and ${MAX_CHALLENGE.toLocaleString()} points.`);
+  }
+  // A non-numeric ante used to become NaN, which poisoned balances downstream
+  // (NaN passes every "not enough points" check).
+  if (!Number.isFinite(jackpotAnte) || jackpotAnte < 0 || jackpotAnte > MAX_ANTE) {
+    throw new HttpsError("invalid-argument", `Jackpot ante must be between 0 and ${MAX_ANTE.toLocaleString()} points.`);
   }
 
   const stateSnap = await stateRef(uid).get();
@@ -445,6 +461,12 @@ export const cancelTongitsRoom = onCall({ region: GAME_REGION }, async (request)
       throw new HttpsError("permission-denied", "Only the room creator or an admin can cancel.");
     }
     if (room.status === "cancelled" || room.status === "completed") return;
+    // A creator can't cancel once cards are dealt: that refunded every stake and
+    // let them escape a losing hand. Admins can still cancel a stuck room.
+    const live = room.status as string; // the game engine also sets "post_game"
+    if (!isAdmin && (live === "in_game" || live === "post_game")) {
+      throw new HttpsError("failed-precondition", "A game is in progress. Finish the round, then leave the room.");
+    }
     post = refundAndCancel(tx, room, now);
   });
   if (post) await applyPostRoomAction(post);

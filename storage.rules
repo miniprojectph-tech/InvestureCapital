@@ -22,7 +22,10 @@ service firebase.storage {
     // ===== existing project paths =====
     match /profile-pictures/{userId}/{allPaths=**} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSignedIn() && request.auth.uid == userId
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(png|jpeg|webp|gif)');
+      allow delete: if isSignedIn() && request.auth.uid == userId;
     }
     match /branding/{allPaths=**} {
       allow read: if isSignedIn();
@@ -98,10 +101,21 @@ service firebase.storage {
       allow delete: if isAdmin();
     }
 
-    // ===== catch-all (keep last) =====
-    match /{allPaths=**} {
+    // ===== Event banners (admin uploads; members read) =====
+    match /events/{file} {
       allow read: if isSignedIn();
-      allow write: if isAdmin();
+      allow write: if isAdmin()
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+      allow delete: if isAdmin();
+    }
+
+    // ===== catch-all (keep last) =====
+    // Admins only. Storage rules are OR-ed across matching blocks, so a
+    // "signed-in can read" here used to override the owner-only rule on
+    // receipts and let any member list and download everyone's payment proofs.
+    match /{allPaths=**} {
+      allow read, write: if isAdmin();
     }
   }
 }

@@ -111,7 +111,11 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
   if (!ALL_COLORS.includes(color)) {
     throw new HttpsError("invalid-argument", "Invalid color.");
   }
-  if (typeof amount !== "number" || amount < DEFAULT_COLOR_CONFIG.minBet) {
+  // Whole points only — a fractional bet would leave fractional balances behind.
+  if (typeof amount !== "number" || !Number.isInteger(amount)) {
+    throw new HttpsError("invalid-argument", "Bets are whole Game Points.");
+  }
+  if (amount < DEFAULT_COLOR_CONFIG.minBet) {
     throw new HttpsError("invalid-argument", `Minimum bet is ${DEFAULT_COLOR_CONFIG.minBet} GP.`);
   }
   if (amount > DEFAULT_COLOR_CONFIG.maxBet) {

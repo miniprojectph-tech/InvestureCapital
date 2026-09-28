@@ -15,17 +15,53 @@ service cloud.firestore {
 
     // === Users ===
     match /users/{userId} {
-      allow read, create, delete: if isSignedIn() && request.auth.uid == userId;
-      // The owner edits their own doc, but never the fields only Cloud Functions
-      // write: placements (carry the event payout multiplier), completed
-      // placements, Fast-Start ledger and the admin flag.
+      allow read: if isSignedIn() && request.auth.uid == userId;
+
+      // Sign-up writes the STARTER record only: no admin flag, no money, no
+      // placements, no sponsor. (A member could otherwise create — or delete and
+      // re-create — their record as an admin with any balance.) Owners can't
+      // delete their record at all.
+      allow create: if isSignedIn() && request.auth.uid == userId
+        && request.resource.data.get('isAdmin', false) == false
+        && request.resource.data.get('placements', []).size() == 0
+        && request.resource.data.get('completedPlacements', []).size() == 0
+        && request.resource.data.get('activePlans', []).size() == 0
+        && request.resource.data.get('completedPlans', []).size() == 0
+        && !('fastStart' in request.resource.data)
+        && !('referredByUserId' in request.resource.data)
+        && !('payoutMethod' in request.resource.data)
+        && request.resource.data.get('balances', {}).get('wallet', 0) == 0
+        && request.resource.data.get('balances', {}).get('vault', 0) == 0
+        && request.resource.data.get('referralWallet', {}).get('available', 0) == 0
+        && request.resource.data.get('referralWallet', {}).get('pending', 0) == 0
+        && request.resource.data.get('referralWallet', {}).get('locked', 0) == 0
+        && request.resource.data.get('referralWallet', {}).get('totalEarned', 0) == 0
+        && request.resource.data.get('referralWallet', {}).get('totalWithdrawn', 0) == 0;
+
+      // The owner may change ONLY: profile details, payout method, their referral
+      // code, and their sponsor (once). Balances, placements, commissions and the
+      // admin flag are written by Cloud Functions alone.
       allow update: if isSignedIn() && request.auth.uid == userId
-        && !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['placements', 'completedPlacements', 'fastStart', 'isAdmin']);
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['profile', 'payoutMethod', 'referralCode', 'referredByUserId'])
+        // sign-up date and email are fixed
+        && request.resource.data.get('profile', {}).get('joinedAt', null) == resource.data.get('profile', {}).get('joinedAt', null)
+        && request.resource.data.get('profile', {}).get('email', null) == resource.data.get('profile', {}).get('email', null)
+        // a referral code is chosen once
+        && (request.resource.data.get('referralCode', null) == resource.data.get('referralCode', null)
+            || resource.data.get('referralCode', null) == null)
+        // a sponsor is attached once, and never yourself
+        && (request.resource.data.get('referredByUserId', null) == resource.data.get('referredByUserId', null)
+            || (resource.data.get('referredByUserId', null) == null
+                && request.resource.data.referredByUserId is string
+                && request.resource.data.referredByUserId != request.auth.uid));
+
       allow read, write: if isAdmin();
 
+      // Transaction history: the owner reads it; only Functions and admins write
+      // it, so a member can't invent or erase entries.
       match /activity/{activityId} {
-        allow read, write: if isSignedIn() && request.auth.uid == userId;
+        allow read: if isSignedIn() && request.auth.uid == userId;
         allow read, write: if isAdmin();
       }
 
@@ -101,33 +137,45 @@ service cloud.firestore {
     }
 
     // === Withdrawal requests ===
+    // Created ONLY by the requestWithdrawal function, which debits the wallet and
+    // files the request in one transaction. (A member-created request used to be
+    // refundable on rejection without ever having been debited.)
     match /withdrawals/{wId} {
       allow read: if isSignedIn()
         && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.status == 'pending';
+      allow create: if isAdmin();
       allow update, delete: if isAdmin();
     }
 
-    // === Top-up requests ===
+    // === Top-up requests (legacy — no member screen files these any more) ===
     match /topups/{tId} {
       allow read: if isSignedIn()
         && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn()
-        && request.resource.data.userId == request.auth.uid
-        && request.resource.data.status == 'pending';
+      allow create: if isAdmin();
       allow update, delete: if isAdmin();
     }
 
     // === Plan activation requests ===
+    // The member files a payment proof; only these fields, a sane amount, and a
+    // receipt that lives in their own receipts folder.
     match /plan_requests/{rId} {
       allow read: if isSignedIn()
         && (resource.data.userId == request.auth.uid || isAdmin());
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.status == 'pending'
-        && !('event' in request.resource.data); // event-slot requests are created by claimEventSlots
+        && request.resource.data.keys().hasOnly(['userId', 'userName', 'userEmail', 'amount', 'termMonths',
+             'planName', 'method', 'methodLabel', 'referenceNumber', 'receiptUrl', 'receiptPath', 'status', 'createdAt'])
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.amount <= 100000000
+        && request.resource.data.termMonths is int
+        && request.resource.data.termMonths > 0
+        && request.resource.data.get('userName', '') is string && request.resource.data.get('userName', '').size() <= 80
+        && request.resource.data.get('referenceNumber', '') is string && request.resource.data.get('referenceNumber', '').size() <= 80
+        && request.resource.data.get('receiptUrl', '') is string && request.resource.data.get('receiptUrl', '').size() <= 1000
+        && (!('receiptPath' in request.resource.data)
+            || request.resource.data.receiptPath.matches('^receipts/' + request.auth.uid + '/[^/]+$'));
       allow update, delete: if isAdmin();
     }
 
@@ -162,6 +210,17 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // === Admin-only records (exchange credentials etc.) — never readable by members ===
+    match /admin_private/{doc} {
+      allow read, write: if isAdmin();
+    }
+
+    // === Audit trail written by admin Functions ===
+    match /admin_audit/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // === Editable content (Help & FAQ) ===
     // content/faq is the whole FAQ in one document (one read per visit);
     // content/faqVotes holds helpful counts, written only by the faqVote function.
@@ -180,9 +239,13 @@ service cloud.firestore {
     // to the referrer's uid (they can't query the users collection). A user may
     // only claim a code that points at their own uid, and never overwrite one.
     match /referralCodes/{code} {
-      allow read: if isSignedIn();
+      // Look up ONE code; only admins can list the whole code → member index.
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
       allow create: if isSignedIn()
-        && request.resource.data.uid == request.auth.uid;
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+        && code.size() >= 4 && code.size() <= 24;
       allow update, delete: if isAdmin();
     }
 
@@ -195,9 +258,9 @@ service cloud.firestore {
         && (resource.data.referrerUserId == request.auth.uid
             || resource.data.referredUserId == request.auth.uid
             || isAdmin());
-      allow create: if isSignedIn()
-        && request.resource.data.referredUserId == request.auth.uid
-        && request.resource.data.status == 'queued';
+      // Legacy one-level system: nothing files claims from the app any more
+      // (commissions are paid by activatePlacement), so members can't create rows.
+      allow create: if isAdmin();
       allow update, delete: if isAdmin();
     }
 

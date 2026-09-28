@@ -73,16 +73,7 @@ export default function WithdrawalsPage() {
   async function handleWithdraw(amount: number) {
     if (demoMode) throw new Error("Withdrawals aren't available in demo mode.");
     if (!user || !payoutMethod) return;
-    const { db } = getFirebase();
-    if (!db) return;
-    await requestWithdrawal(db, {
-      userId: user.uid,
-      userName: user.name,
-      userEmail: user.email,
-      amount,
-      destination: formatPayoutDestination(payoutMethod),
-      scheduledReleaseAt: releaseDateFor(Date.now(), schedule),
-    });
+    await requestWithdrawal(amount);
   }
 
   async function handleSavePayout(draft: {

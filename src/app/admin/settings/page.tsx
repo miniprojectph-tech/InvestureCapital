@@ -27,6 +27,7 @@ import { getFirebase } from "@/lib/firebase";
 import {
   useSettings,
   saveSettings,
+  useAiSecrets,
   DEFAULT_SETTINGS,
   DEFAULT_PAYMENT_METHODS,
   DEFAULT_AI_TRADING,
@@ -70,7 +71,15 @@ const methodAccountLabel: Record<PaymentMethodId, string> = {
 
 export default function AdminSettingsPage() {
   const { user } = useAuth();
-  const { settings, loading } = useSettings();
+  const { settings: publicSettings, loading: settingsLoading } = useSettings();
+  // Exchange credentials live in an admin-only record, never in the settings
+  // record that every member's browser downloads. Merge them in for the form.
+  const { secrets, loading: secretsLoading } = useAiSecrets(!!user?.isAdmin);
+  const loading = settingsLoading || secretsLoading;
+  const settings = useMemo<PlatformSettings>(
+    () => ({ ...publicSettings, aiTrading: { ...DEFAULT_AI_TRADING, ...publicSettings.aiTrading, ...secrets } }),
+    [publicSettings, secrets],
+  );
   const [draft, setDraft] = useState<PlatformSettings>(DEFAULT_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -665,9 +674,7 @@ export default function AdminSettingsPage() {
         </Field>
 
         <p className="text-[10px] text-text-subtle mt-3 m-0">
-          Note: API credentials are stored in Firestore for prototype convenience. In production
-          they should be kept server-side (Cloud Function or backend proxy) so investors never
-          receive them in the browser.
+          The API key and secret are kept in an admin-only record. Members never receive them in the browser.
         </p>
       </Card>
       )}

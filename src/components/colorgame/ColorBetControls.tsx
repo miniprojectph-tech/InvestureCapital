@@ -10,7 +10,8 @@ type Props = {
   selectedColor: boolean;
 };
 
-const PRESETS = [50, 100, 1000];
+// Must stay within the server's bet range (5–500 GP); 1,000 was always refused.
+const PRESETS = [50, 100, 500];
 
 export function ColorBetControls({ betAmount, onBetChange, disabled, placing }: Props) {
   return (

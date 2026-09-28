@@ -108,16 +108,59 @@ export function settingsRef(db: Firestore) {
   return doc(db, "settings", "platform");
 }
 
+/** Admin-only record for exchange credentials (rules: admins read/write, members nothing). */
+export function aiSecretsRef(db: Firestore) {
+  return doc(db, "admin_private", "aiTrading");
+}
+
+export type AiSecrets = { apiKey: string; apiSecret: string };
+
 export async function saveSettings(
   db: Firestore,
   patch: Partial<PlatformSettings>,
   uid?: string
 ): Promise<void> {
+  // `settings/platform` is downloaded by every member's browser, so credentials
+  // never go into it: they are split off into the admin-only record and the
+  // public copy always carries blanks.
+  let publicPatch: Partial<PlatformSettings> = patch;
+  if (patch.aiTrading) {
+    const { apiKey, apiSecret, ...rest } = patch.aiTrading;
+    await setDoc(aiSecretsRef(db), { apiKey: apiKey ?? "", apiSecret: apiSecret ?? "", updatedAt: Date.now(), updatedBy: uid ?? null }, { merge: true });
+    publicPatch = { ...patch, aiTrading: { ...rest, apiKey: "", apiSecret: "" } };
+  }
   await setDoc(
     settingsRef(db),
-    { ...patch, updatedAt: Date.now(), updatedBy: uid ?? null },
+    { ...publicPatch, updatedAt: Date.now(), updatedBy: uid ?? null },
     { merge: true }
   );
+}
+
+/** Admin settings form only: the stored exchange credentials. */
+export function useAiSecrets(enabled: boolean) {
+  const [secrets, setSecrets] = useState<Partial<AiSecrets>>({});
+  const [loading, setLoading] = useState(enabled);
+  useEffect(() => {
+    if (!enabled) {
+      setLoading(false);
+      return;
+    }
+    const { db } = getFirebase();
+    if (!db) {
+      setLoading(false);
+      return;
+    }
+    return onSnapshot(
+      aiSecretsRef(db),
+      (snap) => {
+        const d = (snap.data() as Partial<AiSecrets> | undefined) ?? {};
+        setSecrets({ ...(d.apiKey ? { apiKey: d.apiKey } : {}), ...(d.apiSecret ? { apiSecret: d.apiSecret } : {}) });
+        setLoading(false);
+      },
+      () => setLoading(false),
+    );
+  }, [enabled]);
+  return { secrets, loading };
 }
 
 export function useSettings() {

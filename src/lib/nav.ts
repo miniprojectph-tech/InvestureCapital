@@ -82,7 +82,6 @@ export const adminNav: NavGroup[] = [
     items: [
       { label: "Active placements", href: "/admin/placements", icon: "timer" },
       { label: "Transactions", href: "/admin/transactions", icon: "receipt" },
-      { label: "Activity log", href: "/admin/activity", icon: "activity" },
       { label: "Reinvestments", href: "/admin/reinvestments", icon: "refresh" },
       { label: "Community chat", href: "/admin/community", icon: "chat" },
     ],

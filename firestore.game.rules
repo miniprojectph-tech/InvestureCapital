@@ -40,6 +40,10 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/game_rooms/$(code)).data.players[request.auth.uid] != null;
         allow create: if isSignedIn()
           && request.resource.data.uid == request.auth.uid
+          // exactly these fields — a chat message must never look like a room
+          && request.resource.data.keys().hasOnly(['uid', 'name', 'message', 'createdAt'])
+          && request.resource.data.get('name', '') is string
+          && request.resource.data.get('name', '').size() <= 60
           && request.resource.data.message is string
           && request.resource.data.message.size() > 0
           && request.resource.data.message.size() <= 300

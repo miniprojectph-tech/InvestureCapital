@@ -13,6 +13,7 @@ import {
   where,
   type Firestore,
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
 import type { UserState } from "./userState";
@@ -42,46 +43,18 @@ export function withdrawalsCollection(db: Firestore) {
 }
 
 /**
- * Investor requests a withdrawal: creates a pending /withdrawals doc AND
- * decrements wallet balance in the same flow. If admin later rejects,
- * the wallet is refunded via `rejectWithdrawal`.
+ * Investor requests a withdrawal. Runs on the server (`requestWithdrawal`
+ * function): the wallet debit and the pending request are one transaction, and
+ * the destination and release date come from the member's saved payout method
+ * and the admin schedule — members can't write balances or requests themselves.
+ * If admin later rejects, the wallet is refunded via `rejectWithdrawal`.
  */
-export async function requestWithdrawal(
-  db: Firestore,
-  args: {
-    userId: string;
-    userName: string;
-    userEmail: string;
-    amount: number;
-    type?: WithdrawalKind;
-    destination?: string;
-    scheduledReleaseAt?: number | null;
-  }
-): Promise<string> {
-  const { userId, amount } = args;
-  const userRef = doc(db, "users", userId);
-  const snap = await getDoc(userRef);
-  if (!snap.exists()) throw new Error("User document not found");
-  const cur = snap.data() as UserState;
-  if (cur.balances.wallet < amount) {
-    throw new Error("Insufficient wallet balance");
-  }
-  // Decrement wallet immediately (held in escrow until approve/reject)
-  await updateDoc(userRef, {
-    "balances.wallet": cur.balances.wallet - amount,
-  });
-  const ref = await addDoc(withdrawalsCollection(db), {
-    userId,
-    userName: args.userName,
-    userEmail: args.userEmail,
-    amount,
-    type: args.type ?? "short-term",
-    destination: args.destination ?? "BPI ···· 3421",
-    status: "pending",
-    createdAt: Date.now(),
-    scheduledReleaseAt: args.scheduledReleaseAt ?? null,
-  });
-  return ref.id;
+export async function requestWithdrawal(amount: number): Promise<string> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Withdrawals aren't available right now.");
+  const call = httpsCallable<{ amount: number }, { ok: boolean; id: string; amount: number }>(functions, "requestWithdrawal");
+  const r = await call({ amount });
+  return r.data.id;
 }
 
 export async function approveWithdrawal(
