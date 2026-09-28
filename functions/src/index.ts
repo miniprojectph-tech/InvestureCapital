@@ -17,6 +17,9 @@ export { ensureCommunityAdmin, ensureCommunityMember, updateCommunityStats, refr
 // Help & FAQ: one-vote-per-member "was this helpful" counters.
 export { faqVote } from "./faq";
 
+// Admin: member directory export (Excel / CSV), audited.
+export { adminExportMembers } from "./members-export";
+
 // Weekly rankings: admin reset / remove a (test) player.
 export { adminResetRankings, adminRemoveFromRanking } from "./rankings";
 

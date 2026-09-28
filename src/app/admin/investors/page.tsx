@@ -6,6 +6,7 @@ import { TopHeader } from "@/components/TopHeader";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { InvestorPlansPanel } from "@/components/admin/InvestorPlansPanel";
+import { MembersExportButton } from "@/components/admin/MembersExportButton";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -345,11 +346,15 @@ export default function AdminInvestorsPage() {
             </button>
           ))}
         </div>
+        <div className="ml-auto">
+          <MembersExportButton />
+        </div>
         <button
           onClick={exportCsv}
-          className="ml-auto text-[11px] px-3 py-1.5 bg-card border border-border rounded-full text-text-muted hover:text-text flex items-center gap-1.5"
+          title="Exports the rows of the tab you are looking at"
+          className="text-[11px] px-3 py-1.5 bg-card border border-border rounded-full text-text-muted hover:text-text flex items-center gap-1.5"
         >
-          <Download className="w-3 h-3" /> Export CSV
+          <Download className="w-3 h-3" /> This tab (CSV)
         </button>
       </div>
 
