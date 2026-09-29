@@ -173,9 +173,11 @@ service cloud.firestore {
         && request.resource.data.termMonths > 0
         && request.resource.data.get('userName', '') is string && request.resource.data.get('userName', '').size() <= 80
         && request.resource.data.get('referenceNumber', '') is string && request.resource.data.get('referenceNumber', '').size() <= 80
-        && request.resource.data.get('receiptUrl', '') is string && request.resource.data.get('receiptUrl', '').size() <= 1000
-        && (!('receiptPath' in request.resource.data)
-            || request.resource.data.receiptPath.matches('^receipts/' + request.auth.uid + '/[^/]+$'));
+        // Proof of payment is REQUIRED: an uploaded receipt in the member's own folder.
+        && request.resource.data.receiptUrl is string
+        && request.resource.data.receiptUrl.size() > 0 && request.resource.data.receiptUrl.size() <= 1000
+        && request.resource.data.receiptPath is string
+        && request.resource.data.receiptPath.matches('^receipts/' + request.auth.uid + '/[^/]+$');
       allow update, delete: if isAdmin();
     }
 

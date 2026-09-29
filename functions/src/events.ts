@@ -286,6 +286,15 @@ export const claimEventSlots = onCall(async (request) => {
   if (!Number.isInteger(a.termMonths)) throw new HttpsError("invalid-argument", "Choose a term.");
   if (a.method !== "wallet" && a.method !== "request") throw new HttpsError("invalid-argument", "method must be wallet or request.");
   if (a.method === "request" && !a.paymentMethod) throw new HttpsError("invalid-argument", "Pick a payment method.");
+  // Proof of payment is required for a payment request: a receipt uploaded to the member's own folder.
+  if (a.method === "request") {
+    const path = typeof a.receiptPath === "string" ? a.receiptPath : "";
+    const url = typeof a.receiptUrl === "string" ? a.receiptUrl : "";
+    const ownFolder = path.startsWith(`receipts/${uid}/`) && !path.slice(`receipts/${uid}/`.length).includes("/") && path.length <= 300;
+    if (!ownFolder || !/^https:\/\//.test(url) || url.length > 1000) {
+      throw new HttpsError("failed-precondition", "Attach your proof of payment or receipt before submitting.");
+    }
+  }
   const cfg = await loadCompPlan();
   const now = Date.now();
 

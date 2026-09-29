@@ -1,5 +1,5 @@
 // Investure service worker — offline shell + cache-first for static + game asset pre-cache
-const CACHE = "investure-v8";
+const CACHE = "investure-v9";
 const APP_SHELL = ["/", "/login", "/dashboard"];
 
 // Game assets pre-cached at install so Reef and Tongits load instantly on

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   CheckCircle2,
@@ -53,6 +53,8 @@ export function ActivatePlanModal({ open, onClose, title, amount, summary, succe
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptPreview, setReceiptPreview] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [needProof, setNeedProof] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -76,6 +78,7 @@ export function ActivatePlanModal({ open, onClose, title, amount, summary, succe
       setError(null);
       setRefNum("");
       setCopied(null);
+      setNeedProof(false);
       if (receiptPreview) URL.revokeObjectURL(receiptPreview);
       setReceiptFile(null);
       setReceiptPreview(null);
@@ -98,12 +101,18 @@ export function ActivatePlanModal({ open, onClose, title, amount, summary, succe
       return;
     }
     setError(null);
+    setNeedProof(false);
     setReceiptFile(file);
     setReceiptPreview(URL.createObjectURL(file));
   }
 
   async function confirm() {
     if (!method) return;
+    // No proof, no request: the admin can't verify a payment without it.
+    if (!receiptFile) {
+      setNeedProof(true);
+      return;
+    }
     setStage("processing");
     setError(null);
     try {
@@ -221,8 +230,8 @@ export function ActivatePlanModal({ open, onClose, title, amount, summary, succe
           {/* Receipt upload */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="text-[10px] text-text-muted uppercase tracking-wider">Payment receipt</label>
-              <span className="text-[9px] text-green">Recommended — speeds up approval</span>
+              <label className="text-[10px] text-text-muted uppercase tracking-wider">Proof of payment</label>
+              <span className={cn("text-[9px] font-medium", receiptFile ? "text-green" : "text-[#F5C66B]")}>{receiptFile ? "Attached" : "Required"}</span>
             </div>
             {receiptPreview ? (
               <div className="relative bg-canvas border border-border rounded-lg p-2.5 flex items-center gap-3">
@@ -239,6 +248,7 @@ export function ActivatePlanModal({ open, onClose, title, amount, summary, succe
             ) : (
               <label className="block bg-canvas border border-dashed border-border-strong rounded-lg px-3 py-4 cursor-pointer hover:border-border-gold hover:bg-gold/5 transition">
                 <input
+                  ref={fileInput}
                   type="file"
                   accept="image/png,image/jpeg,image/webp,image/gif"
                   className="hidden"
@@ -250,9 +260,9 @@ export function ActivatePlanModal({ open, onClose, title, amount, summary, succe
                 />
                 <div className="flex items-center justify-center gap-2 text-text-muted">
                   <Upload className="w-4 h-4" />
-                  <span className="text-[12px]">Tap to upload a screenshot</span>
+                  <span className="text-[12px]">Tap to attach your receipt or payment screenshot</span>
                 </div>
-                <p className="text-[9px] text-text-subtle text-center mt-1 m-0">PNG / JPG · max 5 MB</p>
+                <p className="text-[9px] text-text-subtle text-center mt-1 m-0">PNG / JPG · max 5 MB · your request can&apos;t be submitted without it</p>
               </label>
             )}
           </div>
@@ -278,6 +288,32 @@ export function ActivatePlanModal({ open, onClose, title, amount, summary, succe
             >
               Submit request <ArrowRight className="w-3.5 h-3.5" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Pop-up: tried to submit with nothing attached */}
+      {stage === "form" && needProof && (
+        <div className="fixed inset-0 z-[90] bg-black/70 flex items-center justify-center p-4" onClick={() => setNeedProof(false)} role="alertdialog" aria-label="Proof of payment required">
+          <div className="w-full max-w-[360px] bg-card border border-[#F5C66B]/40 rounded-2xl p-5 text-center" onClick={(e) => e.stopPropagation()}>
+            <div className="w-12 h-12 rounded-full bg-[#F5C66B]/15 flex items-center justify-center mx-auto mb-3">
+              <Upload className="w-6 h-6 text-[#F5C66B]" />
+            </div>
+            <p className="text-[15px] font-medium m-0">Attach your proof of payment</p>
+            <p className="text-[12px] text-text-muted mt-1.5 mb-4 m-0 leading-relaxed">
+              We need a receipt or a screenshot of your {method ? PAYMENT_METHOD_LABELS[method] : ""} payment of {formatPHP(amount)} before your request can be submitted.
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => setNeedProof(false)} className="flex-1 py-2.5 border border-border-strong rounded-lg text-[12px] text-text-muted hover:bg-card-elev transition">
+                Go back
+              </button>
+              <button
+                onClick={() => { setNeedProof(false); fileInput.current?.click(); }}
+                className="flex-1 py-2.5 bg-gold text-gold-dark rounded-lg text-[12px] font-medium hover:brightness-110 transition flex items-center justify-center gap-1.5"
+              >
+                <Upload className="w-3.5 h-3.5" /> Attach receipt
+              </button>
+            </div>
           </div>
         </div>
       )}
