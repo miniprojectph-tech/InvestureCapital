@@ -855,15 +855,20 @@ export const adminSetPlacementStart = onCall(async (request) => {
         return m.id === placementId ? { ...m, completedAt: startedAt + m.cycles * cycleMsOf(m) } : m;
       }),
     });
-    // The audit entry itself keeps the real date.
+    // Internal record only. A start-date change is an admin action, so it goes to
+    // the admin audit trail and NEVER into the member's transaction history.
     const fmt = (ms: number) => new Date(ms + 8 * 3_600_000).toISOString().slice(0, 10);
-    tx.set(activityRef(userId), {
-      type: "start-date-change",
+    tx.set(db.collection("admin_audit").doc(), {
+      type: "placement_start_changed",
+      uid: userId,
+      userName: u.profile?.name ?? "",
+      placementId,
+      oldStart,
+      newStart: startedAt,
       title: `${placementId} start date changed`,
       subtitle: `${fmt(oldStart)} → ${fmt(startedAt)} by admin`,
-      amountKind: "neutral",
-      at: FieldValue.serverTimestamp(),
-      changedBy: adminUid,
+      by: adminUid,
+      at: now,
     });
     return { oldStart, cycles: target.cycles, cycleMs: cycleMsOf(target) };
   });

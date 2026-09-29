@@ -8,6 +8,7 @@ import {
   orderBy,
   query,
   startAfter,
+  where,
   type Firestore,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
@@ -156,9 +157,35 @@ export async function fetchAllActivity(
   cap = 500
 ): Promise<AdminActivityRow[]> {
   const q = query(collectionGroup(db, "activity"), limit(cap));
-  const snap = await getDocs(q);
-  const rows = snap.docs.map(rowFromActivityDoc);
-  return rows.sort((a, b) => b.at - a.at);
+  const [snap, internal] = await Promise.all([getDocs(q), fetchStartDateChanges(db)]);
+  // Older start-date entries used to sit in member histories; they are internal now.
+  const rows = snap.docs.map(rowFromActivityDoc).filter((r) => r.type !== "start-date-change");
+  return [...rows, ...internal].sort((a, b) => b.at - a.at);
+}
+
+/**
+ * Placement start-date changes. These are internal admin actions kept in the
+ * admin audit trail (admins only) — members never see them in their history.
+ */
+async function fetchStartDateChanges(db: Firestore): Promise<AdminActivityRow[]> {
+  try {
+    const snap = await getDocs(query(collection(db, "admin_audit"), where("type", "==", "placement_start_changed"), limit(300)));
+    return snap.docs.map((d) => {
+      const x = d.data();
+      return {
+        id: d.id,
+        path: d.ref.path,
+        userId: typeof x.uid === "string" ? x.uid : "",
+        type: "start-date-change",
+        title: typeof x.title === "string" ? x.title : "Start date changed",
+        subtitle: typeof x.subtitle === "string" ? x.subtitle : "",
+        amountKind: "neutral" as const,
+        at: typeof x.at === "number" ? x.at : Date.now(),
+      };
+    });
+  } catch {
+    return [];
+  }
 }
 
 /** Legacy paginated fetch (requires the COLLECTION_GROUP_DESC exemption on `at`). */

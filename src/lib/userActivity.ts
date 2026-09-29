@@ -19,6 +19,9 @@ export type UserActivityRow = {
   planId?: string;
 };
 
+/** Internal admin actions. They live in the admin audit trail, not here; this is a safety net. */
+const INTERNAL_TYPES = new Set(["start-date-change"]);
+
 function toMs(v: unknown): number {
   if (v && typeof (v as { toMillis?: () => number }).toMillis === "function") {
     return (v as { toMillis: () => number }).toMillis();
@@ -66,6 +69,8 @@ export function useUserActivity(typeFilter?: string) {
             planId: typeof data.planId === "string" ? data.planId : undefined,
           } as UserActivityRow;
         });
+        // Admin-only record types never appear in a member's history.
+        r = r.filter((x) => !INTERNAL_TYPES.has(x.type));
         if (typeFilter) r = r.filter((x) => x.type === typeFilter);
         r.sort((a, b) => b.at - a.at);
         setRows(r);
