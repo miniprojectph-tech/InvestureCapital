@@ -42,7 +42,6 @@ type GamePublic = {
   discard: Card[];
   melds: Record<string, Card[][]>;
   handCounts: Record<string, number>;
-  looseValues: Record<string, number>;
   hasExposed: Record<string, boolean>;
   turnStartExposed: boolean; // did the current player already have a meld at turn start?
   seats: Seat[];
@@ -146,6 +145,10 @@ async function loadCtx(tx: Transaction, code: string): Promise<Ctx> {
   const gs = gsSnap.data() as GamePublic;
   // Un-nest the melds wire format so in-memory code stays Card[][].
   gs.melds = decodeMelds(gs.melds);
+  // Hand point totals are never public during play: every player reads this
+  // doc, so they would tell opponents who is about to win. Games dealt before
+  // this rule still carry the field — drop it on the next write.
+  delete (gs as { looseValues?: unknown }).looseValues;
   const deckSnap = await tx.get(deckRef(code));
   const deck = (deckSnap.exists ? (deckSnap.data() as { stock: Card[] }).stock : []) ?? [];
   const hands: Record<string, Card[]> = {};
@@ -166,13 +169,8 @@ function requireTurn(ctx: Ctx, uid: string, phase?: "draw" | "discard") {
 
 function refreshCounts(ctx: Ctx) {
   const counts: Record<string, number> = {};
-  const lv: Record<string, number> = {};
-  for (const s of ctx.gs.seats) {
-    counts[s.uid] = ctx.hands[s.uid].length;
-    lv[s.uid] = looseCardValue(ctx.hands[s.uid]);
-  }
+  for (const s of ctx.gs.seats) counts[s.uid] = ctx.hands[s.uid].length;
   ctx.gs.handCounts = counts;
-  ctx.gs.looseValues = lv;
   ctx.gs.stockCount = ctx.deck.length;
 }
 
@@ -627,7 +625,6 @@ export const startTongitsGame = onCall({ region: GAME_REGION }, async (request) 
         discard: [],
         melds: Object.fromEntries(seats.map((s) => [s.uid, [] as Card[][]])),
         handCounts: Object.fromEntries(seats.map((s) => [s.uid, handMap[s.uid].length])),
-        looseValues: Object.fromEntries(seats.map((s) => [s.uid, looseCardValue(handMap[s.uid])])),
         hasExposed: Object.fromEntries(seats.map((s) => [s.uid, false])),
         turnStartExposed: false,
         seats,
