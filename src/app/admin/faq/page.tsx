@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Plus, ArrowUp, ArrowDown, Trash2, Loader2, Image as ImageIcon, Video as VideoIcon, Link2 as Youtube, X, Eye, ExternalLink, CheckCircle2, AlertCircle, GripVertical, Search } from "lucide-react";
+import { Plus, ArrowUp, ArrowDown, Trash2, Loader2, Image as ImageIcon, Video as VideoIcon, Link2 as Youtube, X, Eye, EyeOff, ExternalLink, CheckCircle2, AlertCircle, GripVertical, Search } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { FaqAnswer } from "@/components/faq/FaqAnswer";
 import { cn } from "@/lib/utils";
@@ -93,26 +93,69 @@ export default function AdminFaqPage() {
     setDirty(true);
   }
 
-  async function save() {
+  /** A question can go live once it has a question and an answer (text or media). */
+  const isComplete = (it: FaqItem) => it.question.trim().length >= 3 && (it.answer.trim().length > 0 || it.media.length > 0);
+  const whatIsMissing = (it: FaqItem) => (it.question.trim().length < 3 ? "a question" : "an answer (type one, or add an image or video)");
+
+  async function save(list: FaqItem[] = items, done?: string) {
     if (!user) return;
-    const bad = items.find((it) => it.status === "published" && (it.question.trim().length < 3 || (!it.answer.trim() && it.media.length === 0)));
+    const bad = list.find((it) => it.status === "published" && !isComplete(it));
     if (bad) {
       setSelected(bad.id);
-      setMsg({ ok: false, text: `"${bad.question || "Untitled"}" is published but has no question or answer yet.` });
+      setMsg({ ok: false, text: `"${bad.question || "Untitled question"}" can't be published yet: it needs ${whatIsMissing(bad)}.` });
       return;
     }
     setSaving(true);
     setMsg(null);
     try {
-      await saveFaq(items, user.uid);
+      await saveFaq(list, user.uid);
+      setItems(list);
       setDirty(false);
-      setMsg({ ok: true, text: "FAQ saved. Members see published questions right away." });
+      const live = list.filter((it) => it.status === "published").length;
+      const hidden = list.length - live;
+      setMsg({
+        ok: true,
+        text: done ?? (hidden > 0
+          ? `Saved. ${live} published and visible to members. ${hidden} still ${hidden === 1 ? "a draft" : "drafts"}, hidden from members until you publish.`
+          : `Saved. All ${live} question${live === 1 ? " is" : "s are"} published and visible to members.`),
+      });
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : "Save failed" });
     } finally {
       setSaving(false);
     }
   }
+
+  /** One click from the list: make a draft live (and save everything else pending). */
+  function publishNow(id: string) {
+    const it = items.find((x) => x.id === id);
+    if (!it) return;
+    if (!isComplete(it)) {
+      setSelected(id);
+      setPreview(false);
+      setMsg({ ok: false, text: `"${it.question || "Untitled question"}" can't be published yet: it needs ${whatIsMissing(it)}.` });
+      return;
+    }
+    const next = items.map((x) => (x.id === id ? { ...x, status: "published" as const, updatedAt: Date.now() } : x));
+    save(next, `"${it.question}" is now published and visible to members.`);
+  }
+
+  /** Publish every draft that is ready; say which ones were left behind and why. */
+  function publishAllReady() {
+    const drafts = items.filter((x) => x.status === "draft");
+    const ready = drafts.filter(isComplete);
+    const notReady = drafts.filter((x) => !isComplete(x));
+    if (ready.length === 0) {
+      if (notReady[0]) { setSelected(notReady[0].id); setPreview(false); }
+      setMsg({ ok: false, text: `No draft is ready to publish. "${notReady[0]?.question || "Untitled question"}" needs ${notReady[0] ? whatIsMissing(notReady[0]) : "content"}.` });
+      return;
+    }
+    const ids = new Set(ready.map((x) => x.id));
+    const next = items.map((x) => (ids.has(x.id) ? { ...x, status: "published" as const, updatedAt: Date.now() } : x));
+    save(next, `${ready.length} question${ready.length === 1 ? "" : "s"} published.${notReady.length ? ` ${notReady.length} left as draft because ${notReady.length === 1 ? "it has" : "they have"} no answer yet.` : ""}`);
+  }
+
+  const draftCount = items.filter((it) => it.status === "draft").length;
 
   async function addFile(kind: "image" | "video", file: File | undefined) {
     if (!file || !current || !user) return;
@@ -169,11 +212,24 @@ export default function AdminFaqPage() {
         <Link href="/faq" className="px-3.5 py-2 border border-border-strong rounded-lg text-[12px] text-text flex items-center gap-1.5 hover:bg-card-elev"><ExternalLink className="w-3.5 h-3.5" /> View as member</Link>
         <div className="ml-auto flex items-center gap-2">
           {dirty && <span className="text-[10px] px-2 py-1 rounded-full bg-[#F5C66B]/15 text-[#F5C66B] font-semibold">Unsaved changes</span>}
-          <button onClick={save} disabled={saving || !dirty} className="px-3.5 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center gap-1.5 hover:brightness-110 disabled:opacity-50">
+          <button onClick={() => save()} disabled={saving || !dirty} className="px-3.5 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center gap-1.5 hover:brightness-110 disabled:opacity-50">
             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Save changes
           </button>
         </div>
       </div>
+
+      {draftCount > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 px-3 py-2.5 rounded-xl border border-[#F5C66B]/40 bg-[#F5C66B]/10">
+          <EyeOff className="w-4 h-4 text-[#F5C66B] shrink-0" />
+          <p className="text-[12px] text-text m-0 flex-1 min-w-[200px]">
+            <span className="font-semibold">{draftCount} draft{draftCount === 1 ? " is" : "s are"} not visible to members.</span>{" "}
+            <span className="text-text-muted">Members only see published questions.</span>
+          </p>
+          <button onClick={publishAllReady} disabled={saving} className="px-3 py-1.5 rounded-lg bg-[#F5C66B] text-[#2A1D05] text-[11px] font-semibold hover:brightness-110 disabled:opacity-60">
+            Publish {draftCount === 1 ? "it" : "all drafts"}
+          </button>
+        </div>
+      )}
 
       {msg && (
         <p className={cn("text-[11px] m-0 mb-3 flex items-start gap-1.5", msg.ok ? "text-green" : "text-red")}>
@@ -206,7 +262,20 @@ export default function AdminFaqPage() {
                         <button onClick={(e) => { e.stopPropagation(); move(it.id, -1); }} aria-label="Move up" className="w-6 h-6 rounded-md text-text-muted hover:text-text hover:bg-canvas flex items-center justify-center"><ArrowUp className="w-3.5 h-3.5" /></button>
                         <button onClick={(e) => { e.stopPropagation(); move(it.id, 1); }} aria-label="Move down" className="w-6 h-6 rounded-md text-text-muted hover:text-text hover:bg-canvas flex items-center justify-center"><ArrowDown className="w-3.5 h-3.5" /></button>
                       </span>
-                      <span className={cn("text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0", it.status === "published" ? "bg-gold/15 text-gold" : "bg-white/8 text-text-muted")}>{it.status === "published" ? "Live" : "Draft"}</span>
+                      {it.status === "published" ? (
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 bg-gold/15 text-gold">Live</span>
+                      ) : (
+                        <>
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full shrink-0 bg-[#F5C66B]/15 text-[#F5C66B]">Draft · hidden</span>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); publishNow(it.id); }}
+                            disabled={saving}
+                            className="text-[10px] font-semibold px-2 py-1 rounded-md bg-gold text-gold-dark hover:brightness-110 shrink-0 disabled:opacity-60"
+                          >
+                            Publish
+                          </button>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -266,7 +335,7 @@ export default function AdminFaqPage() {
                   </div>
 
                   <label className="text-[11px] font-medium text-text">Answer
-                    <textarea className={cn(fields, "mt-1 leading-relaxed resize-y")} rows={8} value={current.answer} maxLength={FAQ_MAX_ANSWER} onChange={(e) => patch({ answer: e.target.value })} placeholder={"Withdrawals are released in two batches every week.\n\n- Requested **Monday to Thursday** → released **Friday**\n- Requested **Friday to Sunday** → released **Monday**"} />
+                    <textarea className={cn(fields, "mt-1 leading-relaxed resize-y")} rows={8} value={current.answer} maxLength={FAQ_MAX_ANSWER} onChange={(e) => patch({ answer: e.target.value })} placeholder="Type the answer here" />
                     <span className="block text-[10px] text-text-subtle font-normal mt-1">Blank line = new paragraph · start a line with &ldquo;- &rdquo; for a bullet · **bold** · links are allowed</span>
                   </label>
 
@@ -327,11 +396,22 @@ export default function AdminFaqPage() {
                         <button onClick={() => patch({ status: "published" })} className={cn("px-3 py-1 rounded-full text-[11px] font-semibold", current.status === "published" ? "bg-gold text-gold-dark" : "text-text-muted hover:text-text")}>Published</button>
                         <button onClick={() => patch({ status: "draft" })} className={cn("px-3 py-1 rounded-full text-[11px] font-semibold", current.status === "draft" ? "bg-card-elev text-text" : "text-text-muted hover:text-text")}>Draft</button>
                       </span>
-                      <span className="text-[10px] text-text-subtle">Last edited {new Date(current.updatedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}</span>
+                      <span className={cn("text-[10px]", current.status === "draft" ? "text-[#F5C66B]" : "text-text-subtle")}>
+                        {current.status === "draft" ? "Hidden from members" : "Visible to members once saved"}
+                      </span>
                     </div>
-                    <button onClick={save} disabled={saving || !dirty} className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center gap-1.5 hover:brightness-110 disabled:opacity-50">
-                      {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Save changes
-                    </button>
+                    {current.status === "draft" ? (
+                      <div className="flex gap-2">
+                        <button onClick={() => save()} disabled={saving || !dirty} className="px-3.5 py-2 border border-border-strong rounded-lg text-[12px] text-text hover:bg-card-elev disabled:opacity-50">Save draft</button>
+                        <button onClick={() => publishNow(current.id)} disabled={saving} className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center gap-1.5 hover:brightness-110 disabled:opacity-50">
+                          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />} Publish now
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => save()} disabled={saving || !dirty} className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center gap-1.5 hover:brightness-110 disabled:opacity-50">
+                        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Save changes
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
