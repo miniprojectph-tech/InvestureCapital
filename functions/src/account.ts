@@ -5,60 +5,99 @@ import { logger } from "firebase-functions";
 import { db, gameDb } from "./init";
 
 /**
- * A member deletes their own account.
+ * ADMIN ONLY: delete a member's account. Members cannot delete their own
+ * account — there is no member-facing function for it.
  *
- * Refused while there is anything of value or anything in flight: money in the
- * wallet, running placements, a pending withdrawal or a pending placement
- * request. The member withdraws or waits first, so closing an account can
- * never make money disappear or strand a request the admin is processing.
+ * Two steps, both through this one function:
+ *   { uid, check: true }                      → what the member still has (nothing is changed)
+ *   { uid, confirm: "DELETE", force?: true }  → delete
  *
- * Requires a fresh sign-in (the app re-confirms the password or Google account
- * right before calling). Financial records that belong to the platform's books
- * (processed withdrawals, commissions paid to uplines) are kept; the member's
- * profile, history, chat identity, game state and sign-in are removed.
+ * If the member still has money or anything in flight (wallet, active
+ * placements, referral earnings, a pending withdrawal or placement request)
+ * the delete is refused unless `force` is set, so an admin can't wipe a
+ * funded account by accident. With `force`, pending requests are closed as
+ * rejected with a note, so they don't sit in the admin queues.
+ *
+ * Kept for the books: processed withdrawals, commissions paid to uplines,
+ * match history. Removed: profile, history, notifications, game state, chat
+ * identity, ranking rows, referral code and the sign-in itself.
  */
-const FRESH_SIGN_IN_SECONDS = 10 * 60;
 
-export const deleteMyAccount = onCall({ timeoutSeconds: 120 }, async (request) => {
+type Outstanding = {
+  wallet: number;
+  activePlacements: number;
+  activeCapital: number;
+  referralEarnings: number;
+  pendingWithdrawals: number;
+  pendingWithdrawalAmount: number;
+  pendingPlacementRequests: number;
+};
+
+const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+async function assertAdmin(uid: string) {
+  const snap = await db.collection("users").doc(uid).get();
+  if (snap.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Admin role required.");
+}
+
+export const adminDeleteMember = onCall({ timeoutSeconds: 120 }, async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
-  const uid = request.auth.uid;
-  const confirm = (request.data as { confirm?: unknown } | undefined)?.confirm;
-  if (confirm !== "DELETE") throw new HttpsError("invalid-argument", "Type DELETE to confirm.");
+  const adminUid = request.auth.uid;
+  await assertAdmin(adminUid);
 
-  const authTime = Number(request.auth.token.auth_time ?? 0);
-  if (!authTime || Date.now() / 1000 - authTime > FRESH_SIGN_IN_SECONDS) {
-    throw new HttpsError("failed-precondition", "Please confirm your password again, then retry.");
-  }
+  const { uid, check, confirm, force } = (request.data ?? {}) as { uid?: unknown; check?: unknown; confirm?: unknown; force?: unknown };
+  if (typeof uid !== "string" || !/^[A-Za-z0-9_-]{6,128}$/.test(uid)) throw new HttpsError("invalid-argument", "Member id is required.");
+  if (uid === adminUid) throw new HttpsError("failed-precondition", "You can't delete your own account.");
 
   const userRef = db.collection("users").doc(uid);
   const [userSnap, pendingW, pendingP] = await Promise.all([
     userRef.get(),
-    db.collection("withdrawals").where("userId", "==", uid).where("status", "==", "pending").limit(1).get(),
-    db.collection("plan_requests").where("userId", "==", uid).where("status", "==", "pending").limit(1).get(),
+    db.collection("withdrawals").where("userId", "==", uid).where("status", "==", "pending").get(),
+    db.collection("plan_requests").where("userId", "==", uid).where("status", "==", "pending").get(),
   ]);
-  const u = (userSnap.data() ?? {}) as {
+  if (!userSnap.exists) throw new HttpsError("not-found", "That member no longer exists.");
+  const u = userSnap.data() as {
     isAdmin?: boolean;
     referralCode?: string;
+    profile?: { name?: string; email?: string };
     balances?: { wallet?: number };
-    placements?: unknown[];
+    placements?: { capital?: number }[];
     referralWallet?: { available?: number; pending?: number; locked?: number };
   };
+  if (u.isAdmin === true) throw new HttpsError("failed-precondition", "Admin accounts can't be deleted. Remove the admin role first.");
 
-  if (u.isAdmin === true) throw new HttpsError("failed-precondition", "Admin accounts can't be deleted from here.");
-  const wallet = Number(u.balances?.wallet ?? 0);
-  if (wallet >= 0.01) throw new HttpsError("failed-precondition", "You still have money in your wallet. Withdraw it first, then delete your account.");
-  if (Array.isArray(u.placements) && u.placements.length > 0) {
-    throw new HttpsError("failed-precondition", "You have active placements. Your account can be deleted after they complete and the balance is withdrawn.");
-  }
-  const rw = u.referralWallet ?? {};
-  if (Number(rw.available ?? 0) + Number(rw.pending ?? 0) + Number(rw.locked ?? 0) >= 0.01) {
-    throw new HttpsError("failed-precondition", "You still have referral earnings. Move them to your wallet and withdraw first.");
-  }
-  if (!pendingW.empty) throw new HttpsError("failed-precondition", "You have a withdrawal waiting to be released. Delete your account after it is sent.");
-  if (!pendingP.empty) throw new HttpsError("failed-precondition", "You have a placement request waiting for approval. Delete your account after it is processed.");
+  const placements = Array.isArray(u.placements) ? u.placements : [];
+  const outstanding: Outstanding = {
+    wallet: round2(num(u.balances?.wallet)),
+    activePlacements: placements.length,
+    activeCapital: placements.reduce((s, p) => s + num(p?.capital), 0),
+    referralEarnings: round2(num(u.referralWallet?.available) + num(u.referralWallet?.pending) + num(u.referralWallet?.locked)),
+    pendingWithdrawals: pendingW.size,
+    pendingWithdrawalAmount: round2(pendingW.docs.reduce((s, d) => s + num(d.data().amount), 0)),
+    pendingPlacementRequests: pendingP.size,
+  };
+  const hasOutstanding =
+    outstanding.wallet >= 0.01 || outstanding.activePlacements > 0 || outstanding.referralEarnings >= 0.01 ||
+    outstanding.pendingWithdrawals > 0 || outstanding.pendingPlacementRequests > 0;
+  const member = { uid, name: String(u.profile?.name ?? ""), email: String(u.profile?.email ?? "") };
 
-  // Record first (no personal details), so there is a trace even if a later step fails.
-  await db.collection("admin_audit").add({ type: "account_deleted_by_member", uid, at: Date.now() });
+  if (check === true) return { ok: true, deleted: false, member, outstanding, hasOutstanding };
+
+  if (confirm !== "DELETE") throw new HttpsError("invalid-argument", "Type DELETE to confirm.");
+  if (hasOutstanding && force !== true) {
+    throw new HttpsError("failed-precondition", "This member still has money or pending requests. Review them, then confirm you want to delete anyway.");
+  }
+
+  const now = Date.now();
+  // Record first, so there is a trace even if a later step fails.
+  await db.collection("admin_audit").add({ type: "member_deleted_by_admin", uid, name: member.name, email: member.email, outstanding, forced: hasOutstanding, by: adminUid, at: now });
+
+  // Close anything waiting in the admin queues.
+  const batch = db.batch();
+  for (const d of pendingW.docs) batch.update(d.ref, { status: "rejected", note: "Account deleted by admin", processedAt: now, processedBy: adminUid });
+  for (const d of pendingP.docs) batch.update(d.ref, { status: "rejected", note: "Account deleted by admin", processedAt: now, processedBy: adminUid });
+  if (pendingW.size + pendingP.size > 0) await batch.commit();
 
   // Member record + everything under it (history, notifications, game state).
   await db.recursiveDelete(userRef);
@@ -85,10 +124,12 @@ export const deleteMyAccount = onCall({ timeoutSeconds: 120 }, async (request) =
   }
   const results = await Promise.allSettled(cleanups);
   const failed = results.filter((r) => r.status === "rejected").length;
-  if (failed) logger.warn("deleteMyAccount: some clean-up steps failed", { uid, failed });
+  if (failed) logger.warn("adminDeleteMember: some clean-up steps failed", { uid, failed });
 
-  // Last: the sign-in itself. After this the member's session is invalid.
-  await getAuth().deleteUser(uid);
-  logger.info("account deleted by member", { uid });
-  return { ok: true };
+  // Last: the sign-in itself. A sign-in that is already gone is fine.
+  await getAuth().deleteUser(uid).catch((e: { code?: string }) => {
+    if (e?.code !== "auth/user-not-found") throw e;
+  });
+  logger.info("member deleted by admin", { uid, by: adminUid, forced: hasOutstanding });
+  return { ok: true, deleted: true, member, outstanding, hasOutstanding };
 });

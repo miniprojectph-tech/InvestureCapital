@@ -9,13 +9,13 @@ import {
   Shield,
   KeyRound,
   LogOut,
-  Trash2,
   Loader2,
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { InstallAppCard } from "@/components/InstallAppCard";
-import { ChangePasswordModal, DeleteAccountModal } from "@/components/AccountSecurityModals";
+import Link from "next/link";
+import { ChangePasswordModal } from "@/components/AccountSecurityModals";
 import { useAuth } from "@/lib/auth";
 import { useUserState } from "@/lib/useUserState";
 
@@ -25,7 +25,6 @@ export default function ProfilePage() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
 
   async function handleSignOut() {
     setBusy(true);
@@ -122,30 +121,22 @@ export default function ProfilePage() {
 
           <InstallAppCard />
 
+          {/* Accounts are closed by the admin team only, never from the member side. */}
           <Card>
-            <CardHeader title="Danger zone" />
-            <div className="flex items-center justify-between gap-3 p-3 bg-red/5 border border-red/20 rounded-lg">
-              <div className="min-w-0">
-                <p className="text-[12px] font-medium m-0">Delete account</p>
-                <p className="text-[10px] text-text-muted mt-0.5 m-0">
-                  Permanently removes your profile and history. Available once your wallet is empty and nothing is pending.
-                </p>
-              </div>
-              <button
-                onClick={() => setDeleteOpen(true)}
-                disabled={demoMode || !!user?.isAdmin}
-                title={user?.isAdmin ? "Admin accounts can't be deleted from here" : undefined}
-                className="px-3 py-1.5 bg-red/10 text-red border border-red/30 rounded-md text-[11px] flex items-center gap-1.5 shrink-0 hover:bg-red/20 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Trash2 className="w-3 h-3" /> Delete
-              </button>
+            <CardHeader title="Closing your account" />
+            <div className="flex items-center justify-between gap-3 p-3 bg-canvas border border-border rounded-lg">
+              <p className="text-[11px] text-text-muted m-0 min-w-0">
+                To close your account, message the admin. We&apos;ll settle any balance with you first.
+              </p>
+              <Link href="/community#admin" className="px-3 py-1.5 border border-border-strong rounded-md text-[11px] text-text shrink-0 hover:bg-card-elev">
+                Message the admin
+              </Link>
             </div>
           </Card>
         </div>
       </div>
 
       <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
-      <DeleteAccountModal open={deleteOpen} onClose={() => setDeleteOpen(false)} onDeleted={() => router.replace("/login")} />
     </div>
   );
 }

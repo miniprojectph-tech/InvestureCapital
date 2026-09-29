@@ -1,11 +1,9 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { httpsCallable } from "firebase/functions";
-import { X, Loader2, AlertCircle, CheckCircle2, KeyRound, Trash2, Eye, EyeOff } from "lucide-react";
+import { X, Loader2, AlertCircle, CheckCircle2, KeyRound, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-import { getFirebase } from "@/lib/firebase";
 
 /** Turn a Firebase error into a sentence a member can act on. */
 function friendly(err: unknown): string {
@@ -133,61 +131,4 @@ export function ChangePasswordModal({ open, onClose }: { open: boolean; onClose:
   );
 }
 
-export function DeleteAccountModal({ open, onClose, onDeleted }: { open: boolean; onClose: () => void; onDeleted: () => void }) {
-  const { hasPassword, confirmIdentity, signOut } = useAuth();
-  const [password, setPassword] = useState("");
-  const [typed, setTyped] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  if (!open) return null;
-
-  function close() {
-    setPassword(""); setTyped(""); setError(null);
-    onClose();
-  }
-
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (typed.trim().toUpperCase() !== "DELETE") return setError("Type DELETE in the box to confirm.");
-    const { functions } = getFirebase();
-    if (!functions) return setError("This isn't available right now.");
-    setBusy(true);
-    try {
-      await confirmIdentity(hasPassword ? password : undefined);
-      await httpsCallable<{ confirm: string }, { ok: boolean }>(functions, "deleteMyAccount")({ confirm: "DELETE" });
-      await signOut().catch(() => {});
-      onDeleted();
-    } catch (err) {
-      setError(friendly(err));
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Shell title="Delete account" icon={Trash2} danger onClose={close}>
-      <form onSubmit={submit} className="flex flex-col gap-3">
-        <div className="text-[12px] text-text-muted leading-relaxed flex flex-col gap-1.5">
-          <p className="m-0">This permanently removes your profile, history, notifications, game progress and sign-in. It cannot be undone.</p>
-          <p className="m-0">Your account can only be deleted when your wallet is empty and you have no active placements or pending requests.</p>
-        </div>
-        {hasPassword ? (
-          <PasswordField label="Your password" value={password} onChange={setPassword} autoComplete="current-password" />
-        ) : (
-          <p className="text-[11px] text-text-subtle m-0">You&apos;ll be asked to confirm with your Google account.</p>
-        )}
-        <label className="text-[11px] font-medium text-text block">
-          Type DELETE to confirm
-          <input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" className="mt-1 w-full bg-canvas border border-border rounded-lg px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-red/50" />
-        </label>
-        {error && <ErrorLine text={error} />}
-        <div className="flex gap-2">
-          <button type="button" onClick={close} disabled={busy} className="flex-1 py-2.5 border border-border-strong rounded-lg text-[12px] text-text hover:bg-card-elev disabled:opacity-60">Keep my account</button>
-          <button type="submit" disabled={busy} className="flex-1 py-2.5 bg-red/15 border border-red/40 text-red rounded-lg text-[12px] font-medium hover:bg-red/25 disabled:opacity-60 flex items-center justify-center gap-2">
-            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />} Delete forever
-          </button>
-        </div>
-      </form>
-    </Shell>
-  );
-}
+// Account deletion is admin-only: see components/admin/DeleteMemberModal.tsx.

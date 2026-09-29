@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { InvestorPlansPanel } from "@/components/admin/InvestorPlansPanel";
 import { MembersExportButton } from "@/components/admin/MembersExportButton";
+import { DeleteMemberModal } from "@/components/admin/DeleteMemberModal";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -205,6 +206,8 @@ export default function AdminInvestorsPage() {
       .sort((a, b) => b.points - a.points || b.totalCasts - a.totalCasts);
   }, [rows, gameByUid, query]);
 
+  const [deleting, setDeleting] = useState<{ uid: string; name: string; email: string } | null>(null);
+  const [accountMsg, setAccountMsg] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const reloadInvestors = useCallback(() => setReloadTick((t) => t + 1), []);
 
@@ -567,6 +570,11 @@ export default function AdminInvestorsPage() {
       {sortKey === "plans" && <InvestorPlansPanel investors={filtered} onChanged={reloadInvestors} />}
 
       {/* ── Joined tab ── */}
+      {sortKey === "joined" && accountMsg && (
+        <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] bg-green/10 border border-green/30 text-green">
+          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> {accountMsg}
+        </div>
+      )}
       {sortKey === "joined" && (
         <Card>
           <CardHeader title={`All investors (${filtered.length})`} subtitle="Account overview sorted by join date" />
@@ -575,11 +583,12 @@ export default function AdminInvestorsPage() {
               <colgroup>
                 <col style={{ width: "14%" }} />
                 <col style={{ width: "18%" }} />
-                <col style={{ width: "13%" }} />
+                <col style={{ width: "12%" }} />
                 <col style={{ width: "10%" }} />
-                <col style={{ width: "13%" }} />
-                <col style={{ width: "13%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "12%" }} />
                 <col style={{ width: "10%" }} />
+                <col style={{ width: "12%" }} />
               </colgroup>
               <thead>
                 <tr className="text-text-subtle text-left">
@@ -590,6 +599,7 @@ export default function AdminInvestorsPage() {
                   <th className="font-normal py-2 px-1 text-right">Wallet</th>
                   <th className="font-normal py-2 px-1 text-right">Locked-In Due</th>
                   <th className="font-normal py-2 px-1 text-right">Role</th>
+                  <th className="font-normal py-2 px-1 text-right">Account</th>
                 </tr>
               </thead>
               <tbody>
@@ -608,16 +618,38 @@ export default function AdminInvestorsPage() {
                         <span className="text-[9px] bg-green/15 text-green px-1.5 py-0.5 rounded-md">Investor</span>
                       )}
                     </td>
+                    <td className="py-2 px-1 text-right">
+                      {u.isAdmin || u.uid === user?.uid ? (
+                        <span className="text-[10px] text-text-dim">—</span>
+                      ) : (
+                        <button
+                          onClick={() => { setAccountMsg(null); setDeleting({ uid: u.uid, name: u.name, email: u.email }); }}
+                          className="text-[10px] px-2 py-1 rounded-md border border-red/30 text-red hover:bg-red/10 inline-flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" /> Delete
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={7} className="text-center text-text-subtle py-8">No investors match your search.</td></tr>
+                  <tr><td colSpan={8} className="text-center text-text-subtle py-8">No investors match your search.</td></tr>
                 )}
               </tbody>
             </table>
           </ResponsiveTable>
         </Card>
       )}
+
+      <DeleteMemberModal
+        member={deleting}
+        onClose={() => setDeleting(null)}
+        onDeleted={(name) => {
+          setDeleting(null);
+          setAccountMsg(`${name}'s account was deleted.`);
+          reloadInvestors();
+        }}
+      />
     </div>
   );
 }
