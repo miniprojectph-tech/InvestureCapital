@@ -162,7 +162,7 @@ export function PlacementCalculator() {
       <div className="flex flex-col flex-1">
         <SpecRow label="Payout" value={`${peso(proj.perCycle)} every ${cfg.cycleDays} days`} index={0} />
         <SpecRow label="Payouts" value={`${proj.cycles} over ${proj.days} days`} index={1} />
-        <SpecRow label="Accrues daily" value={`${peso(proj.dailyAccrual)} / day`} index={2} />
+        <SpecRow label="Earns per day" value={`${peso(proj.dailyAccrual)} / day`} index={2} />
         <SpecRow label="Rate" value={`${cfg.cycleRate}% per payout`} index={3} />
 
         <SectionHeader label={`For ${formatPHP(amountError ? cfg.minPlacement : amount)} · ${term.months}-month term`} />

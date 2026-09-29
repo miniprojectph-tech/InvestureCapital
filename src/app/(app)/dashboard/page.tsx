@@ -132,7 +132,7 @@ export default function DashboardPage() {
                 <p className="text-[9px] text-text-subtle uppercase tracking-wider m-0 mt-4">Wallet balance</p>
                 <p className="text-[22px] font-mono font-medium m-0 tabular-nums">{formatPHP(wallet, { short: true })}</p>
                 <div className="flex items-center justify-between mt-2 text-[10px]">
-                  <span className="text-green font-mono">+{peso(accrual)} accruing today</span>
+                  <span className="text-green font-mono" title="Builds up daily and is paid into your wallet with your next payout">+{peso(accrual)} earned today</span>
                   {next && (
                     <span className="text-text-subtle flex items-center gap-1">
                       <Clock className="w-2.5 h-2.5" /> {formatCountdown(next.msLeft)}

@@ -24,7 +24,7 @@ export default function SupportPage() {
   const faqs = [
     {
       q: "How does the 5 Days Income work?",
-      a: `Every ${cfg.cycleDays} days you receive ${cfg.cycleRate}% of your placement in your wallet — ${peso(unitPayout)} for every ₱${unit.toLocaleString()} placed. It accrues daily (you'll get a notice each day) and is credited as a numbered payout, e.g. "1 out of ${cyclesForTerm(cfg, cfg.terms[0].months)} payouts". The minimum term is ${cfg.terms[0].months} month${cfg.terms[0].months > 1 ? "s" : ""}.`,
+      a: `Every ${cfg.cycleDays} days you receive ${cfg.cycleRate}% of your placement in your wallet — ${peso(unitPayout)} for every ₱${unit.toLocaleString()} placed. It builds up every day (you'll get a notice each day) and is paid into your wallet as a numbered payout, e.g. "1 out of ${cyclesForTerm(cfg, cfg.terms[0].months)} payouts". The minimum term is ${cfg.terms[0].months} month${cfg.terms[0].months > 1 ? "s" : ""}.`,
     },
     {
       q: "What terms can I choose, and what is the Locked-In Bonus?",

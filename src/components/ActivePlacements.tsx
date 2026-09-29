@@ -42,7 +42,7 @@ export function ActivePlacements() {
         <div>
           <p className="text-[13px] font-medium m-0 text-text">Your placements</p>
           <p className="text-[10px] text-text-subtle mt-0.5 m-0">
-            {placements.length === 0 ? "Nothing running yet" : `${placements.length} active · ${peso(placements.reduce((s, p) => s + placementDailyAccrual(p), 0))} accruing per day`}
+            {placements.length === 0 ? "Nothing running yet" : `${placements.length} active · earning ${peso(placements.reduce((s, p) => s + placementDailyAccrual(p), 0))} per day`}
           </p>
         </div>
         <div className="w-9 h-9 rounded-lg bg-green/15 flex items-center justify-center">

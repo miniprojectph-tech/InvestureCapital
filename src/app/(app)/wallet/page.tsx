@@ -74,7 +74,9 @@ export default function WalletPage() {
           <p className="text-[10px] text-text-subtle uppercase tracking-wider m-0 mb-1.5">Available balance</p>
           <p className="text-[32px] font-mono font-medium m-0 leading-none tracking-tight tabular-nums">{formatPHP(walletBalance)}</p>
           <div className="flex gap-3.5 mt-2.5 text-[11px] flex-wrap">
-            <span className="text-green font-mono">+{peso(accrual)} accruing today</span>
+            <span className="text-green font-mono" title="Builds up daily and is paid into your wallet with your next payout">
+              +{peso(accrual)} earned today <span className="text-text-subtle font-sans">· paid with your next payout</span>
+            </span>
             {next ? (
               <span className="text-text-subtle flex items-center gap-1">
                 <Clock className="w-3 h-3" /> Next payout {peso(next.amount)} in {formatCountdown(next.msLeft)} · {next.placement.id}
@@ -104,7 +106,7 @@ export default function WalletPage() {
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
         {[
-          ["Accruing today", accrual],
+          ["Earned today", accrual],
           ["This week", totals.week],
           ["This month", totals.month],
           ["All-time income", totals.all],
