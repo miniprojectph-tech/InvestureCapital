@@ -234,7 +234,7 @@ export async function topUpWallet(
   await logActivity(db, uid, {
     type: "deposit",
     title: "Wallet topped up",
-    subtitle: "Simulated deposit · instant",
+    subtitle: "Deposit",
     amount,
     amountKind: "in",
   });

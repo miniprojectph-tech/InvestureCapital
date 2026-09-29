@@ -16,6 +16,13 @@ import {
   signInWithPopup,
   signOut as fbSignOut,
   updateProfile,
+  updatePassword,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
+  EmailAuthProvider,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
   type User,
 } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
@@ -36,7 +43,13 @@ type AuthContextValue = {
   loading: boolean;
   /** True when no Firebase keys are configured — app runs in mock mode. */
   demoMode: boolean;
-  signIn: (email: string, password: string) => Promise<void>;
+  /** `remember` false = signed out when the browser closes; true = stays signed in on this device. */
+  signIn: (email: string, password: string, remember?: boolean) => Promise<void>;
+  /** True when the account has a password (false = Google sign-in only). */
+  hasPassword: boolean;
+  /** Confirm it's really the member (password, or the Google pop-up) before a sensitive action. */
+  confirmIdentity: (currentPassword?: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   signUp: (
     name: string,
     email: string,
@@ -131,9 +144,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [auth, db]);
 
-  async function signIn(email: string, password: string) {
+  const [hasPassword, setHasPassword] = useState(false);
+  useEffect(() => {
+    if (!auth) return;
+    return onAuthStateChanged(auth, (u) => setHasPassword(!!u?.providerData.some((p) => p.providerId === "password")));
+  }, [auth]);
+
+  async function signIn(email: string, password: string, remember = true) {
     if (!auth) throw new Error("Firebase is not configured. Add your keys to .env.local.");
+    await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
     await signInWithEmailAndPassword(auth, email, password);
+  }
+
+  async function confirmIdentity(currentPassword?: string) {
+    const u = auth?.currentUser;
+    if (!auth || !u) throw new Error("Please sign in again.");
+    if (u.providerData.some((p) => p.providerId === "password")) {
+      if (!currentPassword) throw new Error("Enter your current password.");
+      await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email ?? "", currentPassword));
+    } else {
+      await reauthenticateWithPopup(u, new GoogleAuthProvider());
+    }
+    await u.getIdToken(true); // so the server sees the fresh sign-in time
+  }
+
+  async function changePassword(currentPassword: string, newPassword: string) {
+    const u = auth?.currentUser;
+    if (!auth || !u) throw new Error("Please sign in again.");
+    if (newPassword.length < 8) throw new Error("Use at least 8 characters for the new password.");
+    if (newPassword === currentPassword) throw new Error("The new password must be different from the current one.");
+    await confirmIdentity(currentPassword);
+    await updatePassword(u, newPassword);
   }
 
   async function signUp(
@@ -191,7 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, demoMode, signIn, signUp, signInWithGoogle, resetPassword, signOut }}
+      value={{ user, loading, demoMode, signIn, signUp, signInWithGoogle, resetPassword, signOut, hasPassword, confirmIdentity, changePassword }}
     >
       {children}
     </AuthContext.Provider>

@@ -117,7 +117,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
         return;
       }
       if (isSignup) await signUp(name, email, password, referralCode ?? undefined);
-      else await signIn(email, password);
+      else await signIn(email, password, remember);
       router.push("/dashboard");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Something went wrong";
@@ -182,10 +182,6 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
         <div className="flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-gold" strokeWidth={2.25} />
           <span className="font-medium text-[16px]">Investure</span>
-        </div>
-        <div className="hidden sm:flex items-center gap-1.5 ml-3 px-2.5 py-1 rounded-full bg-white/5 border border-white/10">
-          <span className="w-1.5 h-1.5 rounded-full bg-green" style={{ animation: "auth-pulse 2s ease-in-out infinite" }} />
-          <span className="text-[10px] text-white/60 tracking-wide">Live · BTC $98,420 ↑ 1.84%</span>
         </div>
         {demoMode && (
           <span className="ml-auto text-[9px] font-medium bg-blue/15 text-blue px-2 py-0.5 rounded-full">Demo mode</span>
@@ -262,7 +258,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
 
           {!isSignup && (
             <p className="text-[12px] text-white/55 m-0 mb-4">
-              Sign in to your dashboard and vault.
+              Sign in to your dashboard.
             </p>
           )}
 
@@ -293,7 +289,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Genesis Devilla"
+                  placeholder="Juan Dela Cruz"
                   className="flex-1 bg-transparent text-[13px] outline-none text-white placeholder:text-white/30"
                   required={!demoMode}
                   autoComplete="name"
@@ -351,7 +347,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
                   onChange={(e) => setRemember(e.target.checked)}
                   className="accent-[#3DD598] w-3 h-3"
                 />
-                <span className="text-[11px] text-white/55">Remember me for 30 days</span>
+                <span className="text-[11px] text-white/55">Keep me signed in on this device</span>
               </label>
             )}
 

@@ -108,9 +108,9 @@ export const mockActivePlans: ActivePlan[] = [
 ];
 
 export const mockUser = {
-  name: "Genesis Devilla",
-  initials: "GD",
-  email: "gmdevilla001@gmail.com",
+  name: "Juan Dela Cruz",
+  initials: "JD",
+  email: "juan@example.com",
 };
 
 export const mockBalances = {

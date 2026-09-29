@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   HelpCircle,
-  Mail,
+  Users,
   MessageCircle,
   ChevronDown,
   ChevronUp,
@@ -42,22 +43,11 @@ export default function SupportPage() {
       a: `₱${cfg.minPlacement.toLocaleString()}, in steps of ₱${unit.toLocaleString()}. Every bonus scales with the number of ₱${unit.toLocaleString()} units you place.`,
     },
     {
-      q: "Is this real money?",
-      a: "No. Investure Capital is a simulation platform demonstrating how a compensation plan works. All balances are illustrative. No real funds are deposited, traded, or withdrawn.",
+      q: "How do I withdraw?",
+      a: "Save your mode of payout on the Withdrawals page, then request any amount from your wallet. Requests are released in scheduled batches, and you get a notification when yours is received and again when it is sent.",
     },
   ];
   const [openIdx, setOpenIdx] = useState<number | null>(0);
-  const [subject, setSubject] = useState("");
-  const [message, setMessage] = useState("");
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const body = encodeURIComponent(
-      `${message}\n\n---\nSent from Investure support page`
-    );
-    const subj = encodeURIComponent(subject || "Support request");
-    window.location.href = `mailto:support@investure.app?subject=${subj}&body=${body}`;
-  }
 
   return (
     <div>
@@ -104,48 +94,32 @@ export default function SupportPage() {
 
         <div className="flex flex-col gap-3">
           <Card>
-            <CardHeader title="Contact us" />
-            <form onSubmit={handleSubmit} className="flex flex-col gap-2.5">
-              <input
-                type="text"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Subject"
-                className="bg-canvas border border-border rounded-lg px-3 py-2.5 text-[12px] text-text outline-none focus:border-gold/40 placeholder:text-text-subtle"
-              />
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder="What do you need help with?"
-                rows={5}
-                className="bg-canvas border border-border rounded-lg px-3 py-2.5 text-[12px] text-text outline-none focus:border-gold/40 placeholder:text-text-subtle resize-none"
-              />
-              <button
-                type="submit"
-                className="py-2.5 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center justify-center gap-2 hover:brightness-110 transition"
-              >
-                <Send className="w-3.5 h-3.5" /> Send message
-              </button>
-            </form>
-            <p className="text-[9px] text-text-subtle mt-3 m-0 text-center">
-              Opens your email client. We&apos;ll reply within 24 hours.
+            <CardHeader title="Talk to us" subtitle="We answer in the app, in your private chat" />
+            <Link
+              href="/community#admin"
+              className="py-2.5 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center justify-center gap-2 hover:brightness-110 transition"
+            >
+              <Send className="w-3.5 h-3.5" /> Message the admin
+            </Link>
+            <p className="text-[10px] text-text-subtle mt-3 m-0 text-center">
+              Only you and the admin team can see this conversation. You&apos;ll get the reply right there.
             </p>
           </Card>
 
           <Card>
-            <CardHeader title="Other channels" />
+            <CardHeader title="More help" />
             <div className="flex flex-col gap-2">
               <a
-                href="mailto:support@investure.app"
+                href="/community"
                 className="flex items-center gap-3 px-3 py-2.5 bg-canvas border border-border rounded-lg hover:bg-card-elev transition"
               >
                 <div className="w-7 h-7 rounded-md bg-blue/15 flex items-center justify-center">
-                  <Mail className="w-3.5 h-3.5 text-blue" />
+                  <Users className="w-3.5 h-3.5 text-blue" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[12px] m-0">Email</p>
+                  <p className="text-[12px] m-0">Community Room</p>
                   <p className="text-[10px] text-text-subtle mt-0.5 m-0">
-                    support@investure.app
+                    Ask other members and see announcements
                   </p>
                 </div>
               </a>
@@ -171,9 +145,9 @@ export default function SupportPage() {
                   <MessageCircle className="w-3.5 h-3.5 text-green" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-[12px] m-0">Message the admin</p>
+                  <p className="text-[12px] m-0">Your conversation with the admin</p>
                   <p className="text-[10px] text-text-subtle mt-0.5 m-0">
-                    Private chat in the Community tab
+                    Pick up where you left off
                   </p>
                 </div>
               </a>

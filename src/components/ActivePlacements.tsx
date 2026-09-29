@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Coins, Plus, Loader2, Clock, CheckCircle2, Zap } from "lucide-react";
+import { Coins, Plus, Loader2, Clock, CheckCircle2 } from "lucide-react";
 import { formatPHP, cn } from "@/lib/utils";
 import { useUserState } from "@/lib/useUserState";
 import {
@@ -13,7 +13,6 @@ import {
   formatCountdown,
   useMyTestClock,
   placementClock,
-  TEST_CLOCK_LABEL,
   peso,
 } from "@/lib/compplan";
 
@@ -21,7 +20,10 @@ import {
 export function ActivePlacements() {
   const { state, loading } = useUserState();
   const now = useNow(30_000);
-  const testClock = useMyTestClock();
+  // Admin timing tools are never named on member screens; this only decides
+  // whether a calendar countdown makes sense for the placement.
+  const clock = useMyTestClock();
+  const accelerated = (placementId: string) => !!placementClock(clock, placementId);
 
   if (loading || !state) {
     return (
@@ -98,16 +100,12 @@ export function ActivePlacements() {
                   <span>
                     <span className="font-mono text-text-muted">{p.cyclesPaid}</span> of {p.cycles} payouts credited
                   </span>
-                  {placementClock(testClock, p.id) ? (
-                    <span className="flex items-center gap-1 text-right text-gold">
-                      <Zap className="w-2.5 h-2.5" /> Test clock · {TEST_CLOCK_LABEL[placementClock(testClock, p.id)!.speed]}
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-right">
-                      <Clock className="w-2.5 h-2.5" />
-                      {isFinalNext ? "Final payout" : `Payout ${p.cyclesPaid + 1}`} {peso(nextAmount)} in {formatCountdown(nextAt - now)}
-                    </span>
-                  )}
+                  <span className="flex items-center gap-1 text-right">
+                    <Clock className="w-2.5 h-2.5" />
+                    {isFinalNext ? "Final payout" : `Payout ${p.cyclesPaid + 1}`} {peso(nextAmount)}
+                    {/* On an accelerated placement the calendar countdown doesn't apply, so just say it's next. */}
+                    {accelerated(p.id) ? " · next" : ` in ${formatCountdown(nextAt - now)}`}
+                  </span>
                 </div>
 
                 {p.lockedBonus > 0 && (

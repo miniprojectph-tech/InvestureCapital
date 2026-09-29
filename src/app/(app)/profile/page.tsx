@@ -15,14 +15,17 @@ import {
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { InstallAppCard } from "@/components/InstallAppCard";
+import { ChangePasswordModal, DeleteAccountModal } from "@/components/AccountSecurityModals";
 import { useAuth } from "@/lib/auth";
 import { useUserState } from "@/lib/useUserState";
 
 export default function ProfilePage() {
-  const { user, signOut, demoMode } = useAuth();
+  const { user, signOut, demoMode, hasPassword } = useAuth();
   const { state, loading } = useUserState();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   async function handleSignOut() {
     setBusy(true);
@@ -91,12 +94,16 @@ export default function ProfilePage() {
           <Card>
             <CardHeader title="Security" />
             <div className="flex flex-col gap-2">
-              <button className="flex items-center justify-between px-3 py-2.5 bg-canvas border border-border rounded-lg text-[12px] text-text hover:bg-card-elev transition text-left">
+              <button
+                onClick={() => setPasswordOpen(true)}
+                disabled={demoMode}
+                className="flex items-center justify-between px-3 py-2.5 bg-canvas border border-border rounded-lg text-[12px] text-text hover:bg-card-elev transition text-left disabled:opacity-60"
+              >
                 <span className="flex items-center gap-2">
                   <KeyRound className="w-3.5 h-3.5 text-text-muted" />
                   Change password
                 </span>
-                <span className="text-text-subtle text-[10px]">via email reset</span>
+                <span className="text-text-subtle text-[10px]">{hasPassword ? "Update" : "Google sign-in"}</span>
               </button>
               <button
                 onClick={handleSignOut}
@@ -121,16 +128,24 @@ export default function ProfilePage() {
               <div className="min-w-0">
                 <p className="text-[12px] font-medium m-0">Delete account</p>
                 <p className="text-[10px] text-text-muted mt-0.5 m-0">
-                  Permanently removes your balances and history. Cannot be undone.
+                  Permanently removes your profile and history. Available once your wallet is empty and nothing is pending.
                 </p>
               </div>
-              <button className="px-3 py-1.5 bg-red/10 text-red border border-red/30 rounded-md text-[11px] flex items-center gap-1.5 shrink-0">
+              <button
+                onClick={() => setDeleteOpen(true)}
+                disabled={demoMode || !!user?.isAdmin}
+                title={user?.isAdmin ? "Admin accounts can't be deleted from here" : undefined}
+                className="px-3 py-1.5 bg-red/10 text-red border border-red/30 rounded-md text-[11px] flex items-center gap-1.5 shrink-0 hover:bg-red/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <Trash2 className="w-3 h-3" /> Delete
               </button>
             </div>
           </Card>
         </div>
       </div>
+
+      <ChangePasswordModal open={passwordOpen} onClose={() => setPasswordOpen(false)} />
+      <DeleteAccountModal open={deleteOpen} onClose={() => setDeleteOpen(false)} onDeleted={() => router.replace("/login")} />
     </div>
   );
 }

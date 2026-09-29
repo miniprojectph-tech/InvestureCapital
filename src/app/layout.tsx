@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     template: "%s · Investure",
   },
   description:
-    "Smart capital growth powered by AI trading — simulation platform demonstrating compounding.",
+    "Place capital, receive a payout every 5 days, and grow with your team.",
   manifest: "/manifest.json",
   applicationName: "Investure",
   appleWebApp: {

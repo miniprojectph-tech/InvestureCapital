@@ -93,7 +93,7 @@ export default function AdminLoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@investure.app"
+                  placeholder="you@email.com"
                   className="flex-1 bg-transparent text-[13px] outline-none text-text placeholder:text-text-subtle"
                   required={!demoMode}
                   autoComplete="email"

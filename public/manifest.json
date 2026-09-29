@@ -2,7 +2,7 @@
   "id": "/dashboard",
   "name": "Investure Capital",
   "short_name": "Investure",
-  "description": "Smart capital growth — simulation platform demonstrating compounding.",
+  "description": "Place capital, receive a payout every 5 days, and grow with your team.",
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
@@ -48,7 +48,7 @@
     {
       "name": "Wallet",
       "url": "/wallet",
-      "description": "Top up and manage funds"
+      "description": "Your balance, income and reinvesting"
     },
     {
       "name": "Withdrawals",

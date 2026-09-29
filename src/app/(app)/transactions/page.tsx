@@ -113,6 +113,47 @@ export default function TransactionsPage() {
     return { deposited, income, netIncome: income };
   }, [source]);
 
+  // Export exactly what is on screen (current filter + search) as an Excel file.
+  const [exporting, setExporting] = useState(false);
+  async function exportRows() {
+    if (exporting || rows.length === 0) return;
+    setExporting(true);
+    try {
+      const { default: writeExcelFile } = await import("write-excel-file/browser");
+      const bold = (value: string) => ({ value, fontWeight: "bold" as const, backgroundColor: "#E8F5EE" });
+      const header = ["Date", "Time", "Type", "Description", "Details", "Money in (PHP)", "Money out (PHP)"].map(bold);
+      const manila = (ms: number) => new Date(ms + 8 * 3_600_000).toISOString();
+      const body = rows.map((r) => {
+        const iso = manila(r.at);
+        const amount = r.amount ?? 0;
+        return [
+          { value: iso.slice(0, 10), type: String },
+          { value: iso.slice(11, 16), type: String },
+          { value: (typeMeta[r.type] ?? DEFAULT_META).label, type: String },
+          { value: r.title, type: String },
+          { value: r.subtitle, type: String },
+          r.amountKind === "in" ? { value: amount, type: Number, format: "#,##0.00" } : null,
+          r.amountKind === "out" ? { value: amount, type: Number, format: "#,##0.00" } : null,
+        ];
+      });
+      const blob = await writeExcelFile([header, ...body], {
+        sheet: "Transactions",
+        columns: [{ width: 12 }, { width: 8 }, { width: 22 }, { width: 44 }, { width: 50 }, { width: 16 }, { width: 16 }],
+        stickyRowsCount: 1,
+      }).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `investure-transactions_${manila(Date.now()).slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } finally {
+      setExporting(false);
+    }
+  }
+
   // Only show filter chips for event types that actually appear.
   const presentTypes = useMemo(() => {
     const set = new Set(source.map((e) => e.type));
@@ -186,8 +227,13 @@ export default function TransactionsPage() {
               className="bg-transparent text-[11px] outline-none w-32 text-text placeholder:text-text-subtle"
             />
           </div>
-          <button className="text-[11px] px-3 py-1.5 bg-card border border-border rounded-full text-text-muted hover:text-text flex items-center gap-1.5">
-            <Download className="w-3 h-3" /> Export
+          <button
+            onClick={exportRows}
+            disabled={exporting || rows.length === 0}
+            title={rows.length === 0 ? "Nothing to export" : "Download the transactions shown below as an Excel file"}
+            className="text-[11px] px-3 py-1.5 bg-card border border-border rounded-full text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {exporting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Download className="w-3 h-3" />} Export
           </button>
         </div>
       </div>
