@@ -70,6 +70,24 @@ function useCoverStyle(): React.CSSProperties {
   return style;
 }
 
+/**
+ * Returns `value`, except while `hold` is true it keeps returning the last
+ * value seen before the hold began. Used so nothing on screen gives away the
+ * round's outcome while the dice are still tumbling.
+ *
+ * It only holds once it has seen a loaded (`ready`) value outside a hold, so
+ * opening the page mid-roll shows the live figures instead of empty ones.
+ */
+function useHeld<T>(value: T, hold: boolean, ready = true): T {
+  const ref = useRef(value);
+  const primed = useRef(false);
+  if (!hold || !primed.current) {
+    ref.current = value;
+    if (!hold && ready) primed.current = true;
+  }
+  return ref.current;
+}
+
 export default function ColorGamePage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -93,15 +111,25 @@ export default function ColorGamePage() {
 
   const prevDiceRef = useRef<[DieColor, DieColor, DieColor] | undefined>(undefined);
 
-  const balance = gameState.state?.points ?? 0;
   const phase = timer.phase;
   const bettingOpen = phase === "betting";
+  // The server settles the round the moment betting closes, so winnings, the
+  // ranking, the history and the jackpot all change while the dice are still
+  // rolling on screen. Hold every one of them until the dice have landed —
+  // otherwise a winner sees their points jump before the roll finishes.
+  const rolling = phase === "rolling";
+  const balance = useHeld(gameState.state?.points ?? 0, rolling, gameState.state != null);
+  const shownGs = useHeld(gs, rolling, gs.history.length > 0 || gs.totalRounds > 0);
+  const shownLeaders = useHeld(leaders, rolling, leaders.length > 0);
 
   const isCurrent = live?.roundId === roundId;
   const currentDice = isCurrent ? live?.dice : undefined;
 
   if (currentDice) prevDiceRef.current = currentDice;
   const dice = currentDice ?? prevDiceRef.current;
+  // What the boards may show: never this round's dice until they have landed.
+  const landedDice = rolling ? undefined : currentDice;
+  const boardDice = rolling ? undefined : dice;
 
   // Keep asking the server to resolve this round until its dice actually land.
   // resolveColorRound is idempotent (re-mirrors the dice to RTDB), so retrying
@@ -243,7 +271,7 @@ export default function ColorGamePage() {
             so a flex row of 6 cells lands each digit dead-center in its tile. */}
         <div className="absolute z-10"
           style={{ left: "59.05%", top: "14.2%", width: "24.73%", height: "8%" }}>
-          <ColorJackpotDisplay amount={gs.jackpotPool} triggered={live?.jackpotTriggered} />
+          <ColorJackpotDisplay amount={shownGs.jackpotPool} triggered={!rolling && live?.jackpotTriggered} />
         </div>
 
         {/* The ranking is weekly — say so on the paper, just under the banner */}
@@ -257,7 +285,7 @@ export default function ColorGamePage() {
         {/* Ranking rows — measured to the 6 cream slots of the wooden easel */}
         <div className="absolute z-10"
           style={{ left: "9.83%", top: "26.66%", width: "15.6%", height: "44.88%" }}>
-          <ColorRankingBoard leaders={leaders} />
+          <ColorRankingBoard leaders={shownLeaders} />
         </div>
 
         {/* Dice — showcase window in the lid, dice drop & scatter into the tray */}
@@ -276,7 +304,7 @@ export default function ColorGamePage() {
                 width: "min(1.6vw, 2.2vh)",
                 height: "min(1.6vw, 2.2vh)",
                 borderRadius: "3px",
-                background: COLOR_HEX[gs.jackpotColor],
+                background: COLOR_HEX[shownGs.jackpotColor],
                 border: "1.5px solid rgba(255,255,255,0.75)",
                 boxShadow: "0 1px 3px rgba(0,0,0,0.45)",
               }}
@@ -287,7 +315,7 @@ export default function ColorGamePage() {
         {/* History — inside the wooden HISTORY board slots (measured to the art) */}
         <div className="absolute z-10"
           style={{ left: "67.02%", top: "35.42%", width: "16.84%", height: "4.86%" }}>
-          <ColorHistoryStrip history={gs.history} onExpand={() => setShowHistory(true)} />
+          <ColorHistoryStrip history={shownGs.history} onExpand={() => setShowHistory(true)} />
         </div>
 
         {/* Color tiles 3x2 — over the painted tiles (measured tile block:
@@ -299,7 +327,7 @@ export default function ColorGamePage() {
             onSelect={handleColorTap}
             disabled={!bettingOpen || placing}
             betAmounts={betAmounts}
-            results={dice}
+            results={boardDice}
             bets={liveBets}
             meUid={user?.uid}
           />
@@ -309,7 +337,7 @@ export default function ColorGamePage() {
             Shows who just bet on what; tap to see every bet this round. */}
         <div className="absolute z-10"
           style={{ left: "8.2%", top: "79.2%", width: "19%", height: "18.5%" }}>
-          <ColorLiveBets bets={liveBets} meUid={user?.uid ?? ""} dice={currentDice} players={totalBettors} />
+          <ColorLiveBets bets={liveBets} meUid={user?.uid ?? ""} dice={landedDice} players={totalBettors} />
         </div>
 
         {/* Bet controls — 3 gold buttons (always mounted, fade in/out) */}
@@ -355,7 +383,7 @@ export default function ColorGamePage() {
       </div>
 
       {showHistory && (
-        <ColorHistoryModal history={gs.history} onClose={() => setShowHistory(false)} />
+        <ColorHistoryModal history={shownGs.history} onClose={() => setShowHistory(false)} />
       )}
     </div>
   );
