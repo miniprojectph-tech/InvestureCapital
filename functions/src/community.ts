@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { getDatabase } from "firebase-admin/database";
@@ -103,11 +104,28 @@ async function computeCommunityStats(): Promise<CommunityStats> {
  * without a clean disconnect.
  */
 export const updateOnlineCount = onSchedule("every 5 minutes", async () => {
+  await recomputeOnline(false);
+});
+
+/**
+ * Admin-set starting number for "N active now". When switched on, the number
+ * members see is a base drawn at random from [min, max] — redrawn every 15
+ * minutes — PLUS the members really connected. The settings and the real count
+ * live in `admin_private` (admins only); members only ever get the final number
+ * at `community/online`.
+ */
+type ActiveBase = { enabled: boolean; min: number; max: number; base: number; baseAt: number };
+const ACTIVE_BASE_DOC = "admin_private/communityActive";
+const BASE_REDRAW_MS = 15 * 60_000;
+const MAX_ACTIVE_BASE = 100_000;
+
+async function recomputeOnline(forceRedraw: boolean): Promise<{ real: number; base: number; shown: number }> {
   const rtdb = getDatabase();
+  const now = Date.now();
   const snap = await rtdb.ref("community/presence").once("value");
-  const cutoff = Date.now() - 12 * 3_600_000;
+  const cutoff = now - 12 * 3_600_000;
   const stale: Record<string, null> = {};
-  let online = 0;
+  let real = 0;
   snap.forEach((user) => {
     let live = false;
     user.forEach((conn) => {
@@ -115,10 +133,53 @@ export const updateOnlineCount = onSchedule("every 5 minutes", async () => {
       if (typeof at === "number" && at > cutoff) live = true;
       else stale[`community/presence/${user.key}/${conn.key}`] = null;
     });
-    if (live) online++;
+    if (live) real++;
   });
-  const writes: Record<string, unknown> = { ...stale, "community/online": online };
-  await rtdb.ref().update(writes);
+
+  const cfgSnap = await db.doc(ACTIVE_BASE_DOC).get();
+  const cfg = (cfgSnap.exists ? cfgSnap.data() : {}) as Partial<ActiveBase>;
+  let base = 0;
+  let baseAt = cfg.baseAt ?? 0;
+  if (cfg.enabled === true) {
+    const min = Math.max(0, Math.floor(Number(cfg.min) || 0));
+    const max = Math.max(min, Math.floor(Number(cfg.max) || 0));
+    const current = Number(cfg.base);
+    // Keep the number for the full 15 minutes (a few seconds of slack for the
+    // scheduler), unless the range was just changed or it no longer fits.
+    const due = now - baseAt >= BASE_REDRAW_MS - 20_000;
+    if (forceRedraw || due || !Number.isFinite(current) || current < min || current > max) {
+      base = randomInt(min, max + 1);
+      baseAt = now;
+    } else {
+      base = current;
+    }
+  }
+  const shown = real + base;
+  await rtdb.ref().update({ ...stale, "community/online": shown });
+  await db.doc(ACTIVE_BASE_DOC).set({ base, baseAt, real, shown, updatedAt: now }, { merge: true });
+  return { real, base, shown };
+}
+
+/** Admin: set (or switch off) the starting range for "N active now". Applies at once. */
+export const adminSetCommunityActive = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const caller = await db.collection("users").doc(request.auth.uid).get();
+  if (caller.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Admin role required.");
+  const d = (request.data ?? {}) as { enabled?: unknown; min?: unknown; max?: unknown };
+  const enabled = d.enabled === true;
+  const min = Math.floor(Number(d.min));
+  const max = Math.floor(Number(d.max));
+  if (enabled) {
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > MAX_ACTIVE_BASE) {
+      throw new HttpsError("invalid-argument", `Enter a range between 0 and ${MAX_ACTIVE_BASE.toLocaleString()}.`);
+    }
+    if (max < min) throw new HttpsError("invalid-argument", "The highest number must not be lower than the lowest.");
+  }
+  await db.doc(ACTIVE_BASE_DOC).set(
+    { enabled, ...(Number.isFinite(min) && Number.isFinite(max) && min >= 0 && max >= min && max <= MAX_ACTIVE_BASE ? { min, max } : {}) },
+    { merge: true },
+  );
+  return { ok: true, enabled, ...(await recomputeOnline(true)) };
 });
 
 export const updateCommunityStats = onSchedule("every 24 hours", async () => {

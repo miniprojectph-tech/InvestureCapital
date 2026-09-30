@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
 import {
   ref,
   onValue,
@@ -403,6 +404,42 @@ export function useCommunityStats(enabled: boolean): CommunityStats | null {
     return onValue(ref(rtdb, "community/stats"), (s) => setStats((s.val() as CommunityStats | null) ?? null), () => {});
   }, [user, enabled]);
   return stats;
+}
+
+/** Admin-only settings behind the "N active now" number (Firestore `admin_private/communityActive`). */
+export type CommunityActiveSettings = {
+  enabled: boolean;
+  min: number;
+  max: number;
+  /** Current starting number, redrawn every 15 minutes. */
+  base: number;
+  baseAt: number;
+  /** Members really connected at the last count. */
+  real: number;
+  /** What members see: base + real. */
+  shown: number;
+  updatedAt: number;
+};
+
+export function useCommunityActiveSettings(enabled: boolean): CommunityActiveSettings | null {
+  const [v, setV] = useState<CommunityActiveSettings | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    const { db } = getFirebase();
+    if (!db) return;
+    return onSnapshot(
+      doc(db, "admin_private", "communityActive"),
+      (s) => setV({ enabled: false, min: 25, max: 50, base: 0, baseAt: 0, real: 0, shown: 0, updatedAt: 0, ...(s.exists() ? (s.data() as Partial<CommunityActiveSettings>) : {}) }),
+      () => setV(null),
+    );
+  }, [enabled]);
+  return v;
+}
+
+export function setCommunityActive(input: { enabled: boolean; min: number; max: number }) {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Firebase not initialized");
+  return httpsCallable<typeof input, { ok: boolean; real: number; base: number; shown: number }>(functions, "adminSetCommunityActive")(input).then((r) => r.data);
 }
 
 export function refreshCommunityStats(): Promise<CommunityStats> {

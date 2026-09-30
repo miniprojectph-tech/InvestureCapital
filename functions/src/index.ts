@@ -12,7 +12,7 @@ export { placeColorBet, resolveColorRound, adminAdjustColorJackpot, adminSetColo
 
 // Community chat: admin + join-date mirrors for RTDB rules, and storage stats.
 // (History is kept forever — there is no pruning job.)
-export { ensureCommunityAdmin, ensureCommunityMember, updateCommunityStats, refreshCommunityStats, updateOnlineCount } from "./community";
+export { ensureCommunityAdmin, ensureCommunityMember, updateCommunityStats, refreshCommunityStats, updateOnlineCount, adminSetCommunityActive } from "./community";
 
 // Help & FAQ: one-vote-per-member "was this helpful" counters.
 export { faqVote } from "./faq";

@@ -17,6 +17,8 @@ import {
   useChatMods,
   useCommunityStats,
   refreshCommunityStats,
+  useCommunityActiveSettings,
+  setCommunityActive,
   unmuteUser,
   setPinnedMessage,
   ensureCommunityAdmin,
@@ -25,6 +27,91 @@ import {
   removeChatMod,
   formatRelative,
 } from "@/lib/community";
+
+/** The "N active now" number members see: a starting number from a range, plus who is really online. */
+function ActiveNowCard({ enabled }: { enabled: boolean }) {
+  const s = useCommunityActiveSettings(enabled);
+  const [on, setOn] = useState(false);
+  const [min, setMin] = useState("25");
+  const [max, setMax] = useState("50");
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  // Fill the form once from the saved settings; after that the admin's typing wins.
+  useEffect(() => {
+    if (!s || loaded) return;
+    setOn(s.enabled);
+    setMin(String(s.min));
+    setMax(String(s.max));
+    setLoaded(true);
+  }, [s, loaded]);
+
+  async function save() {
+    const lo = parseInt(min, 10);
+    const hi = parseInt(max, 10);
+    if (on && (isNaN(lo) || isNaN(hi) || lo < 0)) return setMsg({ ok: false, text: "Enter a lowest and a highest number." });
+    if (on && hi < lo) return setMsg({ ok: false, text: "The highest number must not be lower than the lowest." });
+    setSaving(true);
+    setMsg(null);
+    try {
+      const r = await setCommunityActive({ enabled: on, min: isNaN(lo) ? 0 : lo, max: isNaN(hi) ? 0 : hi });
+      setMsg({ ok: true, text: `Saved. Members now see ${r.shown.toLocaleString()} active now.` });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : "Could not save. Please try again." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const input = "w-24 bg-canvas border border-border rounded-md px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-gold/40";
+  return (
+    <Card className="mb-3">
+      <CardHeader
+        title="Active now number"
+        subtitle="What members see as “N active now” in the Community Room"
+        right={
+          <button
+            type="button"
+            onClick={() => setOn(!on)}
+            className={cn("px-3 py-1 rounded-full text-[10px] font-medium border transition", on ? "bg-gold/15 border-gold/40 text-gold" : "bg-canvas border-border text-text-muted")}
+          >
+            {on ? "Starting number: ON" : "Starting number: OFF"}
+          </button>
+        }
+      />
+      <div className="grid grid-cols-3 gap-2 mb-3">
+        <StorageTile label="Members see" value={s ? s.shown.toLocaleString() : "—"} sub="active now" tone="text-gold" />
+        <StorageTile label="Really online" value={s ? s.real.toLocaleString() : "—"} sub="counted every 5 minutes" />
+        <StorageTile label="Starting number" value={s ? s.base.toLocaleString() : "—"} sub={s?.enabled ? "changes every 15 minutes" : "off"} />
+      </div>
+      <div className={cn("flex flex-wrap items-end gap-3", !on && "opacity-50")}>
+        <div>
+          <label className="block text-[10px] text-text-muted mb-1">Lowest</label>
+          <input type="number" min={0} value={min} disabled={!on} onChange={(e) => setMin(e.target.value)} className={input} />
+        </div>
+        <div>
+          <label className="block text-[10px] text-text-muted mb-1">Highest</label>
+          <input type="number" min={0} value={max} disabled={!on} onChange={(e) => setMax(e.target.value)} className={input} />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 mt-3">
+        <button
+          onClick={save}
+          disabled={saving || !enabled}
+          className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        {msg && <span className={cn("text-[11px]", msg.ok ? "text-green" : "text-red")}>{msg.text}</span>}
+      </div>
+      <p className="text-[10px] text-text-subtle m-0 mt-2 leading-relaxed max-w-2xl">
+        When on, a random number between Lowest and Highest is picked every 15 minutes, and everyone really online is
+        added on top. When off, members see only the real count. Only admins can see this range and the real count.
+      </p>
+    </Card>
+  );
+}
 
 export default function AdminCommunityPage() {
   const { user, demoMode } = useAuth();
@@ -96,6 +183,8 @@ export default function AdminCommunityPage() {
           );
         })()}
       </Card>
+
+      <ActiveNowCard enabled={adminReady} />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <ModeratorsCard enabled={adminReady} demoMode={demoMode} />
