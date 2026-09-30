@@ -102,7 +102,7 @@ type RawInbox = RawCommon & { from: string; name: string };
 
 const roomToItem = (id: string, raw: unknown): ChatItem => {
   const m = raw as RawRoom;
-  return { id, senderId: m.uid, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: !!m.admin, mod: !!m.mod, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
+  return { id, senderId: m.uid, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: !!m.admin && !m.mod, mod: false, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
 };
 
 const inboxToItem = (id: string, raw: unknown): ChatItem => {
@@ -336,7 +336,7 @@ export function usePinnedMessage(messages: ChatItem[]): ChatItem | null {
       const m = s.val() as RawRoom | null;
       setFetched(
         m
-          ? { id: pinnedId, senderId: m.uid, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: !!m.admin }
+          ? { id: pinnedId, senderId: m.uid, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: !!m.admin && !m.mod }
           : null,
       );
     });
@@ -530,8 +530,10 @@ export async function sendRoomMessage(sender: Sender, payload: SendPayload): Pro
     at: serverTimestamp(),
     ...optionalFields(payload, MAX_TEXT),
   };
-  if (sender.isAdmin || sender.isMod) msg.admin = true;
-  if (sender.isMod && !sender.isAdmin) msg.mod = true;
+  // Moderators post as ordinary members — no badge, no marker in the message
+  // itself — so nobody in the room can tell who is moderating. Only the admin
+  // account is labelled. (Older moderator messages are shown unmarked too; see rowToItem.)
+  if (sender.isAdmin) msg.admin = true;
   await update(ref(rtdb), {
     [`community/room/${id}`]: msg,
     [`community/lastPost/${sender.uid}`]: serverTimestamp(),
