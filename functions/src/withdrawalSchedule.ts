@@ -14,7 +14,12 @@ export type WithdrawalScheduleConfig = {
   sameDayCutoff: string | null;
   /** Extra line shown to members under the schedule (e.g. "Bank holidays move to the next release day"). */
   note: string;
+  /** Smallest amount (₱) a member may request in one withdrawal. Applies whether or not the schedule is on. */
+  minAmount: number;
 };
+
+export const DEFAULT_MIN_WITHDRAWAL = 100;
+export const MAX_MIN_WITHDRAWAL = 1_000_000;
 
 /** Mon–Thu → Friday, Fri–Sun → Monday. */
 export const DEFAULT_WITHDRAWAL_SCHEDULE: WithdrawalScheduleConfig = {
@@ -22,6 +27,7 @@ export const DEFAULT_WITHDRAWAL_SCHEDULE: WithdrawalScheduleConfig = {
   releaseDays: [1, 5],
   sameDayCutoff: null,
   note: "",
+  minAmount: DEFAULT_MIN_WITHDRAWAL,
 };
 
 export const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -34,6 +40,8 @@ export function mergeWithdrawalSchedule(partial?: Partial<WithdrawalScheduleConf
   const cfg = { ...DEFAULT_WITHDRAWAL_SCHEDULE, ...(partial ?? {}) };
   cfg.releaseDays = [...new Set((cfg.releaseDays ?? []).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
   if (cfg.sameDayCutoff && !/^\d{2}:\d{2}$/.test(cfg.sameDayCutoff)) cfg.sameDayCutoff = null;
+  const min = Number(cfg.minAmount);
+  cfg.minAmount = Number.isFinite(min) && min >= 1 ? Math.min(Math.round(min * 100) / 100, MAX_MIN_WITHDRAWAL) : DEFAULT_MIN_WITHDRAWAL;
   return cfg;
 }
 

@@ -687,6 +687,21 @@ export default function AdminSettingsPage() {
           subtitle="Members can request any day; this decides which day their payout is released and is shown to them before they confirm"
           right={<Toggle on={schedule.enabled} onChange={(v) => patchSchedule({ enabled: v })} />}
         />
+        <div className="mb-4">
+          <Field label="Minimum withdrawal amount" hint="Members cannot request less than this in one withdrawal. It applies even when the release schedule is switched off.">
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] text-text-subtle">₱</span>
+              <input
+                type="number"
+                min={1}
+                step={50}
+                value={schedule.minAmount}
+                onChange={(e) => patchSchedule({ minAmount: Math.max(1, parseFloat(e.target.value) || 1) })}
+                className="w-36 bg-canvas border border-border rounded-md px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-gold/40"
+              />
+            </div>
+          </Field>
+        </div>
         <div className={cnInline("flex flex-col gap-4", !schedule.enabled && "opacity-50 pointer-events-none")}>
           <Field label="Release days" hint="Payouts go out on these days. A request is released on the next release day after the day it was made.">
             <div className="flex flex-wrap gap-1.5">

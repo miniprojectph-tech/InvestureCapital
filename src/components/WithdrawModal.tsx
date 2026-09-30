@@ -44,6 +44,10 @@ export function WithdrawModal({
   const [error, setError] = useState<string | null>(null);
 
   const hasPayout = !!payoutMethod;
+  const minAmount = schedule?.minAmount ?? 0;
+  const belowMin = amount > 0 && amount < minAmount;
+  const walletTooLow = availableBalance < minAmount;
+  const canSubmit = amount > 0 && amount >= minAmount && amount <= availableBalance && hasPayout;
   const releaseAt = schedule ? releaseDateFor(Date.now(), schedule) : null;
 
   function close() {
@@ -56,7 +60,7 @@ export function WithdrawModal({
   }
 
   async function submit() {
-    if (amount <= 0 || amount > availableBalance || !hasPayout) return;
+    if (!canSubmit) return;
     setStage("processing");
     setError(null);
     try {
@@ -99,7 +103,21 @@ export function WithdrawModal({
             </div>
             <p className="text-[10px] text-text-subtle mt-1.5 m-0">
               Available: <span className="font-mono text-text">{formatPHP(availableBalance)}</span>
+              {minAmount > 0 && (
+                <> · Minimum: <span className="font-mono text-text">{formatPHP(minAmount)}</span></>
+              )}
             </p>
+            {walletTooLow ? (
+              <p className="text-[11px] text-red mt-1.5 m-0">
+                You need at least {formatPHP(minAmount)} in your wallet to withdraw.
+              </p>
+            ) : belowMin ? (
+              <p className="text-[11px] text-red mt-1.5 m-0">
+                The minimum withdrawal is {formatPHP(minAmount)}.
+              </p>
+            ) : amount > availableBalance ? (
+              <p className="text-[11px] text-red mt-1.5 m-0">That is more than your available balance.</p>
+            ) : null}
           </div>
 
           <div>
@@ -192,10 +210,10 @@ export function WithdrawModal({
             </button>
             <button
               onClick={submit}
-              disabled={amount <= 0 || amount > availableBalance || !hasPayout}
+              disabled={!canSubmit}
               className={cn(
                 "flex-1 py-2.5 rounded-lg text-[12px] font-medium flex items-center justify-center gap-1.5 transition",
-                amount > 0 && amount <= availableBalance && hasPayout
+                canSubmit
                   ? "bg-gold text-gold-dark hover:brightness-110"
                   : "bg-card-elev text-text-subtle cursor-not-allowed"
               )}

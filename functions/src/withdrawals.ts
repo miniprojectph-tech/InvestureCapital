@@ -18,7 +18,6 @@ type Withdrawal = {
 const peso = (n: number) => `₱${(Number.isFinite(n) ? n : 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const PAYOUT_LABEL: Record<string, string> = { gotyme: "GoTyme", gcash: "GCash", bankTransfer: "Bank transfer" };
-const MIN_WITHDRAWAL = 1;
 const MAX_WITHDRAWAL = 100_000_000;
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -45,13 +44,14 @@ export const requestWithdrawal = onCall(async (request) => {
   const raw = (request.data as { amount?: unknown } | undefined)?.amount;
   if (typeof raw !== "number" || !Number.isFinite(raw)) throw new HttpsError("invalid-argument", "Enter an amount.");
   const amount = round2(raw);
-  if (amount < MIN_WITHDRAWAL) throw new HttpsError("invalid-argument", `The minimum withdrawal is ${peso(MIN_WITHDRAWAL)}.`);
   if (amount > MAX_WITHDRAWAL) throw new HttpsError("invalid-argument", "That amount is too large.");
 
   const settings = await db.doc("settings/platform").get();
   const schedule: WithdrawalScheduleConfig = mergeWithdrawalSchedule(
     settings.exists ? (settings.data()?.withdrawalSchedule as Partial<WithdrawalScheduleConfig>) : null,
   );
+  // The minimum is the admin's setting, enforced here — the form's own check is only a courtesy.
+  if (amount < schedule.minAmount) throw new HttpsError("invalid-argument", `The minimum withdrawal is ${peso(schedule.minAmount)}.`);
   const now = Date.now();
   const userRef = db.collection("users").doc(uid);
   const wRef = db.collection("withdrawals").doc();

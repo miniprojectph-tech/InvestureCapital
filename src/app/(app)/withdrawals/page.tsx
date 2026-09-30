@@ -202,6 +202,9 @@ export default function WithdrawalsPage() {
                 )}
               </p>
               <p className="text-[10px] text-text-subtle mt-0.5 m-0">{describeSchedule(schedule)}</p>
+              <p className="text-[10px] text-text-subtle mt-0.5 m-0">
+                Minimum withdrawal: <span className="font-mono text-text">{formatPHP(schedule.minAmount)}</span>
+              </p>
               {schedule.note && <p className="text-[10px] text-text-subtle mt-0.5 m-0">{schedule.note}</p>}
             </div>
           </div>
