@@ -5,6 +5,7 @@ import { ArrowLeft, Inbox, Search, MessageCircle } from "lucide-react";
 import { Card } from "@/components/Card";
 import { ChatView } from "@/components/community/ChatView";
 import { cn } from "@/lib/utils";
+import { useSettings, uploadLimitsFor } from "@/lib/settings";
 import {
   useInboxList,
   useInbox,
@@ -34,6 +35,8 @@ function initialsOf(name: string) {
 }
 
 export function InboxPanel({ staff, canSend, threadAside }: Props) {
+  const { settings } = useSettings();
+  const inboxCaps = uploadLimitsFor(settings, "inbox");
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
 
@@ -142,6 +145,10 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
             meUid="admin"
             reactorUid={staff.uid}
             uploaderUid={staff.uid}
+            uploadFolder={`inbox/${staff.uid}`}
+            maxImageBytes={inboxCaps.imageMB * 1024 * 1024}
+            maxVideoBytes={inboxCaps.videoMB * 1024 * 1024}
+            maxVideoSeconds={inboxCaps.videoSeconds}
             emptyText="No messages in this conversation yet."
             canSend={canSend}
             sendDisabledReason="Moderator access is still syncing…"

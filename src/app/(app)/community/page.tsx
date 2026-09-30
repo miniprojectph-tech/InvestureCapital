@@ -7,6 +7,7 @@ import { ChatView } from "@/components/community/ChatView";
 import { InboxPanel } from "@/components/community/InboxPanel";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { useSettings, uploadLimitsFor } from "@/lib/settings";
 import {
   useCommunityRoom,
   usePinnedMessage,
@@ -77,6 +78,9 @@ export default function CommunityPage() {
   const isStaff = !!user?.isAdmin || modRole.isMod;
   // What this person may post in the room (admin toggles; the rules enforce the same).
   const perms = useCommunityPermissions();
+  const { settings } = useSettings();
+  const roomCaps = uploadLimitsFor(settings, "room");
+  const inboxCaps = uploadLimitsFor(settings, "inbox");
   const canVideo = !!user?.isAdmin || (modRole.isMod && perms.modsVideo) || perms.membersVideo;
   const canLinks = !!user?.isAdmin || (modRole.isMod && perms.modsLinks) || perms.membersLinks;
   const canImage = isStaff || perms.membersImages;
@@ -264,6 +268,9 @@ export default function CommunityPage() {
               sendDisabledReason={muted ? "You've been muted in the Community Room. Message the admin if you think this is a mistake." : undefined}
               allowVideo={canVideo}
               allowImage={canImage}
+              maxImageBytes={roomCaps.imageMB * 1024 * 1024}
+              maxVideoBytes={roomCaps.videoMB * 1024 * 1024}
+              maxVideoSeconds={roomCaps.videoSeconds}
               keepOriginal={isStaff}
               blockLinks={!canLinks}
               hasMore={roomFeed.hasMore}
@@ -287,6 +294,10 @@ export default function CommunityPage() {
               loading={inboxLoading}
               meUid={user.uid}
               uploaderUid={user.uid}
+              uploadFolder={`inbox/${user.uid}`}
+              maxImageBytes={inboxCaps.imageMB * 1024 * 1024}
+              maxVideoBytes={inboxCaps.videoMB * 1024 * 1024}
+              maxVideoSeconds={inboxCaps.videoSeconds}
               emptyText="This is a private conversation between you and the admin team. Send a message and we'll reply here."
               canSend={!demoMode}
               maxText={1000}

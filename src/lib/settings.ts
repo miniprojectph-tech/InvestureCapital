@@ -73,6 +73,24 @@ export const DEFAULT_COMMUNITY: CommunityConfig = {
   modsLinks: true,
 };
 
+/** Upload caps for one chat (admin-set). Sizes in MB, length in seconds. */
+export type UploadLimits = { imageMB: number; videoMB: number; videoSeconds: number };
+export type UploadsConfig = { room: UploadLimits; inbox: UploadLimits };
+export const DEFAULT_UPLOAD_LIMITS: UploadLimits = { imageMB: 15, videoMB: 15, videoSeconds: 30 };
+export const DEFAULT_UPLOADS: UploadsConfig = { room: DEFAULT_UPLOAD_LIMITS, inbox: DEFAULT_UPLOAD_LIMITS };
+/** Hard ceilings the admin cannot exceed (mobile uploads fail and bandwidth costs climb above this). */
+export const MAX_UPLOAD_MB = 200;
+export const MAX_VIDEO_SECONDS_CAP = 600;
+/** Clean one set of limits: whole MB within 1–200, seconds within 5–600, defaults for anything odd. */
+export function cleanUploadLimits(v: Partial<UploadLimits> | null | undefined): UploadLimits {
+  const mb = (x: unknown, d: number) => { const n = Math.round(Number(x)); return Number.isFinite(n) && n >= 1 ? Math.min(n, MAX_UPLOAD_MB) : d; };
+  const sec = (x: unknown, d: number) => { const n = Math.round(Number(x)); return Number.isFinite(n) && n >= 5 ? Math.min(n, MAX_VIDEO_SECONDS_CAP) : d; };
+  return { imageMB: mb(v?.imageMB, 15), videoMB: mb(v?.videoMB, 15), videoSeconds: sec(v?.videoSeconds, 30) };
+}
+export function uploadLimitsFor(settings: PlatformSettings, chat: "room" | "inbox"): UploadLimits {
+  return cleanUploadLimits(settings.uploads?.[chat]);
+}
+
 export type PlatformSettings = {
   vaultDailyRate: number; // percent, e.g. 1.0
   vaultLockDays: number;
@@ -88,6 +106,8 @@ export type PlatformSettings = {
   withdrawalSchedule?: WithdrawalScheduleConfig;
   /** Community Room posting permissions (pictures / video / links, per role). */
   community?: Partial<CommunityConfig>;
+  /** Upload size / length caps for the Community Room and the admin chat. */
+  uploads?: Partial<Record<"room" | "inbox", Partial<UploadLimits>>>;
   updatedAt?: number;
   updatedBy?: string;
 };
@@ -113,6 +133,7 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   compPlan: DEFAULT_COMP_PLAN,
   withdrawalSchedule: DEFAULT_WITHDRAWAL_SCHEDULE,
   community: DEFAULT_COMMUNITY,
+  uploads: DEFAULT_UPLOADS,
 };
 
 export type PaymentMethodId = "gotyme" | "gcash" | "bankTransfer";

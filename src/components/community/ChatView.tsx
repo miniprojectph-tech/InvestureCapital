@@ -54,6 +54,12 @@ type Props = {
   allowVideo?: boolean;
   /** Pictures (gallery + camera). Default on. */
   allowImage?: boolean;
+  /** Storage folder for this chat's uploads (defaults to community/{uploaderUid}). */
+  uploadFolder?: string;
+  /** Admin-set caps for this chat. */
+  maxImageBytes?: number;
+  maxVideoBytes?: number;
+  maxVideoSeconds?: number;
   keepOriginal?: boolean;
   /** Reject messages containing links before they reach the (also enforcing) rules. */
   blockLinks?: boolean;
@@ -170,6 +176,10 @@ export function ChatView({
   sendDisabledReason,
   allowVideo = false,
   allowImage = true,
+  uploadFolder,
+  maxImageBytes,
+  maxVideoBytes,
+  maxVideoSeconds,
   keepOriginal = false,
   blockLinks = false,
   maxText = MAX_TEXT,
@@ -267,6 +277,12 @@ export function ChatView({
   function pickFile(kind: "image" | "video", file: File | undefined) {
     if (!file) return;
     setError(null);
+    // Say so before the upload even starts (the server refuses it too).
+    const cap = kind === "image" ? maxImageBytes : maxVideoBytes;
+    if (cap && file.size > cap) {
+      setError(`${kind === "image" ? "Image" : "Video"} too large — the limit here is ${Math.round(cap / 1024 / 1024)} MB.`);
+      return;
+    }
     setPending({ file, kind, preview: URL.createObjectURL(file) });
   }
 
@@ -308,7 +324,9 @@ export function ChatView({
         const { storage } = getFirebase();
         if (!storage) throw new Error("Uploads are unavailable in demo mode.");
         setSending(true);
-        media = pending.kind === "image" ? await uploadChatImage(storage, uploaderUid, pending.file, { keepOriginal }) : await uploadChatVideo(storage, uploaderUid, pending.file);
+        media = pending.kind === "image"
+          ? await uploadChatImage(storage, uploaderUid, pending.file, { keepOriginal, folder: uploadFolder, maxBytes: maxImageBytes })
+          : await uploadChatVideo(storage, uploaderUid, pending.file, { folder: uploadFolder, maxBytes: maxVideoBytes, maxSeconds: maxVideoSeconds });
         kind = pending.kind;
       }
       await send({ kind, text: body || undefined, media });

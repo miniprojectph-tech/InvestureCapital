@@ -840,10 +840,11 @@ export async function uploadChatImage(
   storage: FirebaseStorage,
   uid: string,
   file: File,
-  opts: { keepOriginal: boolean; folder?: string },
+  opts: { keepOriginal: boolean; folder?: string; maxBytes?: number },
 ): Promise<ChatMedia> {
+  const maxBytes = opts.maxBytes ?? MAX_IMAGE_BYTES;
   if (!IMAGE_TYPES.includes(file.type)) throw new Error("Only PNG, JPG, WebP, or GIF images are allowed");
-  if (file.size > MAX_IMAGE_BYTES) throw new Error(`Image too large (max ${MAX_IMAGE_BYTES / 1024 / 1024} MB)`);
+  if (file.size > maxBytes) throw new Error(`Image too large (max ${Math.round(maxBytes / 1024 / 1024)} MB)`);
   const base = `${opts.folder ?? `community/${uid}`}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
   // GIFs stay as-is so they keep animating (small cap since they aren't compressed).
@@ -875,7 +876,7 @@ export async function uploadChatImage(
   }
 }
 
-/** Admin-only: short video (≤15 MB, ≤30 s) with a generated poster frame. */
+/** Short video (caps set by the admin; 15 MB / 30 s by default) with a generated poster frame. */
 export async function uploadChatVideo(
   storage: FirebaseStorage,
   uid: string,

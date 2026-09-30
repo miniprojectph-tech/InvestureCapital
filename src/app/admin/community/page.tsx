@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { listInvestors, type InvestorRow } from "@/lib/adminQueries";
-import { useSettings, saveSettings, DEFAULT_COMMUNITY, type CommunityConfig } from "@/lib/settings";
+import { useSettings, saveSettings, DEFAULT_COMMUNITY, uploadLimitsFor, cleanUploadLimits, MAX_UPLOAD_MB, MAX_VIDEO_SECONDS_CAP, type CommunityConfig, type UploadLimits } from "@/lib/settings";
 import {
   useMutedUsers,
   useCommunityRoom,
@@ -89,6 +89,90 @@ function PostingRulesCard({ uid }: { uid: string }) {
         </div>
       </div>
       {err && <p className="text-[11px] text-red m-0 mt-2">{err}</p>}
+    </Card>
+  );
+}
+
+/** Size and length caps for uploads, separately for the Community Room and the private admin chat. */
+function UploadLimitsCard({ uid }: { uid: string }) {
+  const { settings } = useSettings();
+  const saved = { room: uploadLimitsFor(settings, "room"), inbox: uploadLimitsFor(settings, "inbox") };
+  const [draft, setDraft] = useState<{ room: UploadLimits; inbox: UploadLimits } | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const cur = draft ?? saved;
+  const dirty = JSON.stringify(cur) !== JSON.stringify(saved);
+
+  const edit = (chat: "room" | "inbox", key: keyof UploadLimits, raw: string) => {
+    const n = Number(raw);
+    setDraft({ ...cur, [chat]: { ...cur[chat], [key]: Number.isFinite(n) ? n : cur[chat][key] } });
+    setMsg(null);
+  };
+
+  async function save() {
+    const { db } = getFirebase();
+    if (!db) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const clean = { room: cleanUploadLimits(cur.room), inbox: cleanUploadLimits(cur.inbox) };
+      await saveSettings(db, { uploads: clean }, uid);
+      setDraft(null);
+      setMsg({ ok: true, text: "Saved. New limits apply to the next upload." });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : "Could not save. Please try again." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const Col = ({ chat, title, hint }: { chat: "room" | "inbox"; title: string; hint: string }) => (
+    <div>
+      <p className="text-[12px] font-medium m-0">{title}</p>
+      <p className="text-[10px] text-text-subtle m-0 mb-2">{hint}</p>
+      <div className="flex flex-col gap-2">
+        {([
+          ["imageMB", "Picture max size", "MB", 1, MAX_UPLOAD_MB],
+          ["videoMB", "Video max size", "MB", 1, MAX_UPLOAD_MB],
+          ["videoSeconds", "Video max length", "sec", 5, MAX_VIDEO_SECONDS_CAP],
+        ] as [keyof UploadLimits, string, string, number, number][]).map(([key, label, unit, min, max]) => (
+          <label key={key} className="flex items-center justify-between gap-3">
+            <span className="text-[11px] text-text-muted">{label}</span>
+            <span className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min={min}
+                max={max}
+                value={cur[chat][key]}
+                onChange={(e) => edit(chat, key, e.target.value)}
+                className="w-20 bg-canvas border border-border rounded-md px-2 py-1.5 text-[12px] font-mono text-text text-right outline-none focus:border-gold/40"
+              />
+              <span className="text-[10px] text-text-subtle w-7">{unit}</span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <Card className="mb-3">
+      <CardHeader title="Upload limits" subtitle={`How big a picture or video may be, per chat. Sizes are checked by the server; the length is checked by the app. Ceiling: ${MAX_UPLOAD_MB} MB.`} />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-4">
+        <Col chat="room" title="Community Room" hint="Everyone in the room, moderators included" />
+        <Col chat="inbox" title="Admin message" hint="Private chats between a member and the admin team" />
+      </div>
+      <div className="flex flex-wrap items-center gap-3 mt-3">
+        <button onClick={save} disabled={saving || !dirty} className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium disabled:opacity-50">
+          {saving ? "Saving…" : "Save limits"}
+        </button>
+        {dirty && !saving && <button onClick={() => { setDraft(null); setMsg(null); }} className="text-[11px] text-text-muted hover:text-text">Discard</button>}
+        {msg && <span className={cn("text-[11px]", msg.ok ? "text-green" : "text-red")}>{msg.text}</span>}
+      </div>
+      <p className="text-[10px] text-text-subtle m-0 mt-2 leading-relaxed max-w-2xl">
+        Pictures are compressed on the phone before upload, so their cap rarely matters. Videos are not: every view is a
+        download (about ₱7 per GB), so a bigger video cap costs more each time one is watched.
+      </p>
     </Card>
   );
 }
@@ -250,6 +334,8 @@ export default function AdminCommunityPage() {
       </Card>
 
       <PostingRulesCard uid={user.uid} />
+
+      <UploadLimitsCard uid={user.uid} />
 
       <ActiveNowCard enabled={adminReady} />
 

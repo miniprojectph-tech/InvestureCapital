@@ -101,10 +101,25 @@ service firebase.storage {
         ? settingsData().community.get(key, dflt) == true
         : dflt;
     }
+    // Admin-set size caps (MB) per chat: settings/platform.uploads.{room,inbox}.
+    // Missing or odd values fall back to 15 MB; nothing may exceed 200 MB.
+    function uploadCfg(chat) {
+      return ('uploads' in settingsData() && settingsData().uploads is map && settingsData().uploads.get(chat, {}) is map)
+        ? settingsData().uploads.get(chat, {})
+        : {};
+    }
+    function capBytes(chat, key) {
+      return (uploadCfg(chat).get(key, 15) is number && uploadCfg(chat).get(key, 15) >= 1 && uploadCfg(chat).get(key, 15) <= 200)
+        ? uploadCfg(chat).get(key, 15) * 1024 * 1024
+        : 15 * 1024 * 1024;
+    }
     match /community/{userId}/{file} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && request.auth.uid == userId
-        && request.resource.size < 15 * 1024 * 1024
+        && (
+          (request.resource.contentType.matches('image/.*') && request.resource.size < capBytes('room', 'imageMB'))
+          || (request.resource.contentType.matches('video/.*') && request.resource.size < capBytes('room', 'videoMB'))
+        )
         && (
           // Order matters: once a firestore.exists() comes back "not found", every later
           // Firestore lookup in the same request is denied — so the settings are read
@@ -113,6 +128,18 @@ service firebase.storage {
             && (isAdmin() || communityAllows('membersImages', true) || isChatMod()))
           || (request.resource.contentType.matches('video/.*')
             && (isAdmin() || communityAllows('membersVideo', false) || (isChatMod() && communityAllows('modsVideo', true))))
+        );
+      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Private admin chat uploads: members send pictures; staff also video. Own caps.
+    match /inbox/{userId}/{file} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId
+        && (
+          (request.resource.contentType.matches('image/.*') && request.resource.size < capBytes('inbox', 'imageMB'))
+          || (request.resource.contentType.matches('video/.*') && request.resource.size < capBytes('inbox', 'videoMB')
+              && (isAdmin() || isChatMod()))
         );
       allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
