@@ -82,12 +82,38 @@ service firebase.storage {
     // ===== Community chat media =====
     // Clients compress images on-device before upload; the 15 MB cap covers
     // admin originals. Video uploads are admin-only.
+    // Community Room uploads. Who may send pictures and video is an admin toggle in
+    // settings/platform.community (defaults: pictures yes, video admins + moderators).
+    // A moderator is flagged on their own member record (isChatMod). Storage rules
+    // seem to allow only a couple of distinct Firestore documents per request, so
+    // this reuses the record isAdmin() already reads instead of a separate list.
+    function isChatMod() {
+      return isSignedIn()
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('isChatMod', false) == true;
+    }
+    // The toggles may be missing or null (never set) — then the default applies.
+    function settingsData() {
+      return firestore.get(/databases/(default)/documents/settings/platform).data;
+    }
+    function communityAllows(key, dflt) {
+      return ('community' in settingsData() && settingsData().community is map)
+        ? settingsData().community.get(key, dflt) == true
+        : dflt;
+    }
     match /community/{userId}/{file} {
       allow read: if isSignedIn();
       allow write: if isSignedIn() && request.auth.uid == userId
         && request.resource.size < 15 * 1024 * 1024
-        && (request.resource.contentType.matches('image/.*')
-          || (isAdmin() && request.resource.contentType.matches('video/.*')));
+        && (
+          // Order matters: once a firestore.exists() comes back "not found", every later
+          // Firestore lookup in the same request is denied — so the settings are read
+          // BEFORE the moderator check, which only runs when the settings say no.
+          (request.resource.contentType.matches('image/.*')
+            && (isAdmin() || communityAllows('membersImages', true) || isChatMod()))
+          || (request.resource.contentType.matches('video/.*')
+            && (isAdmin() || communityAllows('membersVideo', false) || (isChatMod() && communityAllows('modsVideo', true))))
+        );
       allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 

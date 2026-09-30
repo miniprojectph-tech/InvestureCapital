@@ -1,6 +1,7 @@
 import { randomInt } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { getDatabase } from "firebase-admin/database";
 import { getStorage } from "firebase-admin/storage";
 import { logger } from "firebase-functions";
@@ -159,6 +160,26 @@ async function recomputeOnline(forceRedraw: boolean): Promise<{ real: number; ba
   await db.doc(ACTIVE_BASE_DOC).set({ base, baseAt, real, shown, updatedAt: now }, { merge: true });
   return { real, base, shown };
 }
+
+/**
+ * The admin's Community Room permissions live in Firestore `settings/platform.community`
+ * (Storage rules read them there). The Realtime Database rules that guard the
+ * room can't read Firestore, so the five toggles are mirrored to
+ * `community/settings` whenever the settings change.
+ */
+const COMMUNITY_DEFAULTS = { membersImages: true, membersVideo: false, membersLinks: false, modsVideo: true, modsLinks: true };
+export function communitySettingsOf(data: FirebaseFirestore.DocumentData | undefined): typeof COMMUNITY_DEFAULTS {
+  const c = (data?.community ?? {}) as Partial<Record<keyof typeof COMMUNITY_DEFAULTS, unknown>>;
+  const out = { ...COMMUNITY_DEFAULTS };
+  for (const k of Object.keys(COMMUNITY_DEFAULTS) as (keyof typeof COMMUNITY_DEFAULTS)[]) {
+    if (typeof c[k] === "boolean") out[k] = c[k] as boolean;
+  }
+  return out;
+}
+export const onPlatformSettingsWritten = onDocumentWritten("settings/platform", async (event) => {
+  const after = event.data?.after.exists ? event.data.after.data() : undefined;
+  await getDatabase().ref("community/settings").set(communitySettingsOf(after));
+});
 
 /** Admin: set (or switch off) the starting range for "N active now". Applies at once. */
 export const adminSetCommunityActive = onCall(async (request) => {

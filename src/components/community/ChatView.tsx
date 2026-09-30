@@ -52,6 +52,8 @@ type Props = {
   canSend: boolean;
   sendDisabledReason?: string;
   allowVideo?: boolean;
+  /** Pictures (gallery + camera). Default on. */
+  allowImage?: boolean;
   keepOriginal?: boolean;
   /** Reject messages containing links before they reach the (also enforcing) rules. */
   blockLinks?: boolean;
@@ -167,6 +169,7 @@ export function ChatView({
   canSend,
   sendDisabledReason,
   allowVideo = false,
+  allowImage = true,
   keepOriginal = false,
   blockLinks = false,
   maxText = MAX_TEXT,
@@ -716,14 +719,18 @@ export function ChatView({
             {error && <p className="text-[10px] text-red m-0 px-3 pt-2">{error}</p>}
 
             <div className="flex items-end gap-0.5 p-2">
-              <input ref={imgInput} type="file" accept="image/*" hidden onChange={(e) => { pickFile("image", e.target.files?.[0]); e.target.value = ""; }} />
-              <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { pickFile("image", e.target.files?.[0]); e.target.value = ""; }} />
-              <button onClick={() => imgInput.current?.click()} className="w-9 h-9 rounded-full flex items-center justify-center text-blue hover:bg-card-elev transition shrink-0" aria-label="Attach image" disabled={sending}>
-                <ImageIcon className="w-[22px] h-[22px]" />
-              </button>
-              <button onClick={() => camInput.current?.click()} className="w-9 h-9 rounded-full md:hidden flex items-center justify-center text-blue hover:bg-card-elev transition shrink-0" aria-label="Take a photo" disabled={sending}>
-                <Camera className="w-[22px] h-[22px]" />
-              </button>
+              {allowImage && (
+                <>
+                  <input ref={imgInput} type="file" accept="image/*" hidden onChange={(e) => { pickFile("image", e.target.files?.[0]); e.target.value = ""; }} />
+                  <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { pickFile("image", e.target.files?.[0]); e.target.value = ""; }} />
+                  <button onClick={() => imgInput.current?.click()} className="w-9 h-9 rounded-full flex items-center justify-center text-blue hover:bg-card-elev transition shrink-0" aria-label="Attach image" disabled={sending}>
+                    <ImageIcon className="w-[22px] h-[22px]" />
+                  </button>
+                  <button onClick={() => camInput.current?.click()} className="w-9 h-9 rounded-full md:hidden flex items-center justify-center text-blue hover:bg-card-elev transition shrink-0" aria-label="Take a photo" disabled={sending}>
+                    <Camera className="w-[22px] h-[22px]" />
+                  </button>
+                </>
+              )}
               {allowVideo && (
                 <>
                   <input ref={vidInput} type="file" accept="video/mp4,video/webm,video/quicktime" hidden onChange={(e) => { pickFile("video", e.target.files?.[0]); e.target.value = ""; }} />

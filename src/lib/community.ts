@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 import {
   ref,
   onValue,
@@ -27,6 +27,7 @@ import {
 } from "firebase/storage";
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
+import { DEFAULT_COMMUNITY, type CommunityConfig } from "./settings";
 
 // Community chat lives in Realtime Database (bandwidth-priced, not per-read).
 // Clients write directly under rules — see database.rules.json — and media goes
@@ -299,16 +300,38 @@ export function useChatMods(enabled: boolean): ChatMod[] {
   return list;
 }
 
-export function addChatMod(uid: string, name: string, inbox: boolean) {
-  return set(ref(needRtdb(), `chatMods/${uid}`), { name: name.slice(0, 40), at: serverTimestamp(), inbox });
+/**
+ * Moderators are listed in RTDB (chat rules) AND flagged on their own member
+ * record (`isChatMod`, which only they and admins can read) for the Storage rules
+ * that decide who may upload video.
+ */
+export async function addChatMod(uid: string, name: string, inbox: boolean) {
+  await set(ref(needRtdb(), `chatMods/${uid}`), { name: name.slice(0, 40), at: serverTimestamp(), inbox });
+  const { db } = getFirebase();
+  if (db) await updateDoc(doc(db, "users", uid), { isChatMod: true });
 }
 
 export function setChatModInbox(uid: string, inbox: boolean) {
   return set(ref(needRtdb(), `chatMods/${uid}/inbox`), inbox);
 }
 
-export function removeChatMod(uid: string) {
-  return remove(ref(needRtdb(), `chatMods/${uid}`));
+export async function removeChatMod(uid: string) {
+  await remove(ref(needRtdb(), `chatMods/${uid}`));
+  const { db } = getFirebase();
+  if (db) await updateDoc(doc(db, "users", uid), { isChatMod: false });
+}
+
+/** The admin's Community Room permissions, as mirrored for the chat rules. */
+export function useCommunityPermissions(): CommunityConfig {
+  const { user } = useAuth();
+  const [v, setV] = useState<CommunityConfig>(DEFAULT_COMMUNITY);
+  useEffect(() => {
+    if (!user) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, "community/settings"), (s) => setV({ ...DEFAULT_COMMUNITY, ...((s.val() as Partial<CommunityConfig>) ?? {}) }), () => setV(DEFAULT_COMMUNITY));
+  }, [user]);
+  return v;
 }
 
 /** The admin-pinned room message (fetched directly if it scrolled out of the window). */

@@ -29,6 +29,7 @@ import {
   muteUser,
   unmuteUser,
   useMutedUsers,
+  useCommunityPermissions,
   markInboxRead,
   ensureCommunityAdmin,
   formatRelative,
@@ -74,6 +75,11 @@ export default function CommunityPage() {
 
   // Staff = full admin or chat moderator. Inbox access needs the per-mod toggle.
   const isStaff = !!user?.isAdmin || modRole.isMod;
+  // What this person may post in the room (admin toggles; the rules enforce the same).
+  const perms = useCommunityPermissions();
+  const canVideo = !!user?.isAdmin || (modRole.isMod && perms.modsVideo) || perms.membersVideo;
+  const canLinks = !!user?.isAdmin || (modRole.isMod && perms.modsLinks) || perms.membersLinks;
+  const canImage = isStaff || perms.membersImages;
   const canInbox = !!user?.isAdmin || (modRole.isMod && modRole.inbox);
   const inboxThreads = useInboxList(canInbox);
   const inboxUnread = inboxThreads.filter((t) => isInboxUnread(t, "admin")).length;
@@ -256,9 +262,10 @@ export default function CommunityPage() {
               pinned={pinned}
               canSend={!muted && !demoMode}
               sendDisabledReason={muted ? "You've been muted in the Community Room. Message the admin if you think this is a mistake." : undefined}
-              allowVideo={isStaff}
+              allowVideo={canVideo}
+              allowImage={canImage}
               keepOriginal={isStaff}
-              blockLinks={!isStaff}
+              blockLinks={!canLinks}
               hasMore={roomFeed.hasMore}
               loadingOlder={roomFeed.loadingOlder}
               onLoadOlder={roomFeed.loadOlder}

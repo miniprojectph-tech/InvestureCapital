@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { listInvestors, type InvestorRow } from "@/lib/adminQueries";
+import { useSettings, saveSettings, DEFAULT_COMMUNITY, type CommunityConfig } from "@/lib/settings";
 import {
   useMutedUsers,
   useCommunityRoom,
@@ -27,6 +28,70 @@ import {
   removeChatMod,
   formatRelative,
 } from "@/lib/community";
+
+/** Who may post pictures, video and links in the Community Room. Saved to settings; the rules enforce it. */
+function PostingRulesCard({ uid }: { uid: string }) {
+  const { settings } = useSettings();
+  const cfg: CommunityConfig = { ...DEFAULT_COMMUNITY, ...(settings.community ?? {}) };
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function flip(key: keyof CommunityConfig) {
+    const { db } = getFirebase();
+    if (!db) return;
+    setBusy(key);
+    setErr(null);
+    try {
+      await saveSettings(db, { community: { ...cfg, [key]: !cfg[key] } }, uid);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Could not save. Please try again.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  const Row = ({ label, hint, k }: { label: string; hint: string; k: keyof CommunityConfig }) => (
+    <div className="flex items-center justify-between gap-3 py-2 border-b border-border last:border-b-0">
+      <div className="min-w-0">
+        <p className="text-[12px] m-0">{label}</p>
+        <p className="text-[10px] text-text-subtle m-0 mt-0.5">{hint}</p>
+      </div>
+      <button
+        type="button"
+        onClick={() => flip(k)}
+        disabled={busy !== null}
+        aria-pressed={cfg[k]}
+        className={cn(
+          "shrink-0 px-3 py-1 rounded-full text-[10px] font-medium border transition min-w-[64px]",
+          cfg[k] ? "bg-green/15 border-green/40 text-green" : "bg-canvas border-border text-text-muted",
+          busy === k && "opacity-50",
+        )}
+      >
+        {cfg[k] ? "Allowed" : "Off"}
+      </button>
+    </div>
+  );
+
+  return (
+    <Card className="mb-3">
+      <CardHeader title="What people can send" subtitle="Switch pictures, video and links on or off for members and for moderators. Applies straight away; the admin account can always send everything." />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-text-subtle m-0 mb-1">Members</p>
+          <Row k="membersImages" label="Pictures" hint="Photos from the gallery or camera, compressed on their phone" />
+          <Row k="membersVideo" label="Videos" hint="Up to 15 MB each — the biggest storage cost in the room" />
+          <Row k="membersLinks" label="Links" hint="Web addresses in messages (off keeps spam and scams out)" />
+        </div>
+        <div>
+          <p className="text-[10px] uppercase tracking-wider text-text-subtle m-0 mb-1">Moderators</p>
+          <Row k="modsVideo" label="Videos" hint="Moderators can always send pictures" />
+          <Row k="modsLinks" label="Links" hint="For sharing official announcements" />
+        </div>
+      </div>
+      {err && <p className="text-[11px] text-red m-0 mt-2">{err}</p>}
+    </Card>
+  );
+}
 
 /** The "N active now" number members see: a starting number from a range, plus who is really online. */
 function ActiveNowCard({ enabled }: { enabled: boolean }) {
@@ -183,6 +248,8 @@ export default function AdminCommunityPage() {
           );
         })()}
       </Card>
+
+      <PostingRulesCard uid={user.uid} />
 
       <ActiveNowCard enabled={adminReady} />
 

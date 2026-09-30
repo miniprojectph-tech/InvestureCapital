@@ -57,6 +57,22 @@ export const DEFAULT_GAME_ACCESS: GameAccessRequirement = {
   minInvestment: 0,
 };
 
+/** What members and moderators may post in the Community Room (admin toggles). */
+export type CommunityConfig = {
+  membersImages: boolean;
+  membersVideo: boolean;
+  membersLinks: boolean;
+  modsVideo: boolean;
+  modsLinks: boolean;
+};
+export const DEFAULT_COMMUNITY: CommunityConfig = {
+  membersImages: true,
+  membersVideo: false,
+  membersLinks: false,
+  modsVideo: true,
+  modsLinks: true,
+};
+
 export type PlatformSettings = {
   vaultDailyRate: number; // percent, e.g. 1.0
   vaultLockDays: number;
@@ -70,6 +86,8 @@ export type PlatformSettings = {
   compPlan?: Partial<CompPlanConfig>;
   /** When requested withdrawals are released (e.g. Mon–Thu → Friday, Fri–Sun → Monday). */
   withdrawalSchedule?: WithdrawalScheduleConfig;
+  /** Community Room posting permissions (pictures / video / links, per role). */
+  community?: Partial<CommunityConfig>;
   updatedAt?: number;
   updatedBy?: string;
 };
@@ -94,6 +112,7 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   gameAccess: DEFAULT_GAME_ACCESS,
   compPlan: DEFAULT_COMP_PLAN,
   withdrawalSchedule: DEFAULT_WITHDRAWAL_SCHEDULE,
+  community: DEFAULT_COMMUNITY,
 };
 
 export type PaymentMethodId = "gotyme" | "gcash" | "bankTransfer";
