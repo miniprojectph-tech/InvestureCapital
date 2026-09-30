@@ -48,6 +48,7 @@ export default function AdminColorGamePage() {
   const [loadingRounds, setLoadingRounds] = useState(true);
   const [jackpotInput, setJackpotInput] = useState("");
   const [adjusting, setAdjusting] = useState(false);
+  const [adjustError, setAdjustError] = useState<string | null>(null);
   const [settingColor, setSettingColor] = useState(false);
   const [tab, setTab] = useState<"dashboard" | "rounds" | "leaderboard">("dashboard");
 
@@ -83,10 +84,13 @@ export default function AdminColorGamePage() {
     const val = parseInt(jackpotInput, 10);
     if (isNaN(val) || val < 0) return;
     setAdjusting(true);
+    setAdjustError(null);
     try {
       await adminAdjustJackpot(val);
       setJackpotInput("");
-    } catch { /* ignore */ }
+    } catch (e) {
+      setAdjustError(e instanceof Error ? e.message : "Could not set the jackpot. Please try again.");
+    }
     setAdjusting(false);
   };
 
@@ -198,6 +202,7 @@ export default function AdminColorGamePage() {
                 {adjusting ? "..." : "Set"}
               </button>
             </div>
+            {adjustError && <p className="text-[11px] text-red m-0 mt-1.5">{adjustError}</p>}
 
             <div className="mt-3 pt-3 border-t border-border">
               <p className="text-[11px] text-text-subtle m-0 mb-2">

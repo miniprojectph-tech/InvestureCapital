@@ -609,19 +609,23 @@ export const adminAdjustColorJackpot = onCall({ region: GAME_REGION }, async (re
   }
 
   const { amount } = request.data as { amount: number };
-  if (typeof amount !== "number") {
+  if (typeof amount !== "number" || !Number.isFinite(amount)) {
     throw new HttpsError("invalid-argument", "Amount must be a number.");
   }
+  const newPool = Math.max(0, Math.round(amount));
 
   await gameDb.runTransaction(async (tx) => {
     const gsSnap = await tx.get(gameStateRef());
     const gs = gsSnap.exists
       ? (gsSnap.data() as ColorGameState)
       : { jackpotPool: 0, totalRounds: 0, totalWagered: 0, history: [] };
-    tx.set(gameStateRef(), { ...gs, jackpotPool: Math.max(0, amount) });
+    tx.set(gameStateRef(), { ...gs, jackpotPool: newPool });
   });
+  // Every screen (players and admin) reads the pool from Realtime Database, so
+  // the new amount has to be mirrored there or it never shows.
+  await getDatabase().ref("color/state/jackpotPool").set(newPool);
 
-  return { ok: true, newJackpot: Math.max(0, amount) };
+  return { ok: true, newJackpot: newPool };
 });
 
 // ── Admin: set the jackpot color (the combination players must hit) ──
