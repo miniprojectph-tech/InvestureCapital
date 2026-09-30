@@ -271,13 +271,15 @@ export function adminSetJackpotColor(color: DieColor) {
   return gameCall<{ ok: boolean; jackpotColor: DieColor }>("adminSetColorJackpotColor", { color });
 }
 
-// ── Jackpot config (admin arming) ──
+// ── Jackpot config (admin schedule) ──
 
 export type ColorJackpotConfig = {
   jackpotColor: DieColor;
+  /** A jackpot window is scheduled or running. */
   jackpotActive: boolean;
-  jackpotTargetUid: string;
-  jackpotTargetName: string;
+  jackpotWindowStart: number;
+  jackpotWindowEnd: number;
+  jackpotLastHit?: { at: number; roundId: string; amount: number; winners: number } | null;
   jackpotDefault: number;
   jackpotContribution: number;
 };
@@ -285,8 +287,9 @@ export type ColorJackpotConfig = {
 const DEFAULT_JACKPOT_CFG: ColorJackpotConfig = {
   jackpotColor: "blue",
   jackpotActive: false,
-  jackpotTargetUid: "",
-  jackpotTargetName: "",
+  jackpotWindowStart: 0,
+  jackpotWindowEnd: 0,
+  jackpotLastHit: null,
   jackpotDefault: 100_000,
   jackpotContribution: 0.02,
 };
@@ -299,7 +302,7 @@ export function useColorJackpotConfig() {
     if (!user?.isAdmin) return;
     const { rtdb } = getFirebase();
     if (!rtdb) return;
-    // ADMIN ONLY. The config names the designated winner, so the server mirrors
+    // ADMIN ONLY. The config holds the jackpot schedule, so the server mirrors
     // it to `colorAdmin/config`, which RTDB rules open to admins alone (players
     // only ever see the jackpot colour via color/state). Those rules key off the
     // `admins/{uid}` mirror, so make sure it exists before subscribing — a denied
@@ -325,4 +328,14 @@ export function useColorJackpotConfig() {
 
 export function adminSetJackpotConfig(patch: Partial<ColorJackpotConfig>) {
   return gameCall<{ ok: boolean }>("adminSetColorJackpotConfig", patch);
+}
+
+/**
+ * One player's slice of a jackpot: the pool is shared by everyone who bet the
+ * jackpot colour that round, in proportion to their stake on it. Mirrors the
+ * server's sum (functions/src/colorgame.ts).
+ */
+export function jackpotShare(pool: number, myStake: number, totalStake: number): number {
+  if (pool <= 0 || myStake <= 0 || totalStake <= 0) return 0;
+  return Math.floor(pool * (myStake / totalStake));
 }

@@ -11,6 +11,7 @@ import {
   useColorLeaderboard,
   placeColorBet,
   resolveColorRound,
+  jackpotShare,
   COLOR_HEX,
   type DieColor,
 } from "@/lib/colorgame";
@@ -163,8 +164,15 @@ export default function ColorGamePage() {
       else if (matches === 2) payout += amt * 3;
       else if (matches === 3) payout += amt * 4;
     }
-    return { color: entries[0][0], amount: totalBet, payout };
-  }, [currentDice, isCurrent, roundId]);
+    // Jackpot: this player's slice of the pool, by their stake on the jackpot colour.
+    let jackpot = 0;
+    const jc = live?.jackpotTriggered ? live.jackpotColor : null;
+    if (jc && mine.bets[jc]) {
+      const totalOnColor = (live?.bets ?? []).filter((b) => b.color === jc).reduce((s, b) => s + b.amount, 0);
+      jackpot = jackpotShare(live?.jackpotAmount ?? 0, mine.bets[jc] ?? 0, Math.max(totalOnColor, mine.bets[jc] ?? 0));
+    }
+    return { color: entries[0][0], amount: totalBet, payout, jackpot };
+  }, [currentDice, isCurrent, roundId, live]);
 
   // Show the result banner through the whole result phase (dice have already
   // settled by then). Nothing to schedule or cancel — it just tracks the phase.
@@ -378,7 +386,7 @@ export default function ColorGamePage() {
           dice={dice}
           payout={myResult?.payout ?? 0}
           jackpotTriggered={live?.jackpotTriggered}
-          jackpotAmount={live?.jackpotAmount ?? undefined}
+          jackpotPrize={myResult?.jackpot ?? 0}
         />
       </div>
 

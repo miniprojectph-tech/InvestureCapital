@@ -21,7 +21,6 @@ import {
   type DieColor,
   type ColorGameState,
 } from "@/lib/colorgame";
-import { listInvestors, type InvestorRow } from "@/lib/adminQueries";
 import { collection, getDocs, query, orderBy, limit, type Firestore } from "firebase/firestore";
 
 type RecentRound = {
@@ -38,8 +37,10 @@ export default function AdminColorGamePage() {
   const gs = useColorGameState();
   const cfg = useColorJackpotConfig();
   const leaders = useColorLeaderboard(10);
-  const [investors, setInvestors] = useState<InvestorRow[]>([]);
-  const [playerSearch, setPlayerSearch] = useState("");
+  const [winStart, setWinStart] = useState("");
+  const [winEnd, setWinEnd] = useState("");
+  const [cfgError, setCfgError] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const [floorInput, setFloorInput] = useState("");
   const [contribInput, setContribInput] = useState("");
   const [savingCfg, setSavingCfg] = useState(false);
@@ -97,26 +98,47 @@ export default function AdminColorGamePage() {
     setSettingColor(false);
   };
 
+  // Keeps the jackpot status line ("starts in…", "live until…") current.
   useEffect(() => {
-    const { db } = getFirebase();
-    if (!db || demoMode) return;
-    listInvestors(db, 500).then(setInvestors).catch(() => {});
-  }, [demoMode]);
+    const iv = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(iv);
+  }, []);
 
   const applyCfg = async (patch: Parameters<typeof adminSetJackpotConfig>[0]) => {
     setSavingCfg(true);
+    setCfgError(null);
     try {
       await adminSetJackpotConfig(patch);
-    } catch { /* ignore */ }
-    setSavingCfg(false);
+      return true;
+    } catch (e) {
+      setCfgError(e instanceof Error ? e.message : "Could not save. Please try again.");
+      return false;
+    } finally {
+      setSavingCfg(false);
+    }
   };
 
-  const playerMatches = playerSearch.trim()
-    ? investors.filter((p) => {
-        const q = playerSearch.toLowerCase();
-        return p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q);
-      }).slice(0, 6)
-    : [];
+  const scheduleJackpot = async () => {
+    const start = new Date(winStart).getTime();
+    const end = new Date(winEnd).getTime();
+    if (!winStart || !winEnd || isNaN(start) || isNaN(end)) return setCfgError("Choose both a start and an end date and time.");
+    if (end <= start) return setCfgError("The end must be after the start.");
+    if (end <= Date.now()) return setCfgError("The end must be in the future.");
+    if (await applyCfg({ jackpotWindowStart: start, jackpotWindowEnd: end })) {
+      setWinStart("");
+      setWinEnd("");
+    }
+  };
+
+  const fmtFull = (ts: number) =>
+    new Date(ts).toLocaleString("en-PH", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+  const jackpotStatus: { label: string; tone: string } = !cfg.jackpotActive
+    ? { label: "Off — no jackpot scheduled", tone: "text-text-subtle" }
+    : now < cfg.jackpotWindowStart
+      ? { label: `Scheduled — starts ${fmtFull(cfg.jackpotWindowStart)}`, tone: "text-blue" }
+      : now <= cfg.jackpotWindowEnd
+        ? { label: `LIVE — can hit any time until ${fmtFull(cfg.jackpotWindowEnd)}`, tone: "text-green" }
+        : { label: "Ended without a winner — nobody bet the jackpot color in time", tone: "text-text-subtle" };
 
   function fmtDate(ts: number) {
     if (!ts) return "—";
@@ -179,7 +201,7 @@ export default function AdminColorGamePage() {
 
             <div className="mt-3 pt-3 border-t border-border">
               <p className="text-[11px] text-text-subtle m-0 mb-2">
-                Jackpot combination — players must hit 3 of this color to win the jackpot
+                Jackpot color — when the jackpot hits, all three dice land on this color
               </p>
               <div className="flex flex-wrap gap-2">
                 {ALL_COLORS.map((c) => {
@@ -202,53 +224,72 @@ export default function AdminColorGamePage() {
               </div>
             </div>
 
-            {/* Designated winner + activation */}
+            {/* Jackpot schedule */}
             <div className="mt-3 pt-3 border-t border-border">
-              <p className="text-[11px] text-text-subtle m-0 mb-2">
-                Designated winner — when active, this player wins the jackpot the next time they bet the jackpot color (then it auto-deactivates)
+              <p className="text-[12px] font-medium text-text m-0 mb-1">Jackpot schedule</p>
+              <p className="text-[11px] text-text-subtle m-0 mb-2 max-w-2xl leading-relaxed">
+                Set a start and an end. The jackpot hits at a random moment inside that time — nobody is chosen and
+                nobody knows the moment, not even this page. Everyone who bet the jackpot color in that round shares
+                the prize, by how much each of them bet on it. After it hits it turns itself off and the pool goes
+                back to the default prize below.
               </p>
-              <div className="flex flex-wrap items-center gap-2 mb-2">
+              <div className="flex flex-wrap items-center gap-2 mb-3">
                 <span className="text-[11px] text-text-muted">Status:</span>
-                <span className={`text-[11px] font-medium ${cfg.jackpotActive ? "text-green" : "text-text-subtle"}`}>
-                  {cfg.jackpotActive ? `Armed for ${cfg.jackpotTargetName || "—"}` : "Inactive"}
-                </span>
+                <span className={`text-[11px] font-medium ${jackpotStatus.tone}`}>{jackpotStatus.label}</span>
+                {cfg.jackpotActive && (
+                  <button
+                    onClick={() => applyCfg({ jackpotActive: false })}
+                    disabled={savingCfg}
+                    className="px-3 py-1 rounded-md text-[10px] font-medium bg-red/15 text-red disabled:opacity-50"
+                  >
+                    {now > cfg.jackpotWindowEnd ? "Clear" : "Cancel jackpot"}
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1">Starts</label>
+                  <input
+                    type="datetime-local"
+                    value={winStart}
+                    onChange={(e) => setWinStart(e.target.value)}
+                    className="px-2 py-1.5 rounded-md bg-card-elev text-[11px] text-text border border-border outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] text-text-muted mb-1">Ends</label>
+                  <input
+                    type="datetime-local"
+                    value={winEnd}
+                    onChange={(e) => setWinEnd(e.target.value)}
+                    className="px-2 py-1.5 rounded-md bg-card-elev text-[11px] text-text border border-border outline-none"
+                  />
+                </div>
                 <button
-                  onClick={() => applyCfg({ jackpotActive: !cfg.jackpotActive })}
-                  disabled={savingCfg || (!cfg.jackpotTargetUid && !cfg.jackpotActive)}
-                  className={`px-3 py-1 rounded-md text-[10px] font-medium disabled:opacity-50 ${cfg.jackpotActive ? "bg-red/15 text-red" : "bg-green/15 text-green"}`}
+                  onClick={scheduleJackpot}
+                  disabled={savingCfg || !winStart || !winEnd}
+                  className="px-3 py-1.5 rounded-md bg-green/15 text-green text-[11px] font-medium disabled:opacity-50"
                 >
-                  {cfg.jackpotActive ? "Deactivate" : "Activate"}
+                  {savingCfg ? "Saving…" : cfg.jackpotActive ? "Replace schedule" : "Schedule jackpot"}
                 </button>
               </div>
-              <input
-                value={playerSearch}
-                onChange={(e) => setPlayerSearch(e.target.value)}
-                placeholder="Search player by name or email…"
-                className="w-full max-w-sm px-2 py-1.5 rounded-md bg-card-elev text-[11px] text-text border border-border outline-none"
-              />
-              {playerMatches.length > 0 && (
-                <div className="mt-1 max-w-sm border border-border rounded-md overflow-hidden">
-                  {playerMatches.map((p) => (
-                    <button
-                      key={p.uid}
-                      onClick={() => { applyCfg({ jackpotTargetUid: p.uid, jackpotTargetName: p.name || p.email || "Player" }); setPlayerSearch(""); }}
-                      className="w-full text-left px-2 py-1.5 text-[11px] hover:bg-card-elev flex items-center justify-between"
-                    >
-                      <span>{p.name || "—"} <span className="text-text-subtle">· {p.email}</span></span>
-                      {cfg.jackpotTargetUid === p.uid && <span className="text-gold">✓</span>}
-                    </button>
-                  ))}
-                </div>
-              )}
-              <p className="text-[10px] text-text-subtle m-0 mt-1">
-                Selected winner: <span className="font-medium text-text">{cfg.jackpotTargetName || "none"}</span>
+              <p className="text-[10px] text-text-subtle m-0 mt-1.5">
+                Times are in this device&apos;s time zone. The jackpot needs at least 5 minutes, and at least one player
+                betting the jackpot color, to hit.
               </p>
+              {cfgError && <p className="text-[11px] text-red m-0 mt-1.5">{cfgError}</p>}
+              {cfg.jackpotLastHit && (
+                <p className="text-[11px] text-text-muted m-0 mt-2">
+                  Last jackpot: <span className="font-mono text-gold">{cfg.jackpotLastHit.amount.toLocaleString()} GP</span> shared by{" "}
+                  {cfg.jackpotLastHit.winners} player{cfg.jackpotLastHit.winners === 1 ? "" : "s"} · {fmtFull(cfg.jackpotLastHit.at)}
+                </p>
+              )}
             </div>
 
             {/* Floor + contribution */}
             <div className="mt-3 pt-3 border-t border-border grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[10px] text-text-muted mb-1">Default floor — pool resets to this on a win</label>
+                <label className="block text-[10px] text-text-muted mb-1">Default prize — the pool goes back to this after a jackpot is won</label>
                 <div className="flex items-center gap-2">
                   <input
                     type="number"

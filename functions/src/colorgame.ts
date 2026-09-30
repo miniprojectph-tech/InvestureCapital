@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getDatabase, ServerValue } from "firebase-admin/database";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
@@ -28,38 +29,62 @@ const leaderRef = (uid: string) => gameDb.doc(`color_game_leaderboard/${uid}`);
 const userStateRef = (uid: string) => db.doc(`users/${uid}/game/state`);
 
 // Admin-controlled jackpot settings (kept separate from color_game/state,
-// which round-resolve overwrites). The jackpot fires only when it's active
-// AND the designated player has bet the jackpot color that round.
+// which round-resolve overwrites).
+//
+// The jackpot runs on a SCHEDULE: the admin sets a start and an end, and the
+// server picks a secret moment inside that window. The first round at or after
+// that moment in which anyone has bet the jackpot color pays the jackpot — to
+// everyone who bet that color, in proportion to their stake on it. Nobody is
+// chosen in advance, and not even the admin page is told the moment. Once it
+// has paid (or the window ends) it switches itself off.
+type JackpotLastHit = { at: number; roundId: string; amount: number; winners: number };
 type JackpotConfig = {
   jackpotColor: DieColor;
-  jackpotActive: boolean;
-  jackpotTargetUid: string;
-  jackpotTargetName: string;
+  jackpotActive: boolean;      // a window is scheduled or running
+  jackpotWindowStart: number;  // ms; 0 = none
+  jackpotWindowEnd: number;    // ms; 0 = none
+  jackpotFireAt: number;       // ms; SECRET — never mirrored anywhere a client can read
+  jackpotLastHit?: JackpotLastHit | null;
   jackpotDefault: number;      // pool resets to this floor after a win
   jackpotContribution: number; // fraction of each bet added to the pool
 };
 const DEFAULT_JACKPOT_CONFIG: JackpotConfig = {
   jackpotColor: "blue",
   jackpotActive: false,
-  jackpotTargetUid: "",
-  jackpotTargetName: "",
+  jackpotWindowStart: 0,
+  jackpotWindowEnd: 0,
+  jackpotFireAt: 0,
+  jackpotLastHit: null,
   jackpotDefault: 100_000,
   jackpotContribution: 0.02,
 };
+/** The share of the window (from its start) in which the secret moment may fall —
+ *  the tail is left free so a quiet round or two can't push the hit past the end. */
+const FIRE_SPAN = 0.85;
+const JACKPOT_OFF = { jackpotActive: false, jackpotWindowStart: 0, jackpotWindowEnd: 0, jackpotFireAt: 0 };
 async function readJackpotConfig(): Promise<JackpotConfig> {
   const snap = await configRef().get();
   return { ...DEFAULT_JACKPOT_CONFIG, ...(snap.exists ? (snap.data() as Partial<JackpotConfig>) : {}) };
 }
 
 // Mirror the config to RTDB for the ADMIN page (Firestore realtime listeners on
-// the named game DB don't deliver in this app). It holds the designated winner,
-// so it lives under `colorAdmin/` — readable by admins only — never under
-// `color/`, which every signed-in player can read. Players only ever get the
-// jackpot colour, via `color/state/jackpotColor`. The old public node is cleared.
+// the named game DB don't deliver in this app). It lives under `colorAdmin/` —
+// readable by admins only — never under `color/`, which every signed-in player
+// can read. Players only ever get the jackpot colour, via
+// `color/state/jackpotColor`. The secret moment is left out even here.
 async function mirrorConfigToRtdb(): Promise<void> {
   try {
     const cfg = await readJackpotConfig();
-    await getDatabase().ref().update({ "colorAdmin/config": cfg, "color/config": null });
+    const shown = {
+      jackpotColor: cfg.jackpotColor,
+      jackpotActive: cfg.jackpotActive,
+      jackpotWindowStart: cfg.jackpotWindowStart,
+      jackpotWindowEnd: cfg.jackpotWindowEnd,
+      jackpotLastHit: cfg.jackpotLastHit ?? null,
+      jackpotDefault: cfg.jackpotDefault,
+      jackpotContribution: cfg.jackpotContribution,
+    };
+    await getDatabase().ref().update({ "colorAdmin/config": shown, "color/config": null });
   } catch (e) {
     console.error("config RTDB mirror failed", e);
   }
@@ -290,8 +315,6 @@ async function payRound(roundId: string, payouts: Record<string, number>): Promi
 }
 
 async function resolveRoundCore(roundId: string, now: number): Promise<CoreResult> {
-  const cfg = await readJackpotConfig();
-
   const result = await gameDb.runTransaction(async (tx) => {
     const rSnap = await tx.get(roundRef(roundId));
 
@@ -352,11 +375,19 @@ async function resolveRoundCore(roundId: string, now: number): Promise<CoreResul
       return { kind: "void" as const, payouts: refunds };
     }
 
-    // The jackpot fires only when it's armed AND the designated player has bet
-    // the jackpot color this round — then we force 3 of that color so they win.
-    // (A random natural triple does NOT trigger the jackpot; it just pays 4x.)
-    const targetKey = `${cfg.jackpotTargetUid}_${cfg.jackpotColor}`;
-    const fireJackpot = cfg.jackpotActive && !!cfg.jackpotTargetUid && !!bets[targetKey];
+    // The jackpot fires in the first round at or after the window's secret moment
+    // in which anyone has bet the jackpot color — then we force 3 of that color so
+    // every one of them wins. (A random natural triple does NOT trigger the
+    // jackpot; it just pays 4x.) The config is re-read INSIDE the transaction so
+    // two rounds settling at once can't both pay it. Time is the round's own
+    // betting deadline, not "now", so a round settled late is judged fairly.
+    const cfgSnap = await tx.get(configRef());
+    const cfg: JackpotConfig = { ...DEFAULT_JACKPOT_CONFIG, ...(cfgSnap.exists ? (cfgSnap.data() as Partial<JackpotConfig>) : {}) };
+    const roundAt = round.bettingDeadline;
+    const windowOver = cfg.jackpotActive && cfg.jackpotWindowEnd > 0 && roundAt > cfg.jackpotWindowEnd;
+    const fireJackpot =
+      cfg.jackpotActive && !windowOver && cfg.jackpotFireAt > 0 && roundAt >= cfg.jackpotFireAt &&
+      betEntries.some((b) => b.color === cfg.jackpotColor);
     const dice: [DieColor, DieColor, DieColor] = fireJackpot
       ? [cfg.jackpotColor, cfg.jackpotColor, cfg.jackpotColor]
       : rollDice();
@@ -440,9 +471,13 @@ async function resolveRoundCore(roundId: string, now: number): Promise<CoreResul
       history,
     });
 
-    // Auto-deactivate the jackpot once it has fired.
+    // Switch the jackpot off once it has fired — or once its window has passed
+    // without a hit. Either way the pool is back at (or still at) its normal level.
     if (fireJackpot) {
-      tx.set(configRef(), { jackpotActive: false }, { merge: true });
+      const winners = new Set(betEntries.filter((b) => b.color === cfg.jackpotColor).map((b) => b.uid)).size;
+      tx.set(configRef(), { ...JACKPOT_OFF, jackpotLastHit: { at: now, roundId, amount: jackpotAmount, winners } }, { merge: true });
+    } else if (windowOver) {
+      tx.set(configRef(), JACKPOT_OFF, { merge: true });
     }
 
     // Update leaderboard — once per player (not per bet entry), using the
@@ -472,7 +507,7 @@ async function resolveRoundCore(roundId: string, now: number): Promise<CoreResul
     }
 
     return {
-      kind: "resolved" as const, dice, payouts, jackpotTriggered,
+      kind: "resolved" as const, dice, payouts, jackpotTriggered, configChanged: fireJackpot || windowOver,
       jackpotColor: jackpotColor ?? null, jackpotAmount: jackpotTriggered ? jackpotAmount : 0,
       newJackpotPool: fireJackpot ? cfg.jackpotDefault : gs.jackpotPool,
       leaderUpdates,
@@ -506,8 +541,8 @@ async function resolveRoundCore(roundId: string, now: number): Promise<CoreResul
     }
   }
 
-  // Jackpot auto-deactivated this round — reflect the config change to the admin page.
-  if (result.kind === "resolved" && result.jackpotTriggered) await mirrorConfigToRtdb();
+  // Jackpot switched itself off this round — reflect the config change to the admin page.
+  if (result.kind === "resolved" && result.configChanged) await mirrorConfigToRtdb();
 
   // Credit winners (or refund a voided round). Idempotent, so it also finishes a
   // round that an earlier attempt resolved but failed to pay.
@@ -616,7 +651,7 @@ export const adminSetColorJackpotColor = onCall({ region: GAME_REGION }, async (
   return { ok: true, jackpotColor: color };
 });
 
-// ── Admin: arm/configure the jackpot (designated winner, activation, floor, %) ──
+// ── Admin: schedule/cancel the jackpot window, and set the floor and % ──
 export const adminSetColorJackpotConfig = onCall({ region: GAME_REGION }, async (request) => {
   const uid = requireUid(request);
   const callerSnap = await db.doc(`users/${uid}`).get();
@@ -625,10 +660,31 @@ export const adminSetColorJackpotConfig = onCall({ region: GAME_REGION }, async 
   }
 
   const patch = (request.data ?? {}) as Partial<JackpotConfig>;
-  const clean: Partial<JackpotConfig> = {};
-  if (typeof patch.jackpotActive === "boolean") clean.jackpotActive = patch.jackpotActive;
-  if (typeof patch.jackpotTargetUid === "string") clean.jackpotTargetUid = patch.jackpotTargetUid;
-  if (typeof patch.jackpotTargetName === "string") clean.jackpotTargetName = patch.jackpotTargetName;
+  let clean: Partial<JackpotConfig> = {};
+  const now = Date.now();
+  if (patch.jackpotWindowStart != null || patch.jackpotWindowEnd != null) {
+    // Schedule a window. The secret moment is drawn here, on the server, from a
+    // cryptographic source, and is never returned or mirrored.
+    const start = Number(patch.jackpotWindowStart);
+    const end = Number(patch.jackpotWindowEnd);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start <= 0) {
+      throw new HttpsError("invalid-argument", "Set both a start and an end for the jackpot.");
+    }
+    if (end <= now) throw new HttpsError("invalid-argument", "The end must be in the future.");
+    if (end - Math.max(start, now) < 5 * 60_000) {
+      throw new HttpsError("invalid-argument", "The jackpot window must be at least 5 minutes long.");
+    }
+    const from = Math.max(start, now);
+    const span = Math.floor((end - from) * FIRE_SPAN);
+    clean = {
+      jackpotActive: true,
+      jackpotWindowStart: Math.round(start),
+      jackpotWindowEnd: Math.round(end),
+      jackpotFireAt: from + randomInt(0, Math.max(1, span)),
+    };
+  } else if (patch.jackpotActive === false) {
+    clean = { ...JACKPOT_OFF }; // cancel
+  }
   if (typeof patch.jackpotDefault === "number" && patch.jackpotDefault >= 0) {
     clean.jackpotDefault = Math.round(patch.jackpotDefault);
   }
@@ -638,5 +694,8 @@ export const adminSetColorJackpotConfig = onCall({ region: GAME_REGION }, async 
 
   await configRef().set(clean, { merge: true });
   await mirrorConfigToRtdb();
-  return { ok: true, ...clean };
+  // Never hand the secret moment back to the caller.
+  const safe: Partial<JackpotConfig> = { ...clean };
+  delete safe.jackpotFireAt;
+  return { ok: true, ...safe };
 });

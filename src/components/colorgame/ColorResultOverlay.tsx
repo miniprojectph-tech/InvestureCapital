@@ -11,7 +11,8 @@ type Props = {
   dice: [DieColor, DieColor, DieColor] | undefined;
   payout: number;
   jackpotTriggered?: boolean;
-  jackpotAmount?: number;
+  /** This player's own share of the jackpot (0 if they had no stake on the jackpot colour). */
+  jackpotPrize?: number;
 };
 
 export function ColorResultOverlay({
@@ -22,7 +23,7 @@ export function ColorResultOverlay({
   dice,
   payout,
   jackpotTriggered,
-  jackpotAmount,
+  jackpotPrize = 0,
 }: Props) {
   const [show, setShow] = useState(false);
 
@@ -129,7 +130,7 @@ export function ColorResultOverlay({
                 : "0 2px 6px rgba(0,0,0,.4)",
             }}
           >
-            {isWin ? `+${payout}` : `-${betAmount}`}
+            {isWin ? `+${payout.toLocaleString()}` : `-${betAmount.toLocaleString()}`}
           </span>
           <span
             style={{
@@ -142,17 +143,40 @@ export function ColorResultOverlay({
           </span>
         </div>
 
-        {jackpotTriggered && jackpotAmount && jackpotAmount > 0 && (
-          <div
-            style={{
-              fontWeight: 800,
-              fontSize: "clamp(13px,2.2vmin,22px)",
-              color: "#8A4600",
-              marginTop: ".1em",
-            }}
-          >
-            includes +{jackpotAmount} jackpot
-          </div>
+        {/* The normal win is the big number above; the jackpot is added on its own line. */}
+        {isWin && jackpotTriggered && jackpotPrize > 0 && (
+          <>
+            <div
+              style={{
+                fontWeight: 900,
+                fontVariantNumeric: "tabular-nums",
+                fontSize: "clamp(18px,3.6vmin,40px)",
+                lineHeight: 1.1,
+                color: "#B4310A",
+                textShadow: "0 2px 0 #FFE68A",
+                marginTop: ".25em",
+                animation: "cgResPulse 0.9s ease-in-out infinite",
+              }}
+            >
+              +{jackpotPrize.toLocaleString()} GP
+              <span style={{ display: "block", fontSize: ".55em", letterSpacing: ".1em", color: "#7A3B00", textShadow: "none" }}>
+                JACKPOT PRIZE
+              </span>
+            </div>
+            <div
+              style={{
+                fontWeight: 800,
+                fontVariantNumeric: "tabular-nums",
+                fontSize: "clamp(12px,2vmin,20px)",
+                color: "#8A4600",
+                marginTop: ".45em",
+                paddingTop: ".35em",
+                borderTop: "2px solid rgba(122,59,0,.25)",
+              }}
+            >
+              Total won: +{(payout + jackpotPrize).toLocaleString()} GP
+            </div>
+          </>
         )}
 
         {/* Footer: the three dice that rolled — your hits are outlined in white */}
