@@ -27,6 +27,8 @@ import {
   deleteRoomMessage,
   setPinnedMessage,
   muteUser,
+  unmuteUser,
+  useMutedUsers,
   markInboxRead,
   ensureCommunityAdmin,
   formatRelative,
@@ -51,6 +53,9 @@ export default function CommunityPage() {
   const { messages: room, loading: roomLoading } = roomFeed;
   const pinned = usePinnedMessage(room);
   const muted = useIsMuted();
+  // Moderators see who is muted, so a muted member's menu offers "Unmute" instead.
+  const mutedList = useMutedUsers(!!user?.isAdmin || modRole.isMod);
+  const mutedUids = useMemo(() => new Set(mutedList.map((m) => m.uid)), [mutedList]);
 
   const uid = user?.uid ?? null;
   const inboxFeed = useInbox(tab === "admin" ? uid : null);
@@ -98,6 +103,8 @@ export default function CommunityPage() {
         onDelete: (m: ChatItem) => deleteRoomMessage(m.id),
         onPin: (m: ChatItem) => setPinnedMessage(pinned?.id === m.id ? null : m.id),
         onMute: (m: ChatItem) => muteUser(m.senderId, m.name),
+        onUnmute: (m: ChatItem) => unmuteUser(m.senderId),
+        mutedUids,
       }
     : { onDelete: (m: ChatItem) => (m.senderId === user.uid ? deleteRoomMessage(m.id) : Promise.resolve()) };
 

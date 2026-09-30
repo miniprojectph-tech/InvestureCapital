@@ -11,6 +11,7 @@ import {
   Pin,
   Trash2,
   VolumeX,
+  Volume2,
   MoreHorizontal,
   Play,
   ShieldCheck,
@@ -76,6 +77,10 @@ type Props = {
   onDelete?: (item: ChatItem) => Promise<void>;
   onPin?: (item: ChatItem) => Promise<void>;
   onMute?: (item: ChatItem) => Promise<void>;
+  /** Moderators: lift a mute. Offered instead of "Mute" for senders in `mutedUids`. */
+  onUnmute?: (item: ChatItem) => Promise<void>;
+  /** Moderators: who is muted right now. */
+  mutedUids?: ReadonlySet<string>;
   className?: string;
 };
 
@@ -179,6 +184,8 @@ export function ChatView({
   onDelete,
   onPin,
   onMute,
+  onUnmute,
+  mutedUids,
   className,
 }: Props) {
   const reactor = reactorUid ?? meUid;
@@ -373,7 +380,9 @@ export function ChatView({
 
   // Long-press (touch) opens the reaction sheet; a short tap toggles the time.
   function onPressStart(e: ReactPointerEvent, item: ChatItem) {
-    if (e.pointerType === "mouse") return;
+    // A mouse normally uses the hover toolbar — but that only exists from tablet
+    // width up, so on a phone-sized window the mouse gets the long-press too.
+    if (e.pointerType === "mouse" && window.matchMedia("(min-width: 768px)").matches) return;
     pressStart.current = { x: e.clientX, y: e.clientY };
     if (pressTimer.current) clearTimeout(pressTimer.current);
     pressTimer.current = setTimeout(() => {
@@ -396,7 +405,18 @@ export function ChatView({
   }
 
   const hasModeration = !!(onDelete || onPin || onMute);
+  /** Pin / mute powers — i.e. the viewer is a moderator or admin. */
+  const isModerator = !!(onPin || onMute);
   const canReact = !!onReact;
+
+  /** "Mute Ana" or, once muted, "Unmute Ana" — null when neither applies to this message. */
+  function muteAction(item: ChatItem): { label: string; run: () => void } | null {
+    if (!onMute || item.senderId === meUid || item.admin) return null;
+    const first = item.name.split(" ")[0];
+    const fail = () => setError("Couldn't update the mute. Please try again.");
+    if (mutedUids?.has(item.senderId) && onUnmute) return { label: `Unmute ${first}`, run: () => { onUnmute(item).catch(fail); } };
+    return { label: `Mute ${first}`, run: () => { onMute(item).catch(fail); } };
+  }
 
   /** One message with its bubble, reactions and (desktop) hover toolbar. */
   function renderMessage(m: ChatItem, first: boolean, last: boolean, inOverlay: boolean) {
@@ -514,6 +534,19 @@ export function ChatView({
             )}
           </div>
 
+          {/* Phone: moderators get a visible "more" button beside every message — the
+              hover toolbar below doesn't exist at this width and a long-press is easy to miss. */}
+          {!inOverlay && isModerator && (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setSheet({ item: m, picker: false }); }}
+              className={cn("md:hidden absolute top-1/2 -translate-y-1/2 w-8 h-8 rounded-full flex items-center justify-center text-text-subtle active:bg-card-elev", own ? "right-full mr-0.5" : "left-full ml-0.5")}
+              aria-label="Message actions"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+          )}
+
           {/* Desktop hover toolbar: react / reply / more */}
           {!inOverlay && (canReact || hasModeration || canSend) && (
             <div className={cn("hidden md:flex absolute top-1/2 -translate-y-1/2 items-center gap-0.5 opacity-0 group-hover:opacity-100 transition", own ? "right-full mr-1.5" : "left-full ml-1.5")}>
@@ -545,7 +578,7 @@ export function ChatView({
                   <div className={cn("absolute bottom-full mb-1 z-30 bg-card border border-border-strong rounded-lg p-1 min-w-[150px] shadow-xl shadow-black/50", own ? "right-0" : "left-0")} onClick={(e) => e.stopPropagation()}>
                     {m.text && <MenuItem icon={Copy} label="Copy" onClick={() => copyText(m)} />}
                     {onPin && <MenuItem icon={Pin} label={pinned?.id === m.id ? "Unpin" : "Pin message"} onClick={() => { setHoverMenu(null); onPin(m); }} />}
-                    {onMute && !own && !m.admin && <MenuItem icon={VolumeX} label={`Mute ${m.name.split(" ")[0]}`} onClick={() => { setHoverMenu(null); onMute(m); }} />}
+                    {(() => { const a = muteAction(m); return a && <MenuItem icon={a.label.startsWith("Unmute") ? Volume2 : VolumeX} label={a.label} onClick={() => { setHoverMenu(null); a.run(); }} />; })()}
                     {canRemove && <MenuItem icon={Trash2} label="Remove" danger onClick={() => { setHoverMenu(null); onDelete!(m); }} />}
                   </div>
                 )}
@@ -784,7 +817,7 @@ export function ChatView({
             {canSend && <SheetItem icon={Reply} label="Reply" onClick={() => startReply(sheet.item)} />}
             {sheet.item.text && <SheetItem icon={Copy} label="Copy" onClick={() => copyText(sheet.item)} />}
             {onPin && <SheetItem icon={Pin} label={pinned?.id === sheet.item.id ? "Unpin" : "Pin message"} tag="Mods" onClick={() => { setSheet(null); onPin(sheet.item); }} />}
-            {onMute && sheet.item.senderId !== meUid && !sheet.item.admin && <SheetItem icon={VolumeX} label={`Mute ${sheet.item.name.split(" ")[0]}`} tag="Mods" onClick={() => { setSheet(null); onMute(sheet.item); }} />}
+            {(() => { const a = muteAction(sheet.item); return a && <SheetItem icon={a.label.startsWith("Unmute") ? Volume2 : VolumeX} label={a.label} tag="Mods" onClick={() => { setSheet(null); a.run(); }} />; })()}
             {onDelete && (sheet.item.senderId === meUid || hasModeration) && <SheetItem icon={Trash2} label="Remove" danger onClick={() => { setSheet(null); onDelete(sheet.item); }} />}
             {!canSend && !sheet.item.text && !onPin && !onDelete && <p className="text-[11px] text-text-subtle text-center m-0 py-2">Tap a reaction above.</p>}
           </div>
