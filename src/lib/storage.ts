@@ -75,7 +75,11 @@ export async function deletePaymentMethodQr(
   }
 }
 
-const MAX_GAME_IMAGE_BYTES = 2 * 1024 * 1024;
+// Keep in step with storage.rules (/fish and /rewards).
+const MAX_GAME_IMAGE_BYTES: Record<"fish" | "rewards", number> = {
+  fish: 2 * 1024 * 1024,
+  rewards: 5 * 1024 * 1024,
+};
 
 /** Upload a fish or reward image under /fish/* or /rewards/*. Admin-only per rules. */
 export async function uploadGameImage(
@@ -86,8 +90,9 @@ export async function uploadGameImage(
   if (!ACCEPTED_TYPES.includes(file.type)) {
     throw new Error("Image must be a PNG, JPG, WebP, or GIF");
   }
-  if (file.size > MAX_GAME_IMAGE_BYTES) {
-    throw new Error(`Image too large (max ${MAX_GAME_IMAGE_BYTES / 1024 / 1024} MB)`);
+  const max = MAX_GAME_IMAGE_BYTES[folder];
+  if (file.size > max) {
+    throw new Error(`Image too large (max ${max / 1024 / 1024} MB)`);
   }
   const ext = (file.name.split(".").pop() || "png").toLowerCase();
   const path = `${folder}/${Date.now()}.${ext}`;

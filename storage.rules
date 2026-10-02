@@ -62,7 +62,7 @@ service firebase.storage {
     match /rewards/{file} {
       allow read: if isSignedIn();
       allow write: if isAdmin()
-        && request.resource.size < 2 * 1024 * 1024
+        && request.resource.size <= 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
     match /payment-methods/{file} {
