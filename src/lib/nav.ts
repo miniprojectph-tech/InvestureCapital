@@ -20,7 +20,9 @@ export type IconName =
   | "spade"
   | "refresh"
   | "chat"
-  | "help";
+  | "help"
+  | "megaphone"
+  | "mail";
 
 export type NavItem = {
   label: string;
@@ -73,6 +75,8 @@ export const adminNav: NavGroup[] = [
       { label: "Compensation plan", href: "/admin/comp-plan", icon: "coins" },
       { label: "Placement requests", href: "/admin/plan-requests", icon: "coins" },
       { label: "Events", href: "/admin/events", icon: "gift" },
+      { label: "Pop-up ads", href: "/admin/promos", icon: "megaphone" },
+      { label: "Email", href: "/admin/email", icon: "mail" },
       { label: "Withdrawals", href: "/admin/withdrawals", icon: "withdraw" },
       { label: "Referrals", href: "/admin/referrals", icon: "share" },
     ],
