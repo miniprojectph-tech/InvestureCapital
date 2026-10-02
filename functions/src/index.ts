@@ -18,7 +18,7 @@ export { ensureCommunityAdmin, ensureCommunityMember, updateCommunityStats, refr
 export { faqVote } from "./faq";
 
 // Admin only: delete a member's account (members can't delete their own).
-export { adminDeleteMember } from "./account";
+export { adminDeleteMember, adminResetMemberPassword } from "./account";
 
 // Admin: member directory export (Excel / CSV), audited.
 export { adminExportMembers } from "./members-export";

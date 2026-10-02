@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2 } from "lucide-react";
+import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { InvestorPlansPanel } from "@/components/admin/InvestorPlansPanel";
 import { MembersExportButton } from "@/components/admin/MembersExportButton";
 import { DeleteMemberModal } from "@/components/admin/DeleteMemberModal";
+import { ResetPasswordModal } from "@/components/admin/ResetPasswordModal";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -208,6 +209,7 @@ export default function AdminInvestorsPage() {
 
   const [deleting, setDeleting] = useState<{ uid: string; name: string; email: string } | null>(null);
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
+  const [resetting, setResetting] = useState<{ uid: string; name: string; email: string } | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
   const reloadInvestors = useCallback(() => setReloadTick((t) => t + 1), []);
 
@@ -622,12 +624,20 @@ export default function AdminInvestorsPage() {
                       {u.isAdmin || u.uid === user?.uid ? (
                         <span className="text-[10px] text-text-dim">—</span>
                       ) : (
-                        <button
-                          onClick={() => { setAccountMsg(null); setDeleting({ uid: u.uid, name: u.name, email: u.email }); }}
-                          className="text-[10px] px-2 py-1 rounded-md border border-red/30 text-red hover:bg-red/10 inline-flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" /> Delete
-                        </button>
+                        <span className="inline-flex items-center gap-1.5 justify-end">
+                          <button
+                            onClick={() => setResetting({ uid: u.uid, name: u.name, email: u.email })}
+                            className="text-[10px] px-2 py-1 rounded-md border border-border-strong text-text-muted hover:text-text hover:bg-card-elev inline-flex items-center gap-1 whitespace-nowrap"
+                          >
+                            <KeyRound className="w-3 h-3" /> Reset password
+                          </button>
+                          <button
+                            onClick={() => { setAccountMsg(null); setDeleting({ uid: u.uid, name: u.name, email: u.email }); }}
+                            className="text-[10px] px-2 py-1 rounded-md border border-red/30 text-red hover:bg-red/10 inline-flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" /> Delete
+                          </button>
+                        </span>
                       )}
                     </td>
                   </tr>
@@ -641,6 +651,7 @@ export default function AdminInvestorsPage() {
         </Card>
       )}
 
+      <ResetPasswordModal member={resetting} onClose={() => setResetting(null)} />
       <DeleteMemberModal
         member={deleting}
         onClose={() => setDeleting(null)}

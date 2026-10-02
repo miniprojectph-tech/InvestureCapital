@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getAuth } from "firebase-admin/auth";
 import { getDatabase } from "firebase-admin/database";
@@ -132,4 +133,70 @@ export const adminDeleteMember = onCall({ timeoutSeconds: 120 }, async (request)
   });
   logger.info("member deleted by admin", { uid, by: adminUid, forced: hasOutstanding });
   return { ok: true, deleted: true, member, outstanding, hasOutstanding };
+});
+
+/**
+ * ADMIN ONLY: help a member who is locked out.
+ *
+ *   { uid, mode: "link" } → a one-time password-reset link the admin can pass to
+ *                           the member (chat, SMS). The member picks their own
+ *                           new password; nobody else sees it.
+ *   { uid, mode: "temp" } → sets a random temporary password and returns it once,
+ *                           and signs the member out everywhere else.
+ *
+ * Other admins' accounts are refused (an admin must not be able to take over
+ * another admin). The link and the password are returned to the caller only —
+ * they are never written to the audit log or to the server log.
+ */
+const TEMP_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789"; // no 0/O, 1/l/I
+function tempPassword(): string {
+  for (;;) {
+    let p = "";
+    for (let i = 0; i < 10; i++) p += TEMP_ALPHABET[randomInt(0, TEMP_ALPHABET.length)];
+    if (/[0-9]/.test(p) && /[a-z]/.test(p) && /[A-Z]/.test(p)) return p;
+  }
+}
+
+export const adminResetMemberPassword = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const adminUid = request.auth.uid;
+  await assertAdmin(adminUid);
+
+  const { uid, mode } = (request.data ?? {}) as { uid?: unknown; mode?: unknown };
+  if (typeof uid !== "string" || !/^[A-Za-z0-9_-]{6,128}$/.test(uid)) throw new HttpsError("invalid-argument", "Member id is required.");
+  if (mode !== "link" && mode !== "temp") throw new HttpsError("invalid-argument", "Choose a reset link or a temporary password.");
+  if (uid === adminUid) throw new HttpsError("failed-precondition", "Use Profile › Change password for your own account.");
+
+  const snap = await db.collection("users").doc(uid).get();
+  if (!snap.exists) throw new HttpsError("not-found", "Member not found.");
+  if (snap.data()?.isAdmin === true) throw new HttpsError("failed-precondition", "Another admin's password can't be reset from here.");
+
+  const auth = getAuth();
+  const account = await auth.getUser(uid).catch(() => null);
+  if (!account) throw new HttpsError("not-found", "This member has no sign-in account.");
+  const email = account.email ?? "";
+  const hasPassword = account.providerData.some((p) => p.providerId === "password");
+  const usesGoogle = account.providerData.some((p) => p.providerId === "google.com");
+  const name = String(snap.data()?.profile?.name ?? "");
+
+  let link: string | undefined;
+  let password: string | undefined;
+  if (mode === "link") {
+    if (!email) throw new HttpsError("failed-precondition", "This member has no email address, so a reset link can't be made. Use a temporary password instead.");
+    link = await auth.generatePasswordResetLink(email);
+  } else {
+    password = tempPassword();
+    await auth.updateUser(uid, { password });
+    // Anyone still signed in with the old password is signed out.
+    await auth.revokeRefreshTokens(uid);
+  }
+
+  await db.collection("admin_audit").add({
+    type: "member_password_reset", uid, userName: name,
+    title: `Password reset for ${name || email || uid}`,
+    subtitle: mode === "link" ? "Reset link created by admin" : "Temporary password set by admin",
+    mode, by: adminUid, at: Date.now(),
+  });
+  logger.info("member password reset by admin", { uid, by: adminUid, mode });
+  return { ok: true, mode, email, name, hasPassword, usesGoogle, ...(link ? { link } : {}), ...(password ? { tempPassword: password } : {}) };
 });
