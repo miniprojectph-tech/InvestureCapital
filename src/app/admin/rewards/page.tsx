@@ -18,7 +18,8 @@ import { Modal } from "@/components/Modal";
 import { cn, formatPHP } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
-import { uploadGameImage } from "@/lib/storage";
+import { describeStorageError } from "@/lib/storage";
+import { uploadChatImage } from "@/lib/community";
 import {
   useRewards,
   useRedemptions,
@@ -239,24 +240,24 @@ export default function AdminRewardsPage() {
           setEditing(null);
           setMsg(m);
         }}
-        onError={setError}
       />
     </div>
   );
 }
+
+/** Largest file the admin may pick; it is compressed before upload, so what is stored is far smaller. */
+const REWARD_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
 
 function RewardEditor({
   reward,
   isNew,
   onClose,
   onSaved,
-  onError,
 }: {
   reward: Reward | null;
   isNew: boolean;
   onClose: () => void;
   onSaved: (msg: string) => void;
-  onError: (e: string) => void;
 }) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -267,6 +268,9 @@ function RewardEditor({
   const [active, setActive] = useState(true);
   const [image, setImage] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  // Shown INSIDE the window: the page-level banner sits behind it, where a failed upload looked like nothing happened.
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (reward) {
@@ -277,21 +281,25 @@ function RewardEditor({
       setWalletAmount(reward.walletAmount ?? 0);
       setStock(typeof reward.stock === "number" ? String(reward.stock) : "");
       setActive(reward.active);
-      setImage(reward.image);
+      setImage(reward.image || undefined);
+      setUploadError(null);
     }
   }, [reward]);
 
   async function handleImage(file: File) {
     const { storage } = getFirebase();
-    if (!storage) return;
-    setBusy(true);
+    if (!storage) return setUploadError("Storage isn't available right now. Reload the page and try again.");
+    setUploading(true);
+    setUploadError(null);
     try {
-      const { url } = await uploadGameImage(storage, "rewards", file);
-      setImage(url);
+      // Resized and compressed in the browser first (longest side 1600 px), so a large
+      // phone photo or a 10 MB design file still uploads and members download a small one.
+      const m = await uploadChatImage(storage, "admin", file, { keepOriginal: false, folder: "rewards", maxBytes: REWARD_IMAGE_MAX_BYTES });
+      setImage(m.url);
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Upload failed");
+      setUploadError(describeStorageError(e));
     } finally {
-      setBusy(false);
+      setUploading(false);
     }
   }
 
@@ -299,7 +307,7 @@ function RewardEditor({
     const { db } = getFirebase();
     if (!db) return;
     if (!name.trim()) {
-      onError("Name required");
+      setUploadError("Give the reward a name before saving.");
       return;
     }
     setBusy(true);
@@ -312,11 +320,12 @@ function RewardEditor({
         active,
         ...(type === "wallet" ? { walletAmount } : {}),
         ...(stock.trim() !== "" ? { stock: Number(stock) } : { stock: null }),
-        ...(image ? { image } : {}),
+        // "" clears a removed image (the card treats an empty value as no image)
+        image: image ?? "",
       });
       onSaved(isNew ? "Reward added." : "Reward updated.");
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Save failed");
+      setUploadError(e instanceof Error ? e.message : "Could not save. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -330,7 +339,7 @@ function RewardEditor({
       await deleteReward(db, reward.id);
       onSaved("Reward deleted.");
     } catch (e) {
-      onError(e instanceof Error ? e.message : "Delete failed");
+      setUploadError(e instanceof Error ? e.message : "Could not delete. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -342,17 +351,26 @@ function RewardEditor({
         <div className="flex items-center gap-3">
           {image ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={image} alt="" className="w-12 h-12 object-cover rounded-lg" />
+            <img src={image} alt="" className="w-28 h-[42px] object-cover rounded-lg border border-border" />
           ) : (
-            <div className="w-12 h-12 rounded-lg bg-canvas flex items-center justify-center text-text-subtle text-[10px]">
-              No img
+            <div className="w-28 h-[42px] rounded-lg bg-canvas border border-dashed border-border flex items-center justify-center text-text-subtle text-[10px]">
+              No image
             </div>
           )}
-          <label className="text-[11px] px-3 py-1.5 bg-card-elev border border-border rounded-lg cursor-pointer">
-            {busy ? "Uploading…" : "Upload image"}
-            <input type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && handleImage(e.target.files[0])} />
+          <label className={cn("text-[11px] px-3 py-1.5 bg-card-elev border border-border rounded-lg cursor-pointer", uploading && "opacity-60 pointer-events-none")}>
+            {uploading ? "Uploading…" : image ? "Replace image" : "Upload image"}
+            {/* value is cleared so picking the same file again (after an error) still fires */}
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" disabled={uploading} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) handleImage(f); }} />
           </label>
+          {image && !uploading && (
+            <button type="button" onClick={() => { setImage(undefined); setUploadError(null); }} className="text-[10px] text-text-muted hover:text-red">Remove</button>
+          )}
         </div>
+        {uploadError ? (
+          <p className="text-[11px] text-red m-0 -mt-1 flex items-start gap-1.5"><AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" /> {uploadError}</p>
+        ) : (
+          <p className="text-[10px] text-text-subtle m-0 -mt-1">PNG, JPG or WebP, up to 15 MB — it is resized automatically. Best shape: wide, about 1200 × 400. Press Save to keep it.</p>
+        )}
         <div>
           <label className="block text-[10px] text-text-muted uppercase tracking-wider mb-1.5">Name</label>
           <input value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 bg-canvas border border-border rounded-lg text-[13px] outline-none focus:border-gold/40" />
