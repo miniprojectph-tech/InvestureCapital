@@ -965,3 +965,53 @@ export function formatRelative(at: number): string {
   if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
   return `${Math.floor(diff / 86_400_000)}d`;
 }
+
+// ===== Floating chat button: "is there something new?" =====
+
+/**
+ * The newest Community Room message (time + sender), for the floating chat
+ * button's "new" dot. One tiny listener: only the last message is ever
+ * downloaded, using the same join-date-bounded query the room itself uses.
+ */
+export function useRoomLatest(enabled: boolean): { at: number; uid: string } | null {
+  const { user } = useAuth();
+  const [joined, setJoined] = useState<number | null>(null);
+  const [latest, setLatest] = useState<{ at: number; uid: string } | null>(null);
+
+  useEffect(() => {
+    if (!user || !enabled) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, `members/${user.uid}/joinedAt`), (s) => {
+      const v = s.val();
+      if (typeof v === "number") setJoined(v);
+      else ensureCommunityMember();
+    }, () => {});
+  }, [user, enabled]);
+
+  useEffect(() => {
+    if (!user || !enabled || joined === null) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    const q = rtdbQuery(ref(rtdb, "community/room"), orderByChild("at"), startAt(joined), limitToLast(1));
+    return onValue(q, (s) => {
+      let found: { at: number; uid: string } | null = null;
+      s.forEach((c) => {
+        const m = c.val() as { at?: number; uid?: string } | null;
+        if (m && typeof m.at === "number") found = { at: m.at, uid: String(m.uid ?? "") };
+      });
+      setLatest(found);
+    }, () => setLatest(null));
+  }, [user, enabled, joined]);
+
+  return latest;
+}
+
+const ROOM_SEEN_KEY = "investure.roomSeenAt";
+/** When this device last had the Community page open. */
+export function readRoomSeenAt(): number {
+  try { return Number(localStorage.getItem(ROOM_SEEN_KEY)) || 0; } catch { return 0; }
+}
+export function markRoomSeen(at = Date.now()) {
+  try { localStorage.setItem(ROOM_SEEN_KEY, String(at)); } catch { /* private mode */ }
+}
