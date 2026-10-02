@@ -95,7 +95,7 @@ export function promoMatchesAudience(p: Promo, hasActivePlacement: boolean): boo
 // ===== "seen" memory (per device) =====
 
 const KEY = "investure.promoSeen";
-type Seen = Record<string, { day?: string; closed?: boolean; v?: number }>;
+type Seen = Record<string, { day?: string; closed?: boolean; v?: number; never?: boolean }>;
 
 function manilaDay(ts = Date.now()): string {
   return new Date(ts + 8 * 3_600_000).toISOString().slice(0, 10);
@@ -115,17 +115,19 @@ function readSeen(): Seen {
  */
 export function shouldShowPromo(p: Promo, sessionShown: Set<string>): boolean {
   if (sessionShown.has(p.id)) return false;
-  if (p.frequency === "always") return true;
   const seen = readSeen()[p.id];
+  // "Don't show again" beats every frequency — until the admin edits the pop-up.
+  if (seen?.never && seen.v === p.updatedAt) return false;
+  if (p.frequency === "always") return true;
   if (!seen) return true;
   if (p.frequency === "once") return !(seen.closed && seen.v === p.updatedAt);
   return seen.day !== manilaDay();
 }
 
-export function markPromoSeen(p: Promo) {
+export function markPromoSeen(p: Promo, never = false) {
   try {
     const all = readSeen();
-    all[p.id] = { day: manilaDay(), closed: true, v: p.updatedAt };
+    all[p.id] = { day: manilaDay(), closed: true, v: p.updatedAt, never: never || (all[p.id]?.never && all[p.id]?.v === p.updatedAt) || undefined };
     localStorage.setItem(KEY, JSON.stringify(all));
   } catch {
     /* private mode — it will simply show again next visit */

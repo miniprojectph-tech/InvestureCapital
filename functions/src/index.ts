@@ -16,8 +16,6 @@ export { ensureCommunityAdmin, ensureCommunityMember, updateCommunityStats, refr
 
 // Help & FAQ: one-vote-per-member "was this helpful" counters.
 export { faqVote } from "./faq";
-// Email marketing through Resend (admin sends, public unsubscribe link).
-export { adminEmailStatus, adminEmailAudience, adminSendEmail, emailUnsubscribe } from "./email";
 
 // Admin only: delete a member's account (members can't delete their own).
 export { adminDeleteMember } from "./account";

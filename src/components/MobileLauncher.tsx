@@ -30,7 +30,6 @@ import {
   type LucideIcon,
   HelpCircle,
   Megaphone,
-  Mail,
 } from "lucide-react";
 import type { NavGroup, IconName } from "@/lib/nav";
 import { cn } from "@/lib/utils";
@@ -60,7 +59,6 @@ const iconMap: Record<IconName, LucideIcon> = {
   chat: MessageCircle,
   help: HelpCircle,
   megaphone: Megaphone,
-  mail: Mail,
 };
 
 const PETALS = Array.from({ length: 8 }, (_, i) => i);

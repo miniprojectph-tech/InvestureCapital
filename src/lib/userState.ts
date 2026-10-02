@@ -81,8 +81,6 @@ export type UserState = {
   completedPlans?: CompletedPlan[];
   /** Where approved withdrawals are paid out. Set by the investor on /withdrawals. */
   payoutMethod?: PayoutMethod;
-  /** true = the member unsubscribed from news and offers by email. */
-  emailOptOut?: boolean;
   /** Admin role — set manually in Firestore console. Defaults false on seed. */
   isAdmin?: boolean;
   /** This user's unique affiliate code (also shared as ?ref=CODE). Backfilled

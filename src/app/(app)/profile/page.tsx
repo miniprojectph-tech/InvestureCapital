@@ -18,7 +18,6 @@ import Link from "next/link";
 import { ChangePasswordModal } from "@/components/AccountSecurityModals";
 import { useAuth } from "@/lib/auth";
 import { useUserState } from "@/lib/useUserState";
-import { setEmailOptOut } from "@/lib/email";
 
 export default function ProfilePage() {
   const { user, signOut, demoMode, hasPassword } = useAuth();
@@ -26,7 +25,6 @@ export default function ProfilePage() {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
-  const [emailBusy, setEmailBusy] = useState(false);
 
   async function handleSignOut() {
     setBusy(true);
@@ -105,21 +103,6 @@ export default function ProfilePage() {
                   Change password
                 </span>
                 <span className="text-text-subtle text-[10px]">{hasPassword ? "Update" : "Google sign-in"}</span>
-              </button>
-              <button
-                onClick={async () => {
-                  if (!user || demoMode) return;
-                  setEmailBusy(true);
-                  try { await setEmailOptOut(user.uid, !state.emailOptOut); } catch { /* stays as it was */ } finally { setEmailBusy(false); }
-                }}
-                disabled={demoMode || emailBusy}
-                className="flex items-center justify-between px-3 py-2.5 bg-canvas border border-border rounded-lg text-[12px] text-text hover:bg-card-elev transition text-left disabled:opacity-60"
-              >
-                <span className="flex items-center gap-2">
-                  <Mail className="w-3.5 h-3.5 text-text-muted" />
-                  News and offers by email
-                </span>
-                <span className={state.emailOptOut ? "text-text-subtle text-[10px]" : "text-green text-[10px]"}>{emailBusy ? "Saving…" : state.emailOptOut ? "Off" : "On"}</span>
               </button>
               <button
                 onClick={handleSignOut}

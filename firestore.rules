@@ -43,9 +43,7 @@ service cloud.firestore {
       // admin flag are written by Cloud Functions alone.
       allow update: if isSignedIn() && request.auth.uid == userId
         && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['profile', 'payoutMethod', 'referralCode', 'referredByUserId', 'emailOptOut'])
-        // marketing email preference: a plain on/off
-        && request.resource.data.get('emailOptOut', false) is bool
+            .hasOnly(['profile', 'payoutMethod', 'referralCode', 'referredByUserId'])
         // sign-up date and email are fixed
         && request.resource.data.get('profile', {}).get('joinedAt', null) == resource.data.get('profile', {}).get('joinedAt', null)
         && request.resource.data.get('profile', {}).get('email', null) == resource.data.get('profile', {}).get('email', null)
@@ -212,12 +210,6 @@ service cloud.firestore {
     match /settings/{doc} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
-    }
-
-    // === Email campaign log (written by the send function) ===
-    match /email_campaigns/{id} {
-      allow read: if isAdmin();
-      allow write: if false;
     }
 
     // === Admin-only records (exchange credentials etc.) — never readable by members ===
