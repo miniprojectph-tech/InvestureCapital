@@ -38,10 +38,12 @@ export function Modal({ open, onClose, title, children, maxWidth = "max-w-md" }:
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.96, opacity: 0, y: 4 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            className={`bg-card border border-border rounded-2xl w-full ${maxWidth} overflow-hidden`}
+            // Never taller than the screen: the title stays put and the content scrolls, so the
+            // buttons at the bottom of a long form (a QR code plus an attached receipt) stay reachable.
+            className={`bg-card border border-border rounded-2xl w-full ${maxWidth} overflow-hidden flex flex-col max-h-[calc(100dvh-2rem)]`}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex justify-between items-center px-5 py-3.5 border-b border-border">
+            <div className="flex justify-between items-center px-5 py-3.5 border-b border-border shrink-0">
               <h3 className="text-[14px] font-medium m-0">{title}</h3>
               <button
                 onClick={onClose}
@@ -51,7 +53,7 @@ export function Modal({ open, onClose, title, children, maxWidth = "max-w-md" }:
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="px-5 py-4">{children}</div>
+            <div className="px-5 py-4 overflow-y-auto overscroll-contain min-h-0">{children}</div>
           </motion.div>
         </motion.div>
       )}
