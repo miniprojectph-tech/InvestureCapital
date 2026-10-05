@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
-import { Plus, Upload, Download, FileSpreadsheet, RefreshCw, Loader2, CheckCircle2, AlertCircle, Pencil, Trash2, Search, X } from "lucide-react";
+import { Plus, Upload, Download, FileSpreadsheet, RefreshCw, Loader2, CheckCircle2, AlertCircle, Pencil, Trash2, Search, X, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
@@ -55,6 +55,13 @@ export default function AdminMasterlistPage() {
   const [editing, setEditing] = useState<Editing | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AdminRow | null>(null);
+  // list view: 25 a page by default, filter by where a row came from, tick rows to remove several at once
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState<number>(25);
+  const [sourceFilter, setSourceFilter] = useState<"all" | AdminRow["s"]>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // settings
   const savedWindow = Math.min(settings.masterlist?.windowMonths ?? MAX_WINDOW_MONTHS, MAX_WINDOW_MONTHS);
@@ -78,9 +85,37 @@ export default function AdminMasterlistPage() {
 
   const rows = useMemo(() => {
     const f = filter.trim().toLowerCase();
-    const list = data?.rows ?? [];
+    let list = data?.rows ?? [];
+    if (sourceFilter !== "all") list = list.filter((r) => r.s === sourceFilter);
     return f ? list.filter((r) => r.n.toLowerCase().includes(f) || (r.note ?? "").toLowerCase().includes(f)) : list;
-  }, [data, filter]);
+  }, [data, filter, sourceFilter]);
+
+  // Paging. The search and the source filter look through the WHOLE month; only the drawing is paged.
+  const pageCount = Math.max(1, Math.ceil(rows.length / perPage));
+  const current = Math.min(page, pageCount);
+  const pageRows = rows.slice((current - 1) * perPage, current * perPage);
+  const counts = useMemo(() => {
+    const c = { portal: 0, offline: 0, old: 0 };
+    for (const r of data?.rows ?? []) c[r.s]++;
+    return c;
+  }, [data]);
+  // Only offline / old rows can be removed here; portal rows are real placements.
+  const removableOnPage = pageRows.filter((r) => r.id).map((r) => r.id as string);
+  const removableMatching = rows.filter((r) => r.id).map((r) => r.id as string);
+  const allOnPageTicked = removableOnPage.length > 0 && removableOnPage.every((id) => selected.has(id));
+  const tick = (ids: string[], on: boolean) => setSelected((prev) => { const next = new Set(prev); for (const id of ids) { if (on) next.add(id); else next.delete(id); } return next; });
+
+  async function removeSelected() {
+    const ids = [...selected];
+    setConfirmBulk(false);
+    if (ids.length === 0) return;
+    await run("bulk", async () => {
+      // the server takes up to 400 at a time
+      for (let i = 0; i < ids.length; i += 400) await deleteEntries(ids.slice(i, i + 400));
+      setSelected(new Set());
+      return `Removed ${ids.length.toLocaleString()} entr${ids.length === 1 ? "y" : "ies"}.`;
+    });
+  }
 
   async function run(key: string, fn: () => Promise<string | void>) {
     setBusy(key);
@@ -209,7 +244,17 @@ export default function AdminMasterlistPage() {
 
       {/* what members see */}
       <Card className="mb-3">
-        <CardHeader title="What members see" subtitle="One day per page: masked names, amount and term, with Previous day and Next day. They never see totals, the source, the note, or anyone's full name but their own." />
+        <button type="button" onClick={() => setSettingsOpen((v) => !v)} aria-expanded={settingsOpen} className="w-full flex items-center gap-2 text-left">
+          <span className="flex-1 min-w-0">
+            <span className="block text-[13px] font-medium text-text">What members see</span>
+            <span className="block text-[11px] text-text-subtle truncate">
+              Members can go back {savedWindow} month{savedWindow === 1 ? "" : "s"} · one day per page, masked names, no totals{settingsDirty ? " · unsaved changes" : ""}
+            </span>
+          </span>
+          <span className="text-[11px] text-gold flex items-center gap-1 shrink-0">{settingsOpen ? "Hide" : "Edit"} <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", settingsOpen && "rotate-180")} /></span>
+        </button>
+        {settingsOpen && (<div className="mt-3 pt-3 border-t border-border">
+        <p className="text-[11px] text-text-muted m-0 mb-3 leading-relaxed max-w-2xl">One day per page: masked names, amount and term, with Previous day and Next day. They never see totals, the source, the note, or anyone&apos;s full name but their own.</p>
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1">
             <span className="text-[11px] font-medium text-text">How far back members can choose a date (up to {MAX_WINDOW_MONTHS} months)</span>
@@ -229,6 +274,7 @@ export default function AdminMasterlistPage() {
           </button>
           <span className="text-[10px] text-text-subtle">New portal placements appear here by themselves within about 10 minutes.</span>
         </div>
+        </div>)}
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-[230px_1fr] gap-3 items-start">
@@ -237,7 +283,7 @@ export default function AdminMasterlistPage() {
           {loading && <p className="text-[11px] text-text-subtle p-2 m-0">Loading…</p>}
           {!loading && months.length === 0 && <p className="text-[11px] text-text-subtle p-2 m-0 leading-relaxed">Nothing yet. Press <span className="text-gold">Refresh</span> to build the list from current placements, or add an entry.</p>}
           {months.map((m) => (
-            <button key={m.month} onClick={() => { setMonth(m.month); setFilter(""); }} className={cn("w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 transition", month === m.month ? "bg-card-elev" : "hover:bg-card-elev/50")}>
+            <button key={m.month} onClick={() => { setMonth(m.month); setFilter(""); setSourceFilter("all"); setPage(1); setSelected(new Set()); }} className={cn("w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 transition", month === m.month ? "bg-card-elev" : "hover:bg-card-elev/50")}>
               <span className="flex-1 min-w-0">
                 <span className="block text-[12px] truncate">{monthLabel(m.month)}</span>
                 <span className="block text-[10px] text-text-subtle">{m.count.toLocaleString()} placement{m.count === 1 ? "" : "s"}</span>
@@ -256,22 +302,58 @@ export default function AdminMasterlistPage() {
             </p>
             <span className="flex items-center gap-1.5 px-2.5 py-1.5 bg-canvas border border-border rounded-lg">
               <Search className="w-3 h-3 text-text-subtle" />
-              <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search name or note" className="bg-transparent text-[11px] text-text outline-none w-36" />
+              <input value={filter} onChange={(e) => { setFilter(e.target.value); setPage(1); }} placeholder="Search name or note" className="bg-transparent text-[11px] text-text outline-none w-36" />
             </span>
             <button onClick={() => month && data && run("exportMonth", async () => { await exportRows(data.rows, `masterlist-${month}`); return `Exported ${monthLabel(month)}.`; })} disabled={!data || !!busy} className="text-[11px] text-gold hover:underline flex items-center gap-1 disabled:opacity-40">
               <Download className="w-3 h-3" /> Export this month
             </button>
           </div>
+          <div className="flex flex-wrap items-center gap-1.5 px-4 py-2 border-b border-border">
+            {(["all", "portal", "offline", "old"] as const).map((k) => {
+              const n = k === "all" ? (data?.rows.length ?? 0) : counts[k];
+              const on = sourceFilter === k;
+              return (
+                <button key={k} type="button" onClick={() => { setSourceFilter(k); setPage(1); }} aria-pressed={on} className={cn("px-2.5 py-1 rounded-full text-[10px] font-medium border transition", on ? "bg-gold/15 border-gold/40 text-gold" : "bg-canvas border-border text-text-muted hover:text-text")}>
+                  {k === "all" ? "All" : SOURCE_LABEL[k]} <span className="font-mono font-normal">{n.toLocaleString()}</span>
+                </button>
+              );
+            })}
+            <label className="ml-auto text-[10px] text-text-subtle flex items-center gap-1.5">
+              Rows per page
+              <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }} className="bg-canvas border border-border rounded-md px-1.5 py-1 text-[11px] text-text outline-none">
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </label>
+          </div>
+          {selected.size > 0 && (
+            <div className="flex flex-wrap items-center gap-3 px-4 py-2 border-b border-border bg-red/5">
+              <span className="text-[11px] text-text">{selected.size.toLocaleString()} selected</span>
+              {removableMatching.length > selected.size && (
+                <button type="button" onClick={() => tick(removableMatching, true)} className="text-[11px] text-gold hover:underline">
+                  Select all {removableMatching.length.toLocaleString()} offline / old rows {filter || sourceFilter !== "all" ? "that match" : "in this month"}
+                </button>
+              )}
+              <button type="button" onClick={() => setSelected(new Set())} className="text-[11px] text-text-muted hover:text-text">Clear</button>
+              <button type="button" onClick={() => setConfirmBulk(true)} disabled={!!busy} className="ml-auto px-3 py-1.5 rounded-lg bg-red/15 border border-red/40 text-red text-[11px] font-medium flex items-center gap-1.5 disabled:opacity-50">
+                {busy === "bulk" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />} Remove selected
+              </button>
+            </div>
+          )}
           {monthLoading ? (
             <div className="flex justify-center py-10"><Loader2 className="w-4 h-4 text-gold animate-spin" /></div>
           ) : rows.length === 0 ? (
-            <p className="text-[11px] text-text-subtle m-0 px-4 py-6">{filter ? "No rows match your search." : "No rows for this month."}</p>
+            <p className="text-[11px] text-text-subtle m-0 px-4 py-6">{filter || sourceFilter !== "all" ? "No rows match." : "No rows for this month."}</p>
           ) : (
             <ResponsiveTable>
               <table className="w-full text-[12px] min-w-[720px]">
                 <thead>
                   <tr className="text-text-subtle text-left">
-                    <th className="font-normal py-2 pl-4 pr-2">Full name</th>
+                    <th className="py-2 pl-4 pr-1 w-8">
+                      <input type="checkbox" aria-label="Select the offline and old rows on this page" checked={allOnPageTicked} disabled={removableOnPage.length === 0} onChange={(e) => tick(removableOnPage, e.target.checked)} className="accent-[#F87171]" />
+                    </th>
+                    <th className="font-normal py-2 px-2">Full name</th>
                     <th className="font-normal py-2 px-2">Members see</th>
                     <th className="font-normal py-2 px-2">Date placed</th>
                     <th className="font-normal py-2 px-2 text-right">Amount</th>
@@ -281,9 +363,14 @@ export default function AdminMasterlistPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r, i) => (
-                    <tr key={`${r.k}-${i}`} className="border-t border-border align-top">
-                      <td className="py-2 pl-4 pr-2">
+                  {pageRows.map((r, i) => (
+                    <tr key={`${r.k}-${i}`} className={cn("border-t border-border align-top", r.id && selected.has(r.id) && "bg-red/5")}>
+                      <td className="py-2 pl-4 pr-1">
+                        {r.id ? (
+                          <input type="checkbox" aria-label={`Select ${r.n}`} checked={selected.has(r.id)} onChange={(e) => tick([r.id as string], e.target.checked)} className="accent-[#F87171]" />
+                        ) : null}
+                      </td>
+                      <td className="py-2 px-2">
                         {r.n}
                         {r.note && <span className="block text-[10px] text-text-subtle">{r.note}</span>}
                       </td>
@@ -307,6 +394,14 @@ export default function AdminMasterlistPage() {
                 </tbody>
               </table>
             </ResponsiveTable>
+          )}
+          {rows.length > 0 && !monthLoading && (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-t border-border">
+              <span className="text-[11px] text-text-subtle">
+                Showing {((current - 1) * perPage + 1).toLocaleString()}–{Math.min(current * perPage, rows.length).toLocaleString()} of {rows.length.toLocaleString()}
+              </span>
+              <Pager page={current} pages={pageCount} onPage={setPage} />
+            </div>
           )}
         </Card>
       </div>
@@ -389,6 +484,19 @@ export default function AdminMasterlistPage() {
         )}
       </Modal>
 
+      {/* remove several */}
+      <Modal open={confirmBulk} onClose={() => setConfirmBulk(false)} title={`Remove ${selected.size.toLocaleString()} entr${selected.size === 1 ? "y" : "ies"}?`}>
+        <div className="flex flex-col gap-3">
+          <p className="text-[11px] text-text-muted m-0 leading-relaxed">
+            They are taken off the Masterlist for you and for members. Only offline and old-record rows are removed; real portal placements are never touched. This can&apos;t be undone.
+          </p>
+          <div className="flex gap-2">
+            <button onClick={() => setConfirmBulk(false)} className="flex-1 py-2.5 border border-border-strong rounded-lg text-[12px] text-text-muted">Keep them</button>
+            <button onClick={removeSelected} className="flex-1 py-2.5 rounded-lg bg-red/15 border border-red/40 text-red text-[12px] font-medium flex items-center justify-center gap-1.5"><Trash2 className="w-3.5 h-3.5" /> Remove {selected.size.toLocaleString()}</button>
+          </div>
+        </div>
+      </Modal>
+
       {/* remove */}
       <Modal open={!!confirmDelete} onClose={() => setConfirmDelete(null)} title="Remove this entry?">
         {confirmDelete && (
@@ -406,5 +514,27 @@ export default function AdminMasterlistPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+/** Numbered pages: ‹ 1 … 4 5 6 … 24 › */
+function Pager({ page, pages, onPage }: { page: number; pages: number; onPage: (p: number) => void }) {
+  if (pages <= 1) return null;
+  const want = new Set([1, pages, page - 1, page, page + 1].filter((p) => p >= 1 && p <= pages));
+  if (page <= 3) [2, 3, 4].forEach((p) => p <= pages && want.add(p));
+  if (page >= pages - 2) [pages - 1, pages - 2, pages - 3].forEach((p) => p >= 1 && want.add(p));
+  const list = [...want].sort((a, b) => a - b);
+  const btn = "min-w-[28px] h-7 px-1.5 rounded-md text-[11px] flex items-center justify-center transition";
+  return (
+    <nav className="flex items-center gap-1" aria-label="Pages">
+      <button type="button" onClick={() => onPage(page - 1)} disabled={page <= 1} aria-label="Previous page" className={cn(btn, "border border-border text-text-muted hover:text-text disabled:opacity-30")}><ChevronLeft className="w-3.5 h-3.5" /></button>
+      {list.map((p, i) => (
+        <span key={p} className="flex items-center gap-1">
+          {i > 0 && p - list[i - 1] > 1 && <span className="text-[11px] text-text-subtle px-0.5">…</span>}
+          <button type="button" onClick={() => onPage(p)} aria-current={p === page ? "page" : undefined} className={cn(btn, p === page ? "bg-gold text-gold-dark font-medium" : "border border-border text-text-muted hover:text-text")}>{p}</button>
+        </span>
+      ))}
+      <button type="button" onClick={() => onPage(page + 1)} disabled={page >= pages} aria-label="Next page" className={cn(btn, "border border-border text-text-muted hover:text-text disabled:opacity-30")}><ChevronRight className="w-3.5 h-3.5" /></button>
+    </nav>
   );
 }
