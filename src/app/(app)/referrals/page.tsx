@@ -92,7 +92,7 @@ export default function ReferralsPage() {
             title="Your team by level"
             subtitle="Commission is paid to your wallet the moment a placement is approved"
             right={
-              <button onClick={refresh} className="text-text-subtle hover:text-text" aria-label="Refresh">
+              <button data-viewas-ok onClick={refresh} className="text-text-subtle hover:text-text" aria-label="Refresh">
                 <RefreshCw className={cn("w-3.5 h-3.5", statsLoading && "animate-spin")} />
               </button>
             }

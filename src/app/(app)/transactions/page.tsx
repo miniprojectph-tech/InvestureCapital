@@ -186,6 +186,7 @@ export default function TransactionsPage() {
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <button
+          data-viewas-ok
           onClick={() => setFilter("all")}
           className={cn(
             "text-[11px] px-3 py-1.5 rounded-full border transition",
@@ -202,6 +203,7 @@ export default function TransactionsPage() {
           return (
             <button
               key={t}
+              data-viewas-ok
               onClick={() => setFilter(t)}
               className={cn(
                 "text-[11px] px-3 py-1.5 rounded-full border transition flex items-center gap-1.5",
@@ -222,11 +224,13 @@ export default function TransactionsPage() {
               type="text"
               placeholder="Search…"
               value={query}
+              data-viewas-ok
               onChange={(e) => setQuery(e.target.value)}
               className="bg-transparent text-[11px] outline-none w-32 text-text placeholder:text-text-subtle"
             />
           </div>
           <button
+            data-viewas-ok
             onClick={exportRows}
             disabled={exporting || rows.length === 0}
             title={rows.length === 0 ? "Nothing to export" : "Download the transactions shown below as an Excel file"}

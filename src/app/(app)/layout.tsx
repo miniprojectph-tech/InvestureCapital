@@ -1,9 +1,8 @@
-import { AppShell } from "@/components/AppShell";
+import { InvestorShell } from "@/components/InvestorShell";
 import { AuthGate } from "@/components/AuthGate";
 import { EventPopup } from "@/components/events/EventPopup";
 import { PromoPopup } from "@/components/promos/PromoPopup";
 import { ChatFab } from "@/components/ChatFab";
-import { investorNav } from "@/lib/nav";
 
 export default function InvestorAppLayout({
   children,
@@ -12,7 +11,7 @@ export default function InvestorAppLayout({
 }) {
   return (
     <AuthGate>
-      <AppShell nav={investorNav}>{children}</AppShell>
+      <InvestorShell>{children}</InvestorShell>
       {/* Limited-event announcement after sign-in (skips itself inside the games). */}
       <EventPopup />
       {/* Promotional pop-ups (how-to video, announcements). Sits just under the event pop-up. */}

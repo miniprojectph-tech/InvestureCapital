@@ -14,6 +14,7 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
+import { useViewAs } from "./viewAs";
 import { useSettings } from "./settings";
 import { mergeCompPlan, type CompPlanConfig } from "./compplan-config";
 
@@ -427,6 +428,7 @@ export function getReferralStats(userId?: string): Promise<ReferralStats> {
 /** Loads the downline once per mount (it's a server walk, not a live listener). */
 export function useReferralStats(userId?: string) {
   const { user, demoMode } = useAuth();
+  const viewed = useViewAs()?.uid;
   const [stats, setStats] = useState<ReferralStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -436,12 +438,12 @@ export function useReferralStats(userId?: string) {
     if (!user || demoMode) { setLoading(false); return; }
     let cancelled = false;
     setLoading(true);
-    getReferralStats(userId)
+    getReferralStats(userId ?? viewed)
       .then((s) => { if (!cancelled) setStats(s); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "Couldn't load referral stats"); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [user, demoMode, userId, tick]);
+  }, [user, demoMode, userId, viewed, tick]);
 
   return { stats, loading, error, refresh: () => setTick((t) => t + 1) };
 }

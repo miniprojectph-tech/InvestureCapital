@@ -291,6 +291,7 @@ export default function WithdrawalsPage() {
               {(["all", "approved", "pending", "rejected"] as Filter[]).map((f) => (
                 <button
                   key={f}
+                  data-viewas-ok
                   onClick={() => setFilter(f)}
                   className={cn(
                     "text-[10px] px-2.5 py-1 rounded-full transition capitalize",

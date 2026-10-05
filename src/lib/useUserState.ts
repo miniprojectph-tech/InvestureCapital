@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Unsubscribe } from "firebase/firestore";
 import { useAuth } from "./auth";
 import { getFirebase } from "./firebase";
+import { useViewAs } from "./viewAs";
 import { subscribeToUserState, ensureUserDoc, type UserState } from "./userState";
 import { mockActivePlans, mockBalances, mockUser } from "./mock-data";
 
@@ -40,6 +41,7 @@ const RETRY_MS = 3000;
  */
 export function useUserState() {
   const { user, demoMode } = useAuth();
+  const viewOnly = !!useViewAs();
   const [state, setState] = useState<UserState | null>(null);
   const [loading, setLoading] = useState(true);
   const hasStateRef = useRef(false);
@@ -73,7 +75,8 @@ export function useUserState() {
 
     const connect = async () => {
       try {
-        await ensureUserDoc(db, user.uid, user.name, user.email);
+        // An admin viewing a member only reads; the starter record is the member's own to create.
+        if (!viewOnly) await ensureUserDoc(db, user.uid, user.name, user.email);
         if (cancelled) return;
         unsubscribe?.();
         unsubscribe = subscribeToUserState(db, user.uid, (s) => {
@@ -99,7 +102,7 @@ export function useUserState() {
       if (retryTimer) clearTimeout(retryTimer);
       unsubscribe?.();
     };
-  }, [user, demoMode]);
+  }, [user, demoMode, viewOnly]);
 
   return { state, loading };
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound } from "lucide-react";
+import Link from "next/link";
+import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
@@ -625,6 +626,12 @@ export default function AdminInvestorsPage() {
                         <span className="text-[10px] text-text-dim">—</span>
                       ) : (
                         <span className="inline-flex items-center gap-1.5 justify-end">
+                          <Link
+                            href={`/admin/member/${u.uid}`}
+                            className="text-[10px] px-2 py-1 rounded-md border border-blue/40 text-blue hover:bg-blue/10 inline-flex items-center gap-1 whitespace-nowrap"
+                          >
+                            <Eye className="w-3 h-3" /> View
+                          </Link>
                           <button
                             onClick={() => setResetting({ uid: u.uid, name: u.name, email: u.email })}
                             className="text-[10px] px-2 py-1 rounded-md border border-border-strong text-text-muted hover:text-text hover:bg-card-elev inline-flex items-center gap-1 whitespace-nowrap"

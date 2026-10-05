@@ -28,9 +28,10 @@ import {
 import { doc, onSnapshot } from "firebase/firestore";
 import { getFirebase } from "./firebase";
 import { ensureUserDoc } from "./userState";
+import { ViewAsContext } from "./viewAs";
 import { attachReferrer, ensureReferralCode } from "./referrals";
 
-type AuthUser = {
+export type AuthUser = {
   uid: string;
   email: string;
   name: string;
@@ -38,7 +39,7 @@ type AuthUser = {
   isAdmin: boolean;
 };
 
-type AuthContextValue = {
+export type AuthContextValue = {
   user: AuthUser | null;
   loading: boolean;
   /** True when no Firebase keys are configured — app runs in mock mode. */
@@ -241,6 +242,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
+  const view = useContext(ViewAsContext);
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
+  // Admin "view as member": pages inside that screen see the member (see lib/viewAs).
+  return view ? (view.auth as AuthContextValue) : ctx;
+}
+
+/** The person actually signed in, even inside a "view as member" screen. */
+export function useRealAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useRealAuth must be used inside AuthProvider");
   return ctx;
 }

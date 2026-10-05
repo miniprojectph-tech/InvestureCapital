@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { onSnapshot, orderBy, query, where } from "firebase/firestore";
+import { doc, getDoc, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { useAuth } from "./auth";
 import { getFirebase } from "./firebase";
+import { useViewAs } from "./viewAs";
 import {
   ensureReferralCode,
   getReferralLink,
@@ -17,6 +18,7 @@ import {
  */
 export function useReferralCode() {
   const { user, demoMode } = useAuth();
+  const viewOnly = !!useViewAs();
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -39,7 +41,11 @@ export function useReferralCode() {
     }
     let cancelled = false;
     setLoading(true);
-    ensureReferralCode(db, user.uid)
+    // An admin viewing a member reads the code they have; only the member's own visit creates one.
+    const load = viewOnly
+      ? getDoc(doc(db, "users", user.uid)).then((s) => ((s.data() as { referralCode?: string } | undefined)?.referralCode ?? null))
+      : ensureReferralCode(db, user.uid);
+    load
       .then((c) => {
         if (!cancelled) setCode(c);
       })
@@ -50,7 +56,7 @@ export function useReferralCode() {
     return () => {
       cancelled = true;
     };
-  }, [user, demoMode]);
+  }, [user, demoMode, viewOnly]);
 
   return { code, link: code ? getReferralLink(code) : null, loading };
 }
