@@ -19,12 +19,30 @@ export const SOURCE_LABEL: Record<MasterSource, string> = { portal: "Portal", of
 export type PublicRow = { k: string; n: string; d: number; a: number; t: number };
 /** A row as the admin gets it: full name, plus where it came from. */
 export type AdminRow = PublicRow & { s: MasterSource; note?: string; id?: string; uid?: string };
-export type MonthDoc<R> = { month: string; count: number; total: number; rows: R[]; updatedAt?: number };
-export type MasterIndex = { months: { month: string; count: number; total: number }[]; windowMonths: number; showTotals: boolean; updatedAt?: number };
+export type MonthDoc<R> = { month: string; count: number; total?: number; rows: R[]; updatedAt?: number };
+/** Which months exist, and which days of each have placements. No names, no amounts. */
+export type MasterIndex = { months: { month: string; count: number; days: number[] }[]; windowMonths: number; updatedAt?: number };
 
 export type EntryInput = { name: string; placedAt: number; amount: number; termMonths: number; source: "offline" | "old"; note?: string };
 
 const HOUR = 3_600_000;
+/** The furthest back (in months) a member may choose a date; the server enforces the same. */
+export const MAX_WINDOW_MONTHS = 6;
+
+/** "2026-10-06" on the Manila calendar. */
+export function dayKeyOf(ms: number): string {
+  return new Date(ms + 8 * HOUR).toISOString().slice(0, 10);
+}
+/** "Tuesday, October 6, 2026" for a "2026-10-06" key. */
+export function longDayLabel(key: string): string {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: "UTC" });
+}
+/** Last calendar day of a "2026-10" month, as "2026-10-31". */
+export function lastDayOfMonth(month: string): string {
+  const [y, m] = month.split("-").map(Number);
+  return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, "0")}`;
+}
 
 /** "2026-10" on the Manila calendar. */
 export function monthKeyOf(ms: number): string {
@@ -68,7 +86,11 @@ export function useMasterIndex(): { index: MasterIndex | null; loading: boolean 
       doc(db, "masterlist_public", "_index"),
       (s) => {
         const d = s.data() as Partial<MasterIndex> | undefined;
-        setIndex(d ? { months: Array.isArray(d.months) ? d.months : [], windowMonths: d.windowMonths ?? 2, showTotals: d.showTotals !== false, updatedAt: d.updatedAt } : null);
+        setIndex(d ? {
+          months: (Array.isArray(d.months) ? d.months : []).map((m) => ({ month: m.month, count: m.count ?? 0, days: Array.isArray(m.days) ? m.days : [] })),
+          windowMonths: Math.min(d.windowMonths ?? MAX_WINDOW_MONTHS, MAX_WINDOW_MONTHS),
+          updatedAt: d.updatedAt,
+        } : null);
         setLoading(false);
       },
       () => setLoading(false),

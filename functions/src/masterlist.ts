@@ -25,6 +25,7 @@ const HOUR = 3_600_000;
 const META = "masterlist_meta/state";
 const INDEX = "masterlist_public/_index";
 const MAX_ROWS_PER_MONTH = 4000; // keeps a month's document well under Firestore's 1 MB cap
+const MAX_WINDOW = 6; // the furthest back (in months) a member may choose a date
 const MAX_NAME = 80;
 const MAX_NOTE = 200;
 const MAX_AMOUNT = 1_000_000_000;
@@ -45,11 +46,12 @@ function monthStart(key: string, offset = 0): number {
 /** The same short hash the app computes to find the member's OWN rows. */
 export const ownKey = (uid: string, placementId: string) => createHash("sha256").update(`${uid}:${placementId}`).digest("hex").slice(0, 16);
 
-type Settings = { windowMonths: number; showTotals: boolean };
+type Settings = { windowMonths: number };
 function settingsOf(data: FirebaseFirestore.DocumentData | undefined): Settings {
-  const m = (data?.masterlist ?? {}) as { windowMonths?: unknown; showTotals?: unknown };
+  const m = (data?.masterlist ?? {}) as { windowMonths?: unknown };
   const w = Math.round(Number(m.windowMonths));
-  return { windowMonths: Number.isFinite(w) && w >= 1 && w <= 24 ? w : 2, showTotals: m.showTotals !== false };
+  // Default and ceiling are both MAX_WINDOW; a larger saved value is treated as the ceiling.
+  return { windowMonths: Number.isFinite(w) && w >= 1 ? Math.min(w, MAX_WINDOW) : MAX_WINDOW };
 }
 
 async function requireAdmin(request: CallableRequest): Promise<{ uid: string; name: string }> {
@@ -108,16 +110,19 @@ export async function rebuildMasterlist(): Promise<{ months: number; rows: numbe
   const queue = async (fn: (b: FirebaseFirestore.WriteBatch) => void) => { fn(batch); if (++ops >= 200) await flush(); };
 
   let rows = 0;
-  const index: { month: string; count: number; total: number }[] = [];
+  // For members: which months exist and which days in them have placements (so the page can
+  // step from day to day without loading every month). No amounts, no totals.
+  const index: { month: string; count: number; days: number[] }[] = [];
   for (const key of keys) {
     const list = (byMonth.get(key) as FullRow[]).sort((x, y) => y.d - x.d).slice(0, MAX_ROWS_PER_MONTH);
     const total = Math.round(list.reduce((s, r) => s + r.a, 0) * 100) / 100;
     rows += list.length;
-    index.push({ month: key, count: list.length, total });
+    const days = [...new Set(list.map((r) => new Date(r.d + 8 * HOUR).getUTCDate()))].sort((x, y) => x - y);
+    index.push({ month: key, count: list.length, days });
     // A month is open to members until the start of the month `windowMonths` after it.
     const visibleUntil = Timestamp.fromMillis(monthStart(key, cfg.windowMonths));
     await queue((b) => b.set(db.doc(`masterlist_public/${key}`), {
-      month: key, count: list.length, total, visibleUntil, updatedAt: now,
+      month: key, count: list.length, visibleUntil, updatedAt: now,
       // masked name, date, amount, term — and the key a member uses to spot their own row
       rows: list.map((r) => ({ k: r.k, n: maskName(r.name), d: r.d, a: r.a, t: r.t })),
     }));
@@ -131,7 +136,7 @@ export async function rebuildMasterlist(): Promise<{ months: number; rows: numbe
     await queue((b) => b.delete(db.doc(`masterlist_admin/${id}`)));
   }
   // The index lists which months exist (never their rows), so the page can show the archive notice.
-  await queue((b) => b.set(db.doc(INDEX), { open: true, months: index, windowMonths: cfg.windowMonths, showTotals: cfg.showTotals, updatedAt: now }));
+  await queue((b) => b.set(db.doc(INDEX), { open: true, months: index, windowMonths: cfg.windowMonths, updatedAt: now }));
   await queue((b) => b.set(db.doc(META), { dirty: false, rebuiltAt: now, rows, months: keys.length }, { merge: true }));
   await flush();
   return { months: keys.length, rows };

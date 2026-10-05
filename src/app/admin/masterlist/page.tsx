@@ -27,6 +27,7 @@ import {
   dayLabel,
   manilaNoon,
   SOURCE_LABEL,
+  MAX_WINDOW_MONTHS,
   type AdminRow,
   type EntryInput,
   type MonthDoc,
@@ -56,16 +57,13 @@ export default function AdminMasterlistPage() {
   const [confirmDelete, setConfirmDelete] = useState<AdminRow | null>(null);
 
   // settings
-  const savedWindow = settings.masterlist?.windowMonths ?? 2;
-  const savedTotals = settings.masterlist?.showTotals !== false;
+  const savedWindow = Math.min(settings.masterlist?.windowMonths ?? MAX_WINDOW_MONTHS, MAX_WINDOW_MONTHS);
   const savedNote = settings.masterlist?.archiveNote ?? "";
   const [windowMonths, setWindowMonths] = useState<string | null>(null);
-  const [showTotals, setShowTotals] = useState<boolean | null>(null);
   const [archiveNote, setArchiveNote] = useState<string | null>(null);
   const w = windowMonths ?? String(savedWindow);
-  const t = showTotals ?? savedTotals;
   const n = archiveNote ?? savedNote;
-  const settingsDirty = w !== String(savedWindow) || t !== savedTotals || n !== savedNote;
+  const settingsDirty = w !== String(savedWindow) || n !== savedNote;
 
   // import
   const fileInput = useRef<HTMLInputElement>(null);
@@ -101,11 +99,11 @@ export default function AdminMasterlistPage() {
     const { db } = getFirebase();
     if (!db || !user) return;
     const months = Math.round(Number(w));
-    if (!Number.isFinite(months) || months < 1 || months > 24) return setNote({ ok: false, text: "Members can see between 1 and 24 months." });
+    if (!Number.isFinite(months) || months < 1 || months > MAX_WINDOW_MONTHS) return setNote({ ok: false, text: `Members can go back between 1 and ${MAX_WINDOW_MONTHS} months.` });
     await run("settings", async () => {
-      await saveSettings(db, { masterlist: { windowMonths: months, showTotals: t, archiveNote: n.trim().slice(0, 240) } }, user.uid);
+      await saveSettings(db, { masterlist: { windowMonths: months, archiveNote: n.trim().slice(0, 240) } }, user.uid);
       await rebuildMasterlist(); // re-stamps which months are open
-      setWindowMonths(null); setShowTotals(null); setArchiveNote(null);
+      setWindowMonths(null); setArchiveNote(null);
       return "Saved. Members see the change straight away.";
     });
   }
@@ -211,18 +209,15 @@ export default function AdminMasterlistPage() {
 
       {/* what members see */}
       <Card className="mb-3">
-        <CardHeader title="What members see" subtitle="Members see masked names, date, amount and term. They never see the source, the note, or anyone's full name but their own." />
+        <CardHeader title="What members see" subtitle="One day per page: masked names, amount and term, with Previous day and Next day. They never see totals, the source, the note, or anyone's full name but their own." />
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1">
-            <span className="text-[11px] font-medium text-text">Months members can open</span>
+            <span className="text-[11px] font-medium text-text">How far back members can choose a date (up to {MAX_WINDOW_MONTHS} months)</span>
             <span className="flex items-center gap-2">
-              <input type="number" min={1} max={24} value={w} onChange={(e) => setWindowMonths(e.target.value)} className={cn(input, "w-20 font-mono")} />
+              <input type="number" min={1} max={MAX_WINDOW_MONTHS} value={w} onChange={(e) => setWindowMonths(e.target.value)} className={cn(input, "w-20 font-mono")} />
               <span className="text-[11px] text-text-subtle">this month and the {Math.max(0, (Math.round(Number(w)) || 1) - 1)} before it</span>
             </span>
           </label>
-          <button type="button" onClick={() => setShowTotals(!t)} aria-pressed={t} className={cn("px-3 py-2 rounded-lg text-[11px] font-medium border transition", t ? "bg-green/15 border-green/40 text-green" : "bg-canvas border-border text-text-muted")}>
-            Month totals: {t ? "shown" : "hidden"}
-          </button>
         </div>
         <label className="flex flex-col gap-1 mt-3">
           <span className="text-[11px] font-medium text-text">Message on archived months</span>
@@ -245,7 +240,7 @@ export default function AdminMasterlistPage() {
             <button key={m.month} onClick={() => { setMonth(m.month); setFilter(""); }} className={cn("w-full text-left px-3 py-2 rounded-lg flex items-center gap-2 transition", month === m.month ? "bg-card-elev" : "hover:bg-card-elev/50")}>
               <span className="flex-1 min-w-0">
                 <span className="block text-[12px] truncate">{monthLabel(m.month)}</span>
-                <span className="block text-[10px] text-text-subtle">{m.count.toLocaleString()} · {formatPHP(m.total, { short: true })}</span>
+                <span className="block text-[10px] text-text-subtle">{m.count.toLocaleString()} placement{m.count === 1 ? "" : "s"}</span>
               </span>
               <span className={cn("text-[9px] px-1.5 py-0.5 rounded-full shrink-0", m.month >= cutoff ? "bg-green/15 text-green" : "bg-card-elev text-text-subtle")}>{m.month >= cutoff ? "Open" : "Archived"}</span>
             </button>
@@ -255,7 +250,10 @@ export default function AdminMasterlistPage() {
         {/* rows */}
         <Card className="!p-0 overflow-hidden">
           <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-border">
-            <p className="text-[13px] font-medium m-0 flex-1 min-w-[140px]">{month ? monthLabel(month) : "Masterlist"}</p>
+            <p className="text-[13px] font-medium m-0 flex-1 min-w-[140px]">
+              {month ? monthLabel(month) : "Masterlist"}
+              {data && data.rows.length > 0 && <span className="font-normal text-[11px] text-text-subtle"> · {formatPHP(data.rows.reduce((s, r) => s + r.a, 0), { short: true })} placed (admin only)</span>}
+            </p>
             <span className="flex items-center gap-1.5 px-2.5 py-1.5 bg-canvas border border-border rounded-lg">
               <Search className="w-3 h-3 text-text-subtle" />
               <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Search name or note" className="bg-transparent text-[11px] text-text outline-none w-36" />
