@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Copy, Check, Share2, Users, Coins, Zap, Award, Loader2, RefreshCw, AlertCircle, ShieldCheck } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
+import { TeamTree } from "@/components/TeamTree";
 import { formatPHP, cn } from "@/lib/utils";
 import { useReferralCode } from "@/lib/useReferrals";
 import { useCompPlan, useReferralStats, useMyCommissions, earningsRequiringActive, peso, type Commission } from "@/lib/compplan";
@@ -84,6 +85,9 @@ export default function ReferralsPage() {
         <Stat icon={Zap} label="Fast-Start earned" value={formatPHP(fastStartTotal)} tone="vault" />
         <Stat icon={Award} label="Leadership earned" value={formatPHP(leadershipTotal)} sub={potentialLeadership > 0 ? `${formatPHP(potentialLeadership, { short: true })} pending` : undefined} tone="gold" />
       </div>
+
+      {/* Team tree: who invited whom, down the commission levels */}
+      <TeamTree stats={stats} loading={statsLoading} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-3">
         {/* Levels */}

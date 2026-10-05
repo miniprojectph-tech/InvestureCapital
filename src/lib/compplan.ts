@@ -407,10 +407,18 @@ export async function markNotificationsRead(uid: string, ids: string[]): Promise
 export type ReferralLevelStat = { level: number; pct: number; members: number; active: number; placed: number };
 export type DirectStat = { uid: string; name: string; joinedAt: number; activePlaced: number; placements: number; pendingLockedBonus: number };
 export type FastStartTierStat = { minPlacement: number; bonus: number; qualifying: number; paidAt: number | null };
+/**
+ * One person in the team tree. `p` = position of their sponsor in the list (-1 = a direct
+ * invite). `m` = the name is masked. `amt` (amount placed) only arrives for an admin view.
+ */
+export type TeamNode = { p: number; l: number; n: string; j: number; a: boolean; c: number; m?: boolean; amt?: number };
+
 export type ReferralStats = {
   rootUid: string;
   levels: ReferralLevelStat[];
   directs: DirectStat[];
+  /** The whole team, level by level (older servers may not send it). */
+  tree?: TeamNode[];
   totals: { members: number; active: number; placed: number };
   fastStart: { directsRequired: number; tiers: FastStartTierStat[] };
   leadershipPct: number;

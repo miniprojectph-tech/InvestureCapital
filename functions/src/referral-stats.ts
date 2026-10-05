@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { db } from "./init";
 import { loadCompPlan, activeCapital, isActiveUpline, displayName, type UserDoc } from "./compplan";
+import { maskName } from "./maskName";
 
 // Members can only read their own user doc, so downline stats (six levels of
 // referrals, Fast-Start progress) are computed here and returned read-only.
@@ -18,6 +19,15 @@ export type DirectStat = {
   /** Locked-In Bonuses still to be paid on their active placements (drives Leadership). */
   pendingLockedBonus: number;
 };
+
+/**
+ * One person in the team tree. `p` is the position of their sponsor in the same
+ * list (-1 = invited directly by the member whose tree this is), so no member ids
+ * are sent. A member sees full names only for their own direct invites; deeper
+ * levels are masked (`m`) and no amounts are included. An admin looking at a
+ * member's tree gets full names and the amount each person has placed (`amt`).
+ */
+export type TeamNode = { p: number; l: number; n: string; j: number; a: boolean; c: number; m?: boolean; amt?: number };
 
 function chunks<T>(arr: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -41,6 +51,11 @@ export const getReferralStats = onCall(async (request) => {
   const cfg = await loadCompPlan();
   const rootSnap = await db.collection("users").doc(rootUid).get();
   const root = (rootSnap.data() ?? {}) as UserDoc;
+
+  // Only an admin can ask for someone else's tree (checked above) — they see everything.
+  const adminView = rootUid !== callerUid;
+  const tree: TeamNode[] = [];
+  const position = new Map<string, number>(); // member id → position in `tree`
 
   const levels: ReferralLevelStat[] = [];
   const directs: DirectStat[] = [];
@@ -67,6 +82,23 @@ export const getReferralStats = onCall(async (request) => {
         if (isActiveUpline(u, cfg)) active++;
         next.push(doc.id);
         total++;
+        {
+          const parent = lvl === 1 ? -1 : position.get(String(u.referredByUserId ?? "")) ?? -1;
+          const full = displayName(u, doc.id);
+          const masked = !adminView && lvl > 1;
+          position.set(doc.id, tree.length);
+          tree.push({
+            p: parent,
+            l: lvl,
+            n: masked ? maskName(full) : full,
+            j: u.profile?.joinedAt ?? 0,
+            a: (u.placements ?? []).length > 0,
+            c: 0,
+            ...(masked ? { m: true } : {}),
+            ...(adminView ? { amt: cap } : {}),
+          });
+          if (parent >= 0) tree[parent].c++;
+        }
         if (lvl === 1) {
           directs.push({
             uid: doc.id,
@@ -97,6 +129,7 @@ export const getReferralStats = onCall(async (request) => {
     rootUid,
     levels,
     directs,
+    tree,
     totals: {
       members: levels.reduce((s, l) => s + l.members, 0),
       active: levels.reduce((s, l) => s + l.active, 0),
