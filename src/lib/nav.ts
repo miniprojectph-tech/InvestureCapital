@@ -46,6 +46,7 @@ export const investorNav: NavGroup[] = [
       { label: "Referrals", href: "/referrals", icon: "share" },
       { label: "Withdrawals", href: "/withdrawals", icon: "withdraw" },
       { label: "Transactions", href: "/transactions", icon: "receipt" },
+      { label: "Masterlist", href: "/masterlist", icon: "users" },
     ],
   },
   {
@@ -71,6 +72,7 @@ export const adminNav: NavGroup[] = [
     items: [
       { label: "Dashboard", href: "/admin", icon: "dashboard" },
       { label: "Investors", href: "/admin/investors", icon: "users" },
+      { label: "Masterlist", href: "/admin/masterlist", icon: "receipt" },
       { label: "Compensation plan", href: "/admin/comp-plan", icon: "coins" },
       { label: "Placement requests", href: "/admin/plan-requests", icon: "coins" },
       { label: "Events", href: "/admin/events", icon: "gift" },

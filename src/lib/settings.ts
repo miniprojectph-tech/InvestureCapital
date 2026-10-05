@@ -108,6 +108,8 @@ export type PlatformSettings = {
   community?: Partial<CommunityConfig>;
   /** Upload size / length caps for the Community Room and the admin chat. */
   uploads?: Partial<Record<"room" | "inbox", Partial<UploadLimits>>>;
+  /** Masterlist: how many recent months members may open, and whether month totals are shown. */
+  masterlist?: { windowMonths?: number; showTotals?: boolean; archiveNote?: string };
   /** Admin-arranged member menu: page order per group, and hidden pages (see lib/nav). */
   menu?: { groups?: { items?: string[] }[]; hidden?: string[] };
   updatedAt?: number;

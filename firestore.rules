@@ -212,6 +212,29 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // === Masterlist ===
+    // Prepared on the server, one document per month, names already masked.
+    // A member may read a month only while it is inside the visible window
+    // (`visibleUntil`), so archived months cannot be fetched at all. The index
+    // (which months exist, no rows) is always readable.
+    match /masterlist_public/{month} {
+      allow read: if isSignedIn() && (isAdmin() || resource.data.get('open', false) == true || resource.data.visibleUntil > request.time);
+      allow write: if false;
+    }
+    // Full names and sources — admins only. Entries are written through functions (checked + audited).
+    match /masterlist_admin/{month} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /masterlist_entries/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+    match /masterlist_meta/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
     // === Admin-only records (exchange credentials etc.) — never readable by members ===
     match /admin_private/{doc} {
       allow read, write: if isAdmin();

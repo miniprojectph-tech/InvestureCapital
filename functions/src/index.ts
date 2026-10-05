@@ -16,6 +16,8 @@ export { ensureCommunityAdmin, ensureCommunityMember, updateCommunityStats, refr
 
 // Help & FAQ: one-vote-per-member "was this helpful" counters.
 export { faqVote } from "./faq";
+// Masterlist: prepared monthly lists (masked for members), admin entries and import.
+export { masterlistSync, adminMasterlistSave, adminMasterlistDelete, adminMasterlistRebuild } from "./masterlist";
 
 // Admin only: delete a member's account (members can't delete their own).
 export { adminDeleteMember, adminResetMemberPassword } from "./account";

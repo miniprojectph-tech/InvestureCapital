@@ -530,6 +530,8 @@ export async function activateInTx(tx: Transaction, cfg: CompPlanConfig, args: A
   // ---------- writes ----------
   patches.flush(tx);
   for (const w of writes) tx.set(w.ref, w.data);
+  // The Masterlist shows this placement: flag it for a rebuild (picked up within minutes).
+  tx.set(db.doc("masterlist_meta/state"), { dirty: true, dirtyAt: now }, { merge: true });
 
   return {
     ok: true,
@@ -858,6 +860,8 @@ export const adminSetPlacementStart = onCall(async (request) => {
     // Internal record only. A start-date change is an admin action, so it goes to
     // the admin audit trail and NEVER into the member's transaction history.
     const fmt = (ms: number) => new Date(ms + 8 * 3_600_000).toISOString().slice(0, 10);
+    // the placement may now belong to a different month of the Masterlist
+    tx.set(db.doc("masterlist_meta/state"), { dirty: true, dirtyAt: now }, { merge: true });
     tx.set(db.collection("admin_audit").doc(), {
       type: "placement_start_changed",
       uid: userId,
