@@ -61,6 +61,9 @@ export default function AdminMasterlistPage() {
   const [sourceFilter, setSourceFilter] = useState<"all" | AdminRow["s"]>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
+  // set when the confirm was opened by "Delete all …" — names exactly what is about to go
+  const [bulkLabel, setBulkLabel] = useState<string | null>(null);
+  const [bulkTyped, setBulkTyped] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   // settings
@@ -108,6 +111,8 @@ export default function AdminMasterlistPage() {
   async function removeSelected() {
     const ids = [...selected];
     setConfirmBulk(false);
+    setBulkLabel(null);
+    setBulkTyped("");
     if (ids.length === 0) return;
     await run("bulk", async () => {
       // the server takes up to 400 at a time
@@ -318,7 +323,24 @@ export default function AdminMasterlistPage() {
                 </button>
               );
             })}
-            <label className="ml-auto text-[10px] text-text-subtle flex items-center gap-1.5">
+            {(() => {
+              // Everything removable in this month for the chosen source (ignores the search box on purpose:
+              // "delete all" should mean all, not just what a half-typed search happens to show).
+              const ids = (data?.rows ?? []).filter((r) => r.id && (sourceFilter === "all" || r.s === sourceFilter)).map((r) => r.id as string);
+              if (sourceFilter === "portal" || ids.length === 0) return null;
+              const what = sourceFilter === "old" ? "old records" : sourceFilter === "offline" ? "offline rows" : "offline + old rows";
+              return (
+                <button
+                  type="button"
+                  onClick={() => { setSelected(new Set(ids)); setBulkLabel(`all ${ids.length.toLocaleString()} ${what} in ${month ? monthLabel(month) : "this month"}`); setConfirmBulk(true); }}
+                  disabled={!!busy}
+                  className="ml-auto px-2.5 py-1 rounded-full text-[10px] font-medium border border-red/40 text-red hover:bg-red/10 flex items-center gap-1 disabled:opacity-50"
+                >
+                  <Trash2 className="w-3 h-3" /> Delete all {ids.length.toLocaleString()} {what}
+                </button>
+              );
+            })()}
+            <label className="text-[10px] text-text-subtle flex items-center gap-1.5">
               Rows per page
               <select value={perPage} onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }} className="bg-canvas border border-border rounded-md px-1.5 py-1 text-[11px] text-text outline-none">
                 <option value={25}>25</option>
@@ -336,7 +358,7 @@ export default function AdminMasterlistPage() {
                 </button>
               )}
               <button type="button" onClick={() => setSelected(new Set())} className="text-[11px] text-text-muted hover:text-text">Clear</button>
-              <button type="button" onClick={() => setConfirmBulk(true)} disabled={!!busy} className="ml-auto px-3 py-1.5 rounded-lg bg-red/15 border border-red/40 text-red text-[11px] font-medium flex items-center gap-1.5 disabled:opacity-50">
+              <button type="button" onClick={() => { setBulkLabel(null); setBulkTyped(""); setConfirmBulk(true); }} disabled={!!busy} className="ml-auto px-3 py-1.5 rounded-lg bg-red/15 border border-red/40 text-red text-[11px] font-medium flex items-center gap-1.5 disabled:opacity-50">
                 {busy === "bulk" ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />} Remove selected
               </button>
             </div>
@@ -485,14 +507,23 @@ export default function AdminMasterlistPage() {
       </Modal>
 
       {/* remove several */}
-      <Modal open={confirmBulk} onClose={() => setConfirmBulk(false)} title={`Remove ${selected.size.toLocaleString()} entr${selected.size === 1 ? "y" : "ies"}?`}>
+      <Modal open={confirmBulk} onClose={() => { setConfirmBulk(false); if (bulkLabel) setSelected(new Set()); setBulkLabel(null); setBulkTyped(""); }} title={bulkLabel ? "Delete all of these?" : `Remove ${selected.size.toLocaleString()} entr${selected.size === 1 ? "y" : "ies"}?`}>
         <div className="flex flex-col gap-3">
+          {bulkLabel && (
+            <>
+              <p className="text-[13px] m-0">You are about to delete <span className="font-medium text-red">{bulkLabel}</span>.</p>
+              <label className="text-[11px] font-medium text-text block">
+                Type DELETE to confirm
+                <input value={bulkTyped} onChange={(e) => setBulkTyped(e.target.value)} autoComplete="off" autoFocus className="mt-1 w-full bg-canvas border border-border rounded-lg px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-red/50" />
+              </label>
+            </>
+          )}
           <p className="text-[11px] text-text-muted m-0 leading-relaxed">
             They are taken off the Masterlist for you and for members. Only offline and old-record rows are removed; real portal placements are never touched. This can&apos;t be undone.
           </p>
           <div className="flex gap-2">
-            <button onClick={() => setConfirmBulk(false)} className="flex-1 py-2.5 border border-border-strong rounded-lg text-[12px] text-text-muted">Keep them</button>
-            <button onClick={removeSelected} className="flex-1 py-2.5 rounded-lg bg-red/15 border border-red/40 text-red text-[12px] font-medium flex items-center justify-center gap-1.5"><Trash2 className="w-3.5 h-3.5" /> Remove {selected.size.toLocaleString()}</button>
+            <button onClick={() => { setConfirmBulk(false); if (bulkLabel) setSelected(new Set()); setBulkLabel(null); setBulkTyped(""); }} className="flex-1 py-2.5 border border-border-strong rounded-lg text-[12px] text-text-muted">Keep them</button>
+            <button onClick={removeSelected} disabled={!!bulkLabel && bulkTyped.trim().toUpperCase() !== "DELETE"} className="flex-1 py-2.5 rounded-lg bg-red/15 border border-red/40 text-red text-[12px] font-medium flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"><Trash2 className="w-3.5 h-3.5" /> Remove {selected.size.toLocaleString()}</button>
           </div>
         </div>
       </Modal>
