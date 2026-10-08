@@ -67,6 +67,8 @@ export type ChatItem = {
   sticker?: string;
   replyTo?: ReplyRef;
   reactions?: Reactions;
+  /** Team-added reaction counts (room only) — see setRoomBoost. */
+  boost?: Boost;
 };
 
 /** A member granted chat-only moderator powers by a full admin. */
@@ -101,7 +103,7 @@ export const STAFF_NAME = "Admin";
 export type SendPayload = { kind: ChatKind; text?: string; media?: ChatMedia; sticker?: string; replyTo?: ReplyRef };
 
 type RawCommon = { kind: ChatKind; text?: string; media?: ChatMedia; at: number; sticker?: string; replyTo?: ReplyRef; re?: Reactions };
-type RawRoom = RawCommon & { uid: string; name: string; admin?: boolean; mod?: boolean };
+type RawRoom = RawCommon & { uid: string; name: string; admin?: boolean; mod?: boolean; boost?: Boost };
 type RawInbox = RawCommon & { from: string; name: string };
 
 // ===== Hooks =====
@@ -110,7 +112,7 @@ const roomToItem = (id: string, raw: unknown): ChatItem => {
   const m = raw as RawRoom;
   // The admin account never shows its own name in the room — always "Admin" (older posts included).
   const admin = !!m.admin && !m.mod;
-  return { id, senderId: m.uid, name: admin ? STAFF_NAME : m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, mod: false, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
+  return { id, senderId: m.uid, name: admin ? STAFF_NAME : m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, mod: false, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re, boost: m.boost };
 };
 
 const inboxToItem = (id: string, raw: unknown): ChatItem => {
@@ -650,12 +652,38 @@ export function reactToInboxMessage(threadUid: string, msgId: string, uid: strin
   return emoji ? set(r, emoji) : remove(r);
 }
 
-/** Summarise reactions for display: emoji → count, plus the caller's own. */
-export function summarizeReactions(reactions: Reactions | undefined, meUid: string): { list: { emoji: string; count: number }[]; mine: string | undefined; total: number } {
+/**
+ * Extra reactions the team adds to a room message (admin or moderators), stored
+ * at `room/{id}/boost/{key}` as a plain count per quick-reaction emoji and
+ * shown on top of real reactions. Members can't tell them apart — there is no
+ * "who reacted" list — and setting a count back to 0 takes them away.
+ */
+export const BOOST_KEYS = ["heart", "haha", "wow", "fire", "money", "like"] as const;
+export type BoostKey = (typeof BOOST_KEYS)[number];
+export type Boost = Partial<Record<BoostKey, number>>;
+export const BOOST_EMOJI: Record<BoostKey, string> = { heart: "❤️", haha: "😆", wow: "😮", fire: "🔥", money: "💰", like: "👍" };
+export const MAX_BOOST = 10_000;
+
+export function setRoomBoost(msgId: string, boost: Boost) {
+  const clean: Record<string, number> = {};
+  for (const k of BOOST_KEYS) {
+    const n = Math.floor(Number(boost[k] ?? 0));
+    if (Number.isFinite(n) && n > 0) clean[k] = Math.min(MAX_BOOST, n);
+  }
+  const r = ref(needRtdb(), `community/room/${msgId}/boost`);
+  return Object.keys(clean).length ? set(r, clean) : remove(r);
+}
+
+/** Summarise reactions for display: emoji → count (real + team-added), plus the caller's own. */
+export function summarizeReactions(reactions: Reactions | undefined, meUid: string, boost?: Boost): { list: { emoji: string; count: number }[]; mine: string | undefined; total: number } {
   const counts = new Map<string, number>();
   for (const e of Object.values(reactions ?? {})) counts.set(e, (counts.get(e) ?? 0) + 1);
+  for (const k of BOOST_KEYS) {
+    const n = Math.floor(Number(boost?.[k] ?? 0));
+    if (n > 0) counts.set(BOOST_EMOJI[k], (counts.get(BOOST_EMOJI[k]) ?? 0) + n);
+  }
   const list = [...counts.entries()].map(([emoji, count]) => ({ emoji, count })).sort((a, b) => b.count - a.count);
-  return { list, mine: reactions?.[meUid], total: Object.keys(reactions ?? {}).length };
+  return { list, mine: reactions?.[meUid], total: list.reduce((s, r) => s + r.count, 0) };
 }
 
 /** "Today 9:15 AM", "Yesterday 3:02 PM", "Sep 21, 10:00 AM" — the separator between gaps. */

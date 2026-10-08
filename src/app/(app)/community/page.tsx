@@ -35,6 +35,8 @@ import {
   ensureCommunityAdmin,
   formatRelative,
   STAFF_NAME,
+  setRoomBoost,
+  type Boost,
   type ChatItem,
 } from "@/lib/community";
 
@@ -116,6 +118,7 @@ export default function CommunityPage() {
         onPin: (m: ChatItem) => setPinnedMessage(pinned?.id === m.id ? null : m.id),
         onMute: (m: ChatItem) => muteUser(m.senderId, m.name),
         onUnmute: (m: ChatItem) => unmuteUser(m.senderId),
+        onBoost: (m: ChatItem, b: Boost) => setRoomBoost(m.id, b),
         mutedUids,
       }
     : { onDelete: (m: ChatItem) => (m.senderId === user.uid ? deleteRoomMessage(m.id) : Promise.resolve()) };

@@ -10,6 +10,7 @@ import {
   X,
   Pin,
   Trash2,
+  Heart,
   VolumeX,
   Volume2,
   MoreHorizontal,
@@ -38,6 +39,10 @@ import {
   formatChatTime,
   formatChatStamp,
   summarizeReactions,
+  BOOST_KEYS,
+  BOOST_EMOJI,
+  MAX_BOOST,
+  type Boost,
 } from "@/lib/community";
 import { findSticker, stickerSrc, QUICK_REACTIONS } from "@/lib/stickers";
 import { StickerTray, FullEmojiPicker, rememberSticker } from "./StickerTray";
@@ -89,6 +94,8 @@ type Props = {
   onUnmute?: (item: ChatItem) => Promise<void>;
   /** Moderators: who is muted right now. */
   mutedUids?: ReadonlySet<string>;
+  /** Moderators (room only): set the team-added reaction counts on a message. */
+  onBoost?: (item: ChatItem, boost: Boost) => Promise<void>;
   className?: string;
 };
 
@@ -199,9 +206,12 @@ export function ChatView({
   onMute,
   onUnmute,
   mutedUids,
+  onBoost,
   className,
 }: Props) {
   const reactor = reactorUid ?? meUid;
+  // Moderator "Add reactions" panel: the message being boosted and the six counts being typed.
+  const [boosting, setBoosting] = useState<{ item: ChatItem; counts: Record<string, string>; busy: boolean; error: string | null } | null>(null);
   const [text, setText] = useState("");
   const [pending, setPending] = useState<Pending | null>(null);
   const [sending, setSending] = useState(false);
@@ -445,7 +455,7 @@ export function ChatView({
     const yt = youtubeId(m.text);
     const isPlaying = playing.has(m.id);
     const st = m.kind === "sticker" ? findSticker(m.sticker) : null;
-    const rx = summarizeReactions(m.reactions, reactor);
+    const rx = summarizeReactions(m.reactions, reactor, m.boost);
     const canRemove = !!onDelete && (own || hasModeration);
 
     const radius = own
@@ -831,9 +841,9 @@ export function ChatView({
               {renderMessage(sheet.item, true, true, true)}
               <p className={cn("text-[10px] text-text-subtle m-0 mt-1.5", sheet.item.senderId === meUid ? "text-right" : "pl-[38px]")}>{formatChatStamp(sheet.item.at)}</p>
             </div>
-            {summarizeReactions(sheet.item.reactions, reactor).total > 0 && (
+            {summarizeReactions(sheet.item.reactions, reactor, sheet.item.boost).total > 0 && (
               <div className={cn("flex flex-wrap gap-1.5", sheet.item.senderId === meUid ? "justify-end" : "pl-[38px]")}>
-                {summarizeReactions(sheet.item.reactions, reactor).list.map((r) => (
+                {summarizeReactions(sheet.item.reactions, reactor, sheet.item.boost).list.map((r) => (
                   <span key={r.emoji} className="text-[11px] px-2 py-0.5 rounded-full bg-card-elev border border-border text-text">{r.emoji} <span className="font-mono text-text-muted">{r.count}</span></span>
                 ))}
               </div>
@@ -845,12 +855,79 @@ export function ChatView({
             {sheet.item.text && <SheetItem icon={Copy} label="Copy" onClick={() => copyText(sheet.item)} />}
             {onPin && <SheetItem icon={Pin} label={pinned?.id === sheet.item.id ? "Unpin" : "Pin message"} tag="Mods" onClick={() => { setSheet(null); onPin(sheet.item); }} />}
             {(() => { const a = muteAction(sheet.item); return a && <SheetItem icon={a.label.startsWith("Unmute") ? Volume2 : VolumeX} label={a.label} tag="Mods" onClick={() => { setSheet(null); a.run(); }} />; })()}
+            {onBoost && (
+              <SheetItem
+                icon={Heart}
+                label="Add reactions"
+                tag="Mods"
+                onClick={() => {
+                  const counts: Record<string, string> = {};
+                  for (const k of BOOST_KEYS) counts[k] = String(sheet.item.boost?.[k] ?? 0);
+                  setBoosting({ item: sheet.item, counts, busy: false, error: null });
+                  setSheet(null);
+                }}
+              />
+            )}
             {onDelete && (sheet.item.senderId === meUid || hasModeration) && <SheetItem icon={Trash2} label="Remove" danger onClick={() => { setSheet(null); onDelete(sheet.item); }} />}
             {!canSend && !sheet.item.text && !onPin && !onDelete && <p className="text-[11px] text-text-subtle text-center m-0 py-2">Tap a reaction above.</p>}
             {/* A clear way out, so an accidental long-press never forces a choice (tapping the dark area closes it too). */}
             <button type="button" onClick={() => setSheet(null)} className="w-full mt-1.5 py-3 rounded-xl text-[14px] font-medium text-text-muted bg-canvas border border-border hover:text-text">
               Cancel
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Moderators: team-added reactions on a room message */}
+      {boosting && onBoost && (
+        <div className="fixed inset-0 z-[86] bg-black/65 backdrop-blur-[2px] flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => !boosting.busy && setBoosting(null)} role="dialog" aria-label="Add reactions">
+          <div className="w-full sm:max-w-sm bg-card rounded-t-2xl sm:rounded-2xl px-4 pt-3 pb-[max(env(safe-area-inset-bottom),16px)] shadow-2xl shadow-black/60" onClick={(e) => e.stopPropagation()}>
+            <div className="w-9 h-1 rounded-full bg-border-strong mx-auto mb-3 sm:hidden" />
+            <p className="text-[14px] font-semibold m-0 flex items-center gap-2">Add reactions <span className="text-[9px] font-bold uppercase tracking-[0.1em] text-[#F5C66B]">Mods</span></p>
+            <p className="text-[11px] text-text-muted m-0 mt-1 mb-3">Reactions shown on this message, on top of real ones. Set a number to 0 to take them back.</p>
+            <div className="grid grid-cols-3 gap-2">
+              {BOOST_KEYS.map((k) => (
+                <label key={k} className="flex items-center gap-1.5">
+                  <span className="text-[22px] leading-none">{BOOST_EMOJI[k]}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={MAX_BOOST}
+                    inputMode="numeric"
+                    value={boosting.counts[k]}
+                    onChange={(e) => setBoosting({ ...boosting, counts: { ...boosting.counts, [k]: e.target.value }, error: null })}
+                    className="w-full min-w-0 bg-canvas border border-border rounded-lg px-2 py-1.5 text-[13px] font-mono text-text text-right outline-none focus:border-gold/40"
+                    aria-label={`${BOOST_EMOJI[k]} count`}
+                  />
+                </label>
+              ))}
+            </div>
+            {boosting.error && <p className="text-[11px] text-red m-0 mt-2">{boosting.error}</p>}
+            <div className="flex gap-2 mt-3">
+              <button type="button" onClick={() => setBoosting(null)} disabled={boosting.busy} className="flex-1 py-2.5 rounded-xl border border-border text-[13px] text-text-muted hover:text-text disabled:opacity-50">Cancel</button>
+              <button
+                type="button"
+                disabled={boosting.busy}
+                onClick={async () => {
+                  const boost: Boost = {};
+                  for (const k of BOOST_KEYS) {
+                    const n = Math.floor(Number(boosting.counts[k] || 0));
+                    if (!Number.isFinite(n) || n < 0 || n > MAX_BOOST) return setBoosting({ ...boosting, error: `Each number is 0 to ${MAX_BOOST.toLocaleString()}.` });
+                    boost[k] = n;
+                  }
+                  setBoosting({ ...boosting, busy: true, error: null });
+                  try {
+                    await onBoost(boosting.item, boost);
+                    setBoosting(null);
+                  } catch (e) {
+                    setBoosting({ ...boosting, busy: false, error: e instanceof Error ? e.message : "Could not save. Please try again." });
+                  }
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-gold text-gold-dark text-[13px] font-semibold disabled:opacity-50"
+              >
+                {boosting.busy ? "Saving…" : "Apply"}
+              </button>
+            </div>
           </div>
         </div>
       )}
