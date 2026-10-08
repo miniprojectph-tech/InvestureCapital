@@ -6,7 +6,6 @@ import {
   onSnapshot,
   runTransaction,
   serverTimestamp,
-  setDoc,
   updateDoc,
   type Firestore,
   type Unsubscribe,
@@ -115,6 +114,14 @@ export function createStarterState(name: string, email: string): UserState {
   };
 }
 
+/**
+ * Create the member's starter record if it doesn't exist yet. Atomic, because
+ * at sign-up this runs twice at once (the auth listener and signUp() itself):
+ * a plain get + set let both writes through, and the second one was refused
+ * by the rules — the member saw "insufficient permissions" and the name they
+ * typed was lost (the listener fires before the display name is set). The
+ * loser now only fills in a missing or fallback name.
+ */
 export async function ensureUserDoc(
   db: Firestore,
   uid: string,
@@ -122,10 +129,20 @@ export async function ensureUserDoc(
   email: string
 ): Promise<void> {
   const ref = doc(db, "users", uid);
-  const snap = await getDoc(ref);
-  if (snap.exists()) return;
-  const seed = createStarterState(name, email);
-  await setDoc(ref, seed);
+  const typed = name.trim();
+  const fallbackName = email.split("@")[0];
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists()) {
+      tx.set(ref, createStarterState(typed || fallbackName, email));
+      return;
+    }
+    const current = String((snap.data() as UserState).profile?.name ?? "").trim();
+    const isFallback = !current || current === fallbackName || current === "Investor";
+    if (isFallback && typed && typed !== current && typed !== fallbackName) {
+      tx.update(ref, { "profile.name": typed });
+    }
+  });
 }
 
 export function subscribeToUserState(
