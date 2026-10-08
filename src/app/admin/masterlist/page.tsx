@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
-import { Plus, Upload, Download, FileSpreadsheet, RefreshCw, Loader2, CheckCircle2, AlertCircle, Pencil, Trash2, Search, X, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { Plus, Upload, Download, FileSpreadsheet, RefreshCw, Loader2, CheckCircle2, AlertCircle, Pencil, Trash2, Search, X, ChevronLeft, ChevronRight, ListOrdered, Eye } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
@@ -43,6 +44,8 @@ const isoDay = (ms: number) => new Date(ms + 8 * 3_600_000).toISOString().slice(
 type Note = { ok: boolean; text: string };
 type Editing = { id?: string; name: string; date: string; amount: string; term: string; source: "offline" | "old"; note: string };
 const blankEntry = (): Editing => ({ name: "", date: isoDay(Date.now()), amount: "", term: "1", source: "offline", note: "" });
+type Tab = "entries" | "upload" | "settings";
+const TAB_IDS: Tab[] = ["entries", "upload", "settings"];
 
 export default function AdminMasterlistPage() {
   const { user } = useAuth();
@@ -64,7 +67,7 @@ export default function AdminMasterlistPage() {
   // set when the confirm was opened by "Delete all …" — names exactly what is about to go
   const [bulkLabel, setBulkLabel] = useState<string | null>(null);
   const [bulkTyped, setBulkTyped] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tab, setTab] = useHashTab<Tab>(TAB_IDS, "entries");
 
   // settings
   const savedWindow = Math.min(settings.masterlist?.windowMonths ?? MAX_WINDOW_MONTHS, MAX_WINDOW_MONTHS);
@@ -220,45 +223,69 @@ export default function AdminMasterlistPage() {
     <div>
       <TopHeader title="Masterlist" subtitle="Every placement by month — portal members, offline investors and old records" />
 
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <button onClick={() => { setFormError(null); setEditing(blankEntry()); }} className="px-3 py-2 rounded-lg bg-gold text-gold-dark text-[12px] font-medium flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add entry</button>
-        <input ref={fileInput} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; pickFile(f); }} />
-        <button onClick={() => fileInput.current?.click()} disabled={!!busy} className="px-3 py-2 rounded-lg border border-border-strong text-[12px] text-text flex items-center gap-1.5 disabled:opacity-50">
-          {busy === "parse" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />} Upload Excel
-        </button>
-        <label className="text-[11px] text-text-muted flex items-center gap-1.5">
-          rows with no Type are
-          <select value={importSource} onChange={(e) => setImportSource(e.target.value as "offline" | "old")} className="bg-canvas border border-border rounded-md px-1.5 py-1 text-[11px] text-text outline-none">
-            <option value="old">Old record</option>
-            <option value="offline">Offline</option>
-          </select>
-        </label>
-        <button onClick={() => run("template", async () => { await downloadTemplate(); })} disabled={!!busy} className="px-3 py-2 rounded-lg border border-border text-[12px] text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-50"><FileSpreadsheet className="w-3.5 h-3.5" /> Blank template</button>
-        <button onClick={exportAll} disabled={!!busy || months.length === 0} className="px-3 py-2 rounded-lg border border-border text-[12px] text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-50">
-          {busy === "export" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Export all
-        </button>
-        <button onClick={() => run("rebuild", async () => { const r = await rebuildMasterlist(); return `Refreshed: ${r.rows.toLocaleString()} rows in ${r.months} month${r.months === 1 ? "" : "s"}.`; })} disabled={!!busy} className="ml-auto text-[11px] text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-50">
-          <RefreshCw className={cn("w-3 h-3", busy === "rebuild" && "animate-spin")} /> Refresh
-        </button>
-      </div>
+      <AdminTabs
+        tabs={[
+          { id: "entries", label: "Entries", icon: ListOrdered, count: months.reduce((s, m) => s + m.count, 0) || undefined },
+          { id: "upload", label: "Upload & export", icon: Upload },
+          { id: "settings", label: "What members see", icon: Eye, hint: `${savedWindow} mo`, hintTone: settingsDirty ? "warn" : undefined },
+        ]}
+        value={tab}
+        onChange={setTab}
+        right={
+          <>
+            <button onClick={() => { setFormError(null); setEditing(blankEntry()); }} className="px-3 py-1.5 rounded-lg bg-gold text-gold-dark text-[11px] font-medium flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> Add entry</button>
+            <button onClick={() => run("rebuild", async () => { const r = await rebuildMasterlist(); return `Refreshed: ${r.rows.toLocaleString()} rows in ${r.months} month${r.months === 1 ? "" : "s"}.`; })} disabled={!!busy} className="text-[11px] text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-50">
+              <RefreshCw className={cn("w-3 h-3", busy === "rebuild" && "animate-spin")} /> Refresh
+            </button>
+          </>
+        }
+      />
       {note && (
         <p className={cn("text-[11px] m-0 mb-3 flex items-start gap-1.5", note.ok ? "text-green" : "text-red")}>
           {note.ok ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-px" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" />} {note.text}
         </p>
       )}
 
+      {tab === "upload" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <Card>
+            <CardHeader title="Upload an Excel file" subtitle="Offline investors and old records, many at a time. You check the rows before anything is saved." />
+            <input ref={fileInput} type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; pickFile(f); }} />
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => fileInput.current?.click()} disabled={!!busy} className="px-3 py-2 rounded-lg bg-gold text-gold-dark text-[12px] font-medium flex items-center gap-1.5 disabled:opacity-50">
+                {busy === "parse" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />} Upload Excel
+              </button>
+              <button onClick={() => run("template", async () => { await downloadTemplate(); })} disabled={!!busy} className="px-3 py-2 rounded-lg border border-border text-[12px] text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-50"><FileSpreadsheet className="w-3.5 h-3.5" /> Blank template</button>
+            </div>
+            <label className="text-[11px] text-text-muted flex flex-wrap items-center gap-1.5 mt-3">
+              Rows with no Type are saved as
+              <select value={importSource} onChange={(e) => setImportSource(e.target.value as "offline" | "old")} className="bg-canvas border border-border rounded-md px-1.5 py-1 text-[11px] text-text outline-none">
+                <option value="old">Old record</option>
+                <option value="offline">Offline</option>
+              </select>
+            </label>
+            <p className="text-[10px] text-text-subtle m-0 mt-3 leading-relaxed">Uploads add rows; they never replace. To replace a month, open Entries, choose the month and use Delete all, then upload again.</p>
+          </Card>
+          <Card>
+            <CardHeader title="Export" subtitle="Excel copies of what is in the Masterlist today" />
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={exportAll} disabled={!!busy || months.length === 0} className="px-3 py-2 rounded-lg border border-border-strong text-[12px] text-text flex items-center gap-1.5 disabled:opacity-50">
+                {busy === "export" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />} Export all months
+              </button>
+              <button onClick={() => month && data && run("exportMonth", async () => { await exportRows(data.rows, `masterlist-${month}`); return `Exported ${monthLabel(month)}.`; })} disabled={!data || !!busy} className="px-3 py-2 rounded-lg border border-border text-[12px] text-text-muted hover:text-text flex items-center gap-1.5 disabled:opacity-50">
+                <Download className="w-3.5 h-3.5" /> Export {month ? monthLabel(month) : "this month"}
+              </button>
+            </div>
+            <p className="text-[10px] text-text-subtle m-0 mt-3">{months.length.toLocaleString()} month{months.length === 1 ? "" : "s"} · {months.reduce((s, m) => s + m.count, 0).toLocaleString()} placements in all.</p>
+          </Card>
+        </div>
+      )}
+
       {/* what members see */}
+      {tab === "settings" && (
       <Card className="mb-3">
-        <button type="button" onClick={() => setSettingsOpen((v) => !v)} aria-expanded={settingsOpen} className="w-full flex items-center gap-2 text-left">
-          <span className="flex-1 min-w-0">
-            <span className="block text-[13px] font-medium text-text">What members see</span>
-            <span className="block text-[11px] text-text-subtle truncate">
-              Members can go back {savedWindow} month{savedWindow === 1 ? "" : "s"} · one day per page, masked names, no totals{settingsDirty ? " · unsaved changes" : ""}
-            </span>
-          </span>
-          <span className="text-[11px] text-gold flex items-center gap-1 shrink-0">{settingsOpen ? "Hide" : "Edit"} <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", settingsOpen && "rotate-180")} /></span>
-        </button>
-        {settingsOpen && (<div className="mt-3 pt-3 border-t border-border">
+        <CardHeader title="What members see" subtitle={`Members can go back ${savedWindow} month${savedWindow === 1 ? "" : "s"} · one day per page, masked names, no totals${settingsDirty ? " · unsaved changes" : ""}`} />
+        <div>
         <p className="text-[11px] text-text-muted m-0 mb-3 leading-relaxed max-w-2xl">One day per page: masked names, amount and term, with Previous day and Next day. They never see totals, the source, the note, or anyone&apos;s full name but their own.</p>
         <div className="flex flex-wrap items-end gap-4">
           <label className="flex flex-col gap-1">
@@ -279,9 +306,11 @@ export default function AdminMasterlistPage() {
           </button>
           <span className="text-[10px] text-text-subtle">New portal placements appear here by themselves within about 10 minutes.</span>
         </div>
-        </div>)}
+        </div>
       </Card>
+      )}
 
+      {tab === "entries" && (
       <div className="grid grid-cols-1 lg:grid-cols-[230px_1fr] gap-3 items-start">
         {/* months */}
         <Card className="!p-2">
@@ -427,6 +456,7 @@ export default function AdminMasterlistPage() {
           )}
         </Card>
       </div>
+      )}
 
       {/* add / edit one entry */}
       <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? "Edit entry" : "Add an entry"}>

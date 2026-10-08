@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { VolumeX, Pin, ExternalLink, ShieldCheck, Search, Plus, X, Loader2, RefreshCw } from "lucide-react";
+import { VolumeX, Pin, ExternalLink, ShieldCheck, Search, Plus, X, Loader2, RefreshCw, Inbox, MessageSquare, PartyPopper, Sliders, Users, Database } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
+import { AdminTabs, useHashTab, type AdminTab } from "@/components/admin/AdminTabs";
 import { InboxPanel } from "@/components/community/InboxPanel";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -16,6 +17,8 @@ import {
   useCommunityRoom,
   usePinnedMessage,
   useChatMods,
+  useInboxList,
+  isInboxUnread,
   useCommunityStats,
   refreshCommunityStats,
   useCommunityActiveSettings,
@@ -322,11 +325,18 @@ function ActiveNowCard({ enabled }: { enabled: boolean }) {
   );
 }
 
+type Tab = "inbox" | "room" | "people" | "welcome" | "posting" | "active" | "storage";
+const TAB_IDS: Tab[] = ["inbox", "room", "people", "welcome", "posting", "active", "storage"];
+
 export default function AdminCommunityPage() {
   const { user, demoMode } = useAuth();
+  const { settings } = useSettings();
   const [adminReady, setAdminReady] = useState(false);
+  const [tab, setTab] = useHashTab<Tab>(TAB_IDS, "inbox");
 
   const mutedUsers = useMutedUsers(adminReady);
+  const mods = useChatMods(adminReady);
+  const threads = useInboxList(adminReady);
   const { messages: room } = useCommunityRoom(true);
   const stats = useCommunityStats(adminReady);
   const [refreshing, setRefreshing] = useState(false);
@@ -338,18 +348,38 @@ export default function AdminCommunityPage() {
 
   if (!user) return null;
   const staff = { uid: user.uid, name: "Admin", isAdmin: true };
+  // A new member counts as waiting until someone on the team has replied.
+  const waiting = threads.filter((t) => isInboxUnread(t, "admin") || t.newMember === true).length;
+  const welcomeOn = (settings.welcome?.enabled ?? DEFAULT_WELCOME.enabled) !== false;
+
+  const tabs: AdminTab<Tab>[] = [
+    { id: "inbox", label: "Inbox", icon: Inbox, count: waiting || undefined, attention: waiting > 0 },
+    { id: "room", label: "Room", icon: MessageSquare, count: mutedUsers.length || undefined },
+    { id: "people", label: "Moderators", icon: ShieldCheck, count: mods.length || undefined },
+    { id: "welcome", label: "Welcome", icon: PartyPopper, hint: welcomeOn ? "on" : "off", hintTone: welcomeOn ? "ok" : "muted" },
+    { id: "posting", label: "Posting rules", icon: Sliders },
+    { id: "active", label: "Active now", icon: Users },
+    { id: "storage", label: "Storage", icon: Database },
+  ];
 
   return (
     <div>
       <TopHeader title="Community chat" subtitle="Member inbox, moderators, and room moderation" />
 
-      {!adminReady && user.isAdmin && (
-        <p className="text-[10px] text-text-subtle m-0 mb-2 flex items-center gap-1.5">
-          <Loader2 className="w-3 h-3 animate-spin" /> Syncing moderator access…
-        </p>
-      )}
+      <AdminTabs
+        tabs={tabs}
+        value={tab}
+        onChange={setTab}
+        right={
+          !adminReady && user.isAdmin ? (
+            <span className="text-[10px] text-text-subtle flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin" /> Syncing moderator access…
+            </span>
+          ) : undefined
+        }
+      />
 
-      <div className="mb-3">
+      {tab === "inbox" && (
         <InboxPanel
           staff={staff}
           canSend={adminReady}
@@ -359,9 +389,84 @@ export default function AdminCommunityPage() {
             </Link>
           }
         />
-      </div>
+      )}
+
+      {tab === "room" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <Card>
+            <CardHeader
+              title="Community Room"
+              subtitle="Post banners, pin and delete messages, or mute members directly in the room"
+              right={
+                <Link href="/community" className="text-[11px] text-gold hover:underline flex items-center gap-1">
+                  Open room <ExternalLink className="w-3 h-3" />
+                </Link>
+              }
+            />
+            <div className="flex items-start gap-2 bg-canvas border border-border rounded-lg px-3 py-2.5">
+              <Pin className="w-3.5 h-3.5 text-gold shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] text-text-subtle m-0 mb-0.5">Pinned message</p>
+                {pinned ? (
+                  <p className="text-[11px] text-text m-0 truncate">
+                    <span className="text-gold">{pinned.name}: </span>
+                    {pinned.text ?? (pinned.kind === "image" ? "📷 Photo" : "🎬 Video")}
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-text-subtle m-0">Nothing pinned — use the ⋯ menu on a room message.</p>
+                )}
+              </div>
+              {pinned && (
+                <button onClick={() => setPinnedMessage(null)} className="text-[10px] text-text-muted hover:text-red shrink-0">
+                  Unpin
+                </button>
+              )}
+            </div>
+          </Card>
+
+          <Card>
+            <CardHeader title="Muted members" subtitle={`${mutedUsers.length} muted — they can read the room but not post`} />
+            {mutedUsers.length === 0 ? (
+              <p className="text-[11px] text-text-subtle m-0">No one is muted.</p>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {mutedUsers.map((m) => (
+                  <div key={m.uid} className="flex items-center gap-2 bg-canvas border border-border rounded-lg px-3 py-2">
+                    <VolumeX className="w-3.5 h-3.5 text-red shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] text-text m-0 truncate">{m.name}</p>
+                      <p className="text-[9px] text-text-subtle m-0">muted {formatRelative(m.at)} ago</p>
+                    </div>
+                    <button onClick={() => unmuteUser(m.uid)} className="text-[10px] px-2 py-1 rounded-md bg-card-elev text-text hover:bg-gold/15 hover:text-gold transition">
+                      Unmute
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {tab === "people" && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+          <ModeratorsCard enabled={adminReady} demoMode={demoMode} />
+        </div>
+      )}
+
+      {tab === "welcome" && <WelcomeCard uid={user.uid} />}
+
+      {tab === "posting" && (
+        <>
+          <PostingRulesCard uid={user.uid} />
+          <UploadLimitsCard uid={user.uid} />
+        </>
+      )}
+
+      {tab === "active" && <ActiveNowCard enabled={adminReady} />}
 
       {/* Chat storage — history is kept forever, so keep an eye on growth */}
+      {tab === "storage" && (
       <Card className="mb-3">
         <CardHeader
           title="Chat storage"
@@ -392,71 +497,7 @@ export default function AdminCommunityPage() {
           );
         })()}
       </Card>
-
-      <WelcomeCard uid={user.uid} />
-
-      <PostingRulesCard uid={user.uid} />
-
-      <UploadLimitsCard uid={user.uid} />
-
-      <ActiveNowCard enabled={adminReady} />
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <ModeratorsCard enabled={adminReady} demoMode={demoMode} />
-
-        <Card>
-          <CardHeader
-            title="Community Room"
-            subtitle="Post banners, pin and delete messages, or mute members directly in the room"
-            right={
-              <Link href="/community" className="text-[11px] text-gold hover:underline flex items-center gap-1">
-                Open room <ExternalLink className="w-3 h-3" />
-              </Link>
-            }
-          />
-          <div className="flex items-start gap-2 bg-canvas border border-border rounded-lg px-3 py-2.5">
-            <Pin className="w-3.5 h-3.5 text-gold shrink-0 mt-0.5" />
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] text-text-subtle m-0 mb-0.5">Pinned message</p>
-              {pinned ? (
-                <p className="text-[11px] text-text m-0 truncate">
-                  <span className="text-gold">{pinned.name}: </span>
-                  {pinned.text ?? (pinned.kind === "image" ? "📷 Photo" : "🎬 Video")}
-                </p>
-              ) : (
-                <p className="text-[11px] text-text-subtle m-0">Nothing pinned — use the ⋯ menu on a room message.</p>
-              )}
-            </div>
-            {pinned && (
-              <button onClick={() => setPinnedMessage(null)} className="text-[10px] text-text-muted hover:text-red shrink-0">
-                Unpin
-              </button>
-            )}
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader title="Muted members" subtitle={`${mutedUsers.length} muted — they can read the room but not post`} />
-          {mutedUsers.length === 0 ? (
-            <p className="text-[11px] text-text-subtle m-0">No one is muted.</p>
-          ) : (
-            <div className="flex flex-col gap-1">
-              {mutedUsers.map((m) => (
-                <div key={m.uid} className="flex items-center gap-2 bg-canvas border border-border rounded-lg px-3 py-2">
-                  <VolumeX className="w-3.5 h-3.5 text-red shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] text-text m-0 truncate">{m.name}</p>
-                    <p className="text-[9px] text-text-subtle m-0">muted {formatRelative(m.at)} ago</p>
-                  </div>
-                  <button onClick={() => unmuteUser(m.uid)} className="text-[10px] px-2 py-1 rounded-md bg-card-elev text-text hover:bg-gold/15 hover:text-gold transition">
-                    Unmute
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
-      </div>
+      )}
     </div>
   );
 }

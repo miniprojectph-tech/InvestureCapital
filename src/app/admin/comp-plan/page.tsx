@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Save, Loader2, Plus, X, Play, Zap, Search, CheckCircle2, AlertCircle, RotateCcw } from "lucide-react";
+import { Save, Loader2, Plus, X, Play, Zap, Search, CheckCircle2, AlertCircle, RotateCcw, Coins, Users, Calculator } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,9 @@ import {
   type MaintenanceResult,
 } from "@/lib/compplan";
 
+type Tab = "income" | "referral" | "preview" | "tools";
+const TAB_IDS: Tab[] = ["income", "referral", "preview", "tools"];
+
 export default function AdminCompPlanPage() {
   const { user, demoMode } = useAuth();
   const { settings, loading } = useSettings();
@@ -31,6 +35,7 @@ export default function AdminCompPlanPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [tab, setTab] = useHashTab<Tab>(TAB_IDS, "income");
 
   // Load once settings arrive; don't clobber unsaved edits on later snapshots.
   useEffect(() => {
@@ -65,30 +70,37 @@ export default function AdminCompPlanPage() {
     <div>
       <TopHeader title="Compensation plan" subtitle="Every number the payout engine uses — editable live" />
 
-      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-        <p className="text-[11px] text-text-muted m-0">
-          Changes apply to <span className="text-text">new</span> placements and to commissions / bonuses paid from now on.
-          Active placements keep the rate, cycles and Locked-In Bonus they were activated with.
-        </p>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => { setCfg(DEFAULT_COMP_PLAN); setDirty(true); }}
-            className="text-[11px] px-3 py-2 rounded-lg bg-card border border-border text-text-muted hover:text-text flex items-center gap-1.5"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> Reset to defaults
-          </button>
-          <button
-            onClick={save}
-            disabled={!dirty || saving || demoMode}
-            className={cn(
-              "text-[11px] px-4 py-2 rounded-lg flex items-center gap-1.5 font-medium transition",
-              dirty && !saving ? "bg-gold text-gold-dark hover:brightness-110" : "bg-card-elev text-text-subtle cursor-not-allowed",
-            )}
-          >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save changes
-          </button>
-        </div>
-      </div>
+      <AdminTabs
+        tabs={[
+          { id: "income", label: "Income & terms", icon: Coins },
+          { id: "referral", label: "Referral & bonuses", icon: Users, hint: `${cfg.referralLevels.reduce((s, v) => s + v, 0)}%` },
+          { id: "preview", label: "Preview", icon: Calculator },
+          { id: "tools", label: "Test tools", icon: Zap },
+        ]}
+        value={tab}
+        onChange={setTab}
+        right={
+          <>
+            {dirty && !saving && <span className="text-[10px] px-2 py-1 rounded-full bg-[#F5C66B]/10 border border-[#F5C66B]/30 text-[#F5C66B]">Unsaved changes</span>}
+            <button
+              onClick={() => { setCfg(DEFAULT_COMP_PLAN); setDirty(true); }}
+              className="text-[11px] px-3 py-2 rounded-lg bg-card border border-border text-text-muted hover:text-text flex items-center gap-1.5"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Reset to defaults
+            </button>
+            <button
+              onClick={save}
+              disabled={!dirty || saving || demoMode}
+              className={cn(
+                "text-[11px] px-4 py-2 rounded-lg flex items-center gap-1.5 font-medium transition",
+                dirty && !saving ? "bg-gold text-gold-dark hover:brightness-110" : "bg-card-elev text-text-subtle cursor-not-allowed",
+              )}
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save changes
+            </button>
+          </>
+        }
+      />
 
       {msg && (
         <p className={cn("text-[11px] m-0 mb-3 flex items-center gap-1.5", msg.ok ? "text-green" : "text-red")}>
@@ -96,6 +108,14 @@ export default function AdminCompPlanPage() {
         </p>
       )}
 
+      {(tab === "income" || tab === "referral") && (
+        <p className="text-[11px] text-text-muted m-0 mb-3">
+          Changes apply to <span className="text-text">new</span> placements and to commissions / bonuses paid from now on.
+          Active placements keep the rate, cycles and Locked-In Bonus they were activated with.
+        </p>
+      )}
+
+      {tab === "income" && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* ===== Income cycle ===== */}
         <Card>
@@ -140,7 +160,11 @@ export default function AdminCompPlanPage() {
             ))}
           </div>
         </Card>
+      </div>
+      )}
 
+      {tab === "referral" && (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* ===== Referral levels ===== */}
         <Card>
           <CardHeader
@@ -222,9 +246,11 @@ export default function AdminCompPlanPage() {
           </p>
         </Card>
       </div>
+      )}
 
       {/* ===== Preview ===== */}
-      <Card className="mt-3">
+      {tab === "preview" && (
+      <Card>
         <CardHeader title={`What a ₱${unit.toLocaleString()} placement pays`} subtitle="Live preview of the numbers above" />
         <ResponsiveTable>
           <table className="w-full text-[11px]">
@@ -264,8 +290,9 @@ export default function AdminCompPlanPage() {
           </table>
         </ResponsiveTable>
       </Card>
+      )}
 
-      <TestTools cfg={mergeCompPlan(settings.compPlan)} demoMode={demoMode} />
+      {tab === "tools" && <TestTools cfg={mergeCompPlan(settings.compPlan)} demoMode={demoMode} />}
     </div>
   );
 }
@@ -330,7 +357,7 @@ function TestTools({ cfg, demoMode }: { cfg: CompPlanConfig; demoMode: boolean }
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
       <Card>
         <CardHeader title="Test: grant a placement" subtitle="Activates instantly (no payment proof) and pays upline commissions — for testing" right={<Zap className="w-4 h-4 text-gold" />} />
         <div className="relative mb-2">

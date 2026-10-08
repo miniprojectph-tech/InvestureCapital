@@ -11,8 +11,10 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  Gift,
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
 import { cn, formatPHP } from "@/lib/utils";
@@ -34,7 +36,8 @@ import {
   type RedemptionStatus,
 } from "@/lib/rewards";
 
-const statusTabs: RedemptionStatus[] = ["pending", "fulfilled", "rejected"];
+type View = "catalog" | RedemptionStatus;
+const VIEWS: View[] = ["catalog", "pending", "fulfilled", "rejected"];
 
 export default function AdminRewardsPage() {
   const { user } = useAuth();
@@ -43,7 +46,8 @@ export default function AdminRewardsPage() {
 
   const [editing, setEditing] = useState<Reward | null>(null);
   const [isNew, setIsNew] = useState(false);
-  const [tab, setTab] = useState<RedemptionStatus>("pending");
+  const [view, setView] = useHashTab<View>(VIEWS, "catalog");
+  const tab: RedemptionStatus = view === "catalog" ? "pending" : view;
   const [busyId, setBusyId] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -113,14 +117,20 @@ export default function AdminRewardsPage() {
         </div>
       )}
 
-      {/* Catalog */}
-      <Card className="mb-3">
-        <CardHeader
-          title={`Reward catalog (${rewards.length})`}
-          right={
-            <div className="flex gap-2">
+      <AdminTabs
+        tabs={[
+          { id: "catalog", label: "Catalog", icon: Gift, count: rewards.length },
+          { id: "pending", label: "Pending", icon: Clock, count: counts.pending, attention: counts.pending > 0 },
+          { id: "fulfilled", label: "Fulfilled", icon: Check, count: counts.fulfilled },
+          { id: "rejected", label: "Rejected", icon: X, count: counts.rejected },
+        ]}
+        value={view}
+        onChange={setView}
+        right={
+          view === "catalog" ? (
+            <>
               {rewards.length === 0 && (
-                <button onClick={seed} className="text-[11px] px-2.5 py-1 bg-vault/15 text-vault rounded-md flex items-center gap-1">
+                <button onClick={seed} className="text-[11px] px-2.5 py-1.5 bg-vault/15 text-vault rounded-md flex items-center gap-1">
                   <Sparkles className="w-3 h-3" /> Seed
                 </button>
               )}
@@ -129,13 +139,19 @@ export default function AdminRewardsPage() {
                   setEditing({ id: "", name: "", type: "wallet", cost: 1000, walletAmount: 0, active: true });
                   setIsNew(true);
                 }}
-                className="text-[11px] px-2.5 py-1 bg-gold/15 text-gold rounded-md flex items-center gap-1"
+                className="text-[11px] px-3 py-1.5 bg-gold text-gold-dark rounded-lg font-medium flex items-center gap-1"
               >
                 <Plus className="w-3 h-3" /> Add reward
               </button>
-            </div>
-          }
-        />
+            </>
+          ) : undefined
+        }
+      />
+
+      {/* Catalog */}
+      {view === "catalog" && (
+      <Card className="mb-3">
+        <CardHeader title={`Reward catalog (${rewards.length})`} subtitle="Tap a reward to edit it" />
         {rewards.length === 0 ? (
           <p className="text-[11px] text-text-subtle text-center py-6 m-0">No rewards yet.</p>
         ) : (
@@ -167,24 +183,10 @@ export default function AdminRewardsPage() {
           </div>
         )}
       </Card>
+      )}
 
       {/* Redemption queue */}
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        {statusTabs.map((k) => (
-          <button
-            key={k}
-            onClick={() => setTab(k)}
-            className={cn(
-              "bg-card border rounded-xl p-3 text-left transition capitalize",
-              tab === k ? "border-border-vault" : "border-border hover:border-border-strong"
-            )}
-          >
-            <p className="text-[18px] font-mono font-medium m-0">{counts[k]}</p>
-            <p className="text-[11px] m-0 text-text-muted">{k}</p>
-          </button>
-        ))}
-      </div>
-
+      {view !== "catalog" && (
       <Card>
         <CardHeader title={`${tab} redemptions`} />
         {filtered.length === 0 ? (
@@ -231,6 +233,7 @@ export default function AdminRewardsPage() {
           ))
         )}
       </Card>
+      )}
 
       <RewardEditor
         reward={editing}

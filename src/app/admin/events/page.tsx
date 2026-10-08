@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
-import { AlertCircle, CheckCircle2, Loader2, Plus, Sparkles, Users, Upload, Eye, Power, X, Dices, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, Plus, Sparkles, Users, Upload, Eye, Power, X, Dices, Trash2, ChevronLeft, ChevronRight, CalendarDays, Pencil } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
@@ -38,6 +39,8 @@ import {
 } from "@/lib/events";
 
 type Draft = Omit<InvestureEvent, "id" | "createdAt" | "updatedAt" | "status"> & { id?: string };
+type Tab = "events" | "details" | "editor";
+const TAB_IDS: Tab[] = ["events", "details", "editor"];
 
 const SPIN_PAGE = 10;      // spins shown per page in Wheel activity
 const SPIN_LOG_CAP = 200;  // most recent spins kept in memory (20 pages)
@@ -90,11 +93,16 @@ export default function AdminEventsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [tab, setTab] = useHashTab<Tab>(TAB_IDS, "events");
 
   useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(id);
   }, []);
+
+  // Opening a draft jumps to the editor; closing it (saved or cancelled) goes back to the list.
+  const openDraft = (d: Draft) => { setDraft(d); setTab("editor"); };
+  const closeDraft = () => { setDraft(null); setTab("events"); };
 
   const live = events.filter((e) => e.status === "live");
   const selectedEvent = events.find((e) => e.id === selected) ?? live[0] ?? null;
@@ -133,15 +141,15 @@ export default function AdminEventsPage() {
       const { id: draftId, ...body } = draft;
       const r = await adminSaveEvent(body, draftId);
       if (draftIsLive) {
-        setDraft(null);
+        closeDraft();
         return `${draft.name} updated — members see the new settings on their next spin.`;
       }
       if (publish) {
         const p = await adminSetEventStatus(r.id, "live");
-        setDraft(null);
+        closeDraft();
         return `${draft.name} is live — ${p.notified ?? 0} member${p.notified === 1 ? "" : "s"} notified.`;
       }
-      setDraft(null);
+      closeDraft();
       return `${draft.name} saved as a draft.`;
     });
   }
@@ -172,25 +180,46 @@ export default function AdminEventsPage() {
     <div>
       <TopHeader title="Events" subtitle="Limited-slot placement boosts and time-bound referral multipliers" />
 
+      <AdminTabs
+        tabs={[
+          { id: "events", label: "All events", icon: CalendarDays, count: events.length, hint: live.length ? `${live.length} live` : null, hintTone: "ok" },
+          { id: "details", label: selectedEvent ? "Details" : "Details", icon: Eye, hint: selectedEvent ? selectedEvent.name.slice(0, 18) : null },
+          { id: "editor", label: "Editor", icon: Pencil, hint: draft ? (draft.id ? "editing" : "new") : null, hintTone: "warn" },
+        ]}
+        value={tab}
+        onChange={setTab}
+        right={
+          <>
+            <button onClick={() => openDraft(blankDraft("slot"))} className="px-3 py-1.5 bg-gold text-gold-dark rounded-lg text-[11px] font-medium flex items-center gap-1.5 hover:brightness-110">
+              <Plus className="w-3.5 h-3.5" /> Slot event
+            </button>
+            <button onClick={() => openDraft(blankDraft("referral"))} className="px-3 py-1.5 border border-border-strong rounded-lg text-[11px] text-text flex items-center gap-1.5 hover:bg-card-elev">
+              <Plus className="w-3.5 h-3.5" /> Referral event
+            </button>
+            <button onClick={() => openDraft(blankDraft("spin"))} className="px-3 py-1.5 bg-[#F5C66B] text-[#2A1D05] rounded-lg text-[11px] font-medium flex items-center gap-1.5 hover:brightness-110">
+              <Dices className="w-3.5 h-3.5" /> Spin event
+            </button>
+          </>
+        }
+      />
+
       {msg && !draft && (
         <p className={cn("text-[11px] m-0 mb-3 flex items-start gap-1.5", msg.ok ? "text-green" : "text-red")}>
           {msg.ok ? <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" /> : <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />} {msg.text}
         </p>
       )}
 
-      <div className="flex flex-wrap gap-2 mb-3">
-        <button onClick={() => setDraft(blankDraft("slot"))} className="px-3.5 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center gap-1.5 hover:brightness-110">
-          <Plus className="w-3.5 h-3.5" /> New slot event
-        </button>
-        <button onClick={() => setDraft(blankDraft("referral"))} className="px-3.5 py-2 border border-border-strong rounded-lg text-[12px] text-text flex items-center gap-1.5 hover:bg-card-elev">
-          <Plus className="w-3.5 h-3.5" /> New referral event
-        </button>
-        <button onClick={() => setDraft(blankDraft("spin"))} className="px-3.5 py-2 bg-[#F5C66B] text-[#2A1D05] rounded-lg text-[12px] font-medium flex items-center gap-1.5 hover:brightness-110">
-          <Dices className="w-3.5 h-3.5" /> New spin event
-        </button>
-      </div>
+      {tab === "details" && !selectedEvent && (
+        <Card>
+          <div className="py-10 text-center">
+            <Sparkles className="w-6 h-6 text-text-subtle mx-auto mb-2" />
+            <p className="text-[12px] text-text m-0">No event selected.</p>
+            <p className="text-[10px] text-text-subtle m-0 mt-1">Pick one under All events to see its slots, members and activity here.</p>
+          </div>
+        </Card>
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.25fr_1fr] gap-3">
+      {tab === "details" && selectedEvent && (
         <div className="flex flex-col gap-3 min-w-0">
           {/* Live / selected event */}
           {selectedEvent && (
@@ -217,7 +246,7 @@ export default function AdminEventsPage() {
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   <Tool icon={Eye} label="Preview pop-up" onClick={() => setPreview(selectedEvent)} />
-                  {selectedEvent.status !== "ended" && <Tool icon={Upload} label="Edit" onClick={() => setDraft({ ...selectedEvent })} />}
+                  {selectedEvent.status !== "ended" && <Tool icon={Upload} label="Edit" onClick={() => openDraft({ ...selectedEvent })} />}
                   {selectedEvent.status === "draft" && (
                     <Tool icon={Power} label="Publish" busy={busy === `pub-${selectedEvent.id}`} onClick={() => run(`pub-${selectedEvent.id}`, async () => { const r = await adminSetEventStatus(selectedEvent.id, "live"); return `${selectedEvent.name} is live — ${r.notified ?? 0} members notified.`; })} />
                   )}
@@ -313,47 +342,51 @@ export default function AdminEventsPage() {
               )}
             </Card>
           )}
-
-          {/* All events */}
-          <Card>
-            <CardHeader title={`All events (${events.length})`} subtitle="Tap one to see its details above" />
-            {loading ? (
-              <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 animate-spin text-text-subtle" /></div>
-            ) : events.length === 0 ? (
-              <p className="text-[11px] text-text-subtle text-center py-6 m-0">No events yet. Create a slot event or a referral event above.</p>
-            ) : (
-              <div className="flex flex-col gap-1.5">
-                {events.map((e) => (
-                  <button
-                    key={e.id}
-                    onClick={() => setSelected(e.id)}
-                    className={cn("flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition", selectedEvent?.id === e.id ? "border-gold/40 bg-gold/5" : "border-border bg-canvas hover:border-border-strong")}
-                  >
-                    <span className={cn("w-2 h-2 rounded-full shrink-0", e.status === "live" ? (e.kind === "slot" ? "bg-gold" : e.kind === "spin" ? "bg-[#F5C66B]" : "bg-vault") : e.status === "draft" ? "bg-blue" : "bg-text-subtle")} />
-                    <span className="flex-1 min-w-0 text-[12px] truncate">
-                      {e.name} <span className="text-text-subtle">· {e.kind === "slot" && e.slot ? `slot · ×${e.slot.payoutMultiplier} · ${e.slot.taken}/${e.slot.totalSlots}` : e.kind === "spin" && e.spin ? `spin · ${e.spin.spins} spins · ${e.spin.spent.toLocaleString()} GP` : "referral"}</span>
-                    </span>
-                    <StatusPill e={e} now={now} />
-                  </button>
-                ))}
-              </div>
-            )}
-          </Card>
         </div>
+      )}
 
-        {/* Form */}
-        <Card className="self-start">
+      {/* All events */}
+      {tab === "events" && (
+        <Card>
+          <CardHeader title={`All events (${events.length})`} subtitle="Tap one to open its details" />
+          {loading ? (
+            <div className="flex justify-center py-6"><Loader2 className="w-4 h-4 animate-spin text-text-subtle" /></div>
+          ) : events.length === 0 ? (
+            <p className="text-[11px] text-text-subtle text-center py-6 m-0">No events yet. Create a slot, referral or spin event with the buttons above.</p>
+          ) : (
+            <div className="flex flex-col gap-1.5">
+              {events.map((e) => (
+                <button
+                  key={e.id}
+                  onClick={() => { setSelected(e.id); setTab("details"); }}
+                  className={cn("flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition", selectedEvent?.id === e.id ? "border-gold/40 bg-gold/5" : "border-border bg-canvas hover:border-border-strong")}
+                >
+                  <span className={cn("w-2 h-2 rounded-full shrink-0", e.status === "live" ? (e.kind === "slot" ? "bg-gold" : e.kind === "spin" ? "bg-[#F5C66B]" : "bg-vault") : e.status === "draft" ? "bg-blue" : "bg-text-subtle")} />
+                  <span className="flex-1 min-w-0 text-[12px] truncate">
+                    {e.name} <span className="text-text-subtle">· {e.kind === "slot" && e.slot ? `slot · ×${e.slot.payoutMultiplier} · ${e.slot.taken}/${e.slot.totalSlots}` : e.kind === "spin" && e.spin ? `spin · ${e.spin.spins} spins · ${e.spin.spent.toLocaleString()} GP` : "referral"}</span>
+                  </span>
+                  <StatusPill e={e} now={now} />
+                </button>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Form */}
+      {tab === "editor" && (
+        <Card className="max-w-3xl">
           {draft ? (
-            <EventForm draft={draft} setDraft={setDraft} cfg={cfg} busy={busy} isLive={draftIsLive} msg={msg} onSave={save} onUploadBanner={uploadBanner} onCancel={() => { setDraft(null); setMsg(null); }} onPreview={() => previewEvent && setPreview(previewEvent)} />
+            <EventForm draft={draft} setDraft={setDraft} cfg={cfg} busy={busy} isLive={draftIsLive} msg={msg} onSave={save} onUploadBanner={uploadBanner} onCancel={() => { closeDraft(); setMsg(null); }} onPreview={() => previewEvent && setPreview(previewEvent)} />
           ) : (
             <div className="py-10 text-center">
               <Sparkles className="w-6 h-6 text-text-subtle mx-auto mb-2" />
-              <p className="text-[12px] text-text m-0">Create an event, or pick one on the left and press Edit.</p>
+              <p className="text-[12px] text-text m-0">Create an event with the buttons above, or open one and press Edit.</p>
               <p className="text-[10px] text-text-subtle m-0 mt-1">Slot events sell N slots at a fixed price with a payout multiplier. Referral events multiply commissions per level until an end date.</p>
             </div>
           )}
         </Card>
-      </div>
+      )}
 
       <Modal open={!!preview} onClose={() => setPreview(null)} title="Pop-up preview" maxWidth="max-w-md">
         {preview && (

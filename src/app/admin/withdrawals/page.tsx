@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Check, X, Clock, AlertCircle, Loader2, Send, CalendarClock } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { Card, CardHeader } from "@/components/Card";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -22,11 +23,12 @@ const statusMeta = {
   approved: { label: "Approved", icon: Check, color: "text-green", bg: "bg-green/15" },
   rejected: { label: "Rejected", icon: X, color: "text-red", bg: "bg-red/15" },
 };
+const STATUS_TABS: WithdrawalStatus[] = ["pending", "approved", "rejected"];
 
 export default function AdminWithdrawalsPage() {
   const { user } = useAuth();
   const { rows, loading } = useWithdrawals("all");
-  const [tab, setTab] = useState<WithdrawalStatus>("pending");
+  const [tab, setTab] = useHashTab<WithdrawalStatus>(STATUS_TABS, "pending");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -94,37 +96,11 @@ export default function AdminWithdrawalsPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        {(["pending", "approved", "rejected"] as WithdrawalStatus[]).map((k) => {
-          const meta = statusMeta[k];
-          const Icon = meta.icon;
-          return (
-            <button
-              key={k}
-              onClick={() => setTab(k)}
-              className={cn(
-                "bg-card border rounded-xl p-3 text-left transition relative overflow-hidden",
-                tab === k ? "border-border-vault" : "border-border hover:border-border-strong"
-              )}
-            >
-              <span
-                aria-hidden
-                className={cn(
-                  "absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-border-vault to-transparent",
-                  tab === k ? "opacity-90" : "opacity-30"
-                )}
-              />
-              <div className="flex items-center justify-between mb-1.5">
-                <span className={cn("w-7 h-7 rounded-md flex items-center justify-center", meta.bg)}>
-                  <Icon className={cn("w-3.5 h-3.5", meta.color)} />
-                </span>
-                <span className={cn("text-[18px] font-mono font-medium", meta.color)}>{counts[k]}</span>
-              </div>
-              <p className="text-[11px] m-0 text-text">{meta.label}</p>
-            </button>
-          );
-        })}
-      </div>
+      <AdminTabs
+        tabs={STATUS_TABS.map((k) => ({ id: k, label: statusMeta[k].label, icon: statusMeta[k].icon, count: counts[k], attention: k === "pending" && dueNow.length > 0 }))}
+        value={tab}
+        onChange={setTab}
+      />
 
       {/* Release schedule + what is due today */}
       <div className={cn("mb-3 flex flex-wrap items-center gap-3 px-3 py-2.5 rounded-lg border", dueNow.length ? "bg-gold/[0.06] border-gold/30" : "bg-card border-border")}>

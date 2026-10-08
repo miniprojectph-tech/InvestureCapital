@@ -5,6 +5,7 @@ import { Check, X, Clock, AlertCircle, Loader2, Coins, Receipt, ExternalLink, Im
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -22,6 +23,7 @@ const statusMeta = {
   approved: { label: "Approved", icon: Check, color: "text-green", bg: "bg-green/15" },
   rejected: { label: "Rejected", icon: X, color: "text-red", bg: "bg-red/15" },
 };
+const STATUS_TABS: PlanRequestStatus[] = ["pending", "approved", "rejected"];
 
 function describe(r: PlanRequest) {
   return r.termMonths ? `${r.termMonths}-month placement` : (r.planName ?? "legacy plan");
@@ -30,7 +32,7 @@ function describe(r: PlanRequest) {
 export default function AdminPlanRequestsPage() {
   const { user } = useAuth();
   const { rows, loading } = usePlanRequests("all");
-  const [tab, setTab] = useState<PlanRequestStatus>("pending");
+  const [tab, setTab] = useHashTab<PlanRequestStatus>(STATUS_TABS, "pending");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -106,34 +108,17 @@ export default function AdminPlanRequestsPage() {
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <div className="grid grid-cols-3 gap-2 flex-1 min-w-[300px]">
-          {(["pending", "approved", "rejected"] as PlanRequestStatus[]).map((k) => {
-            const meta = statusMeta[k];
-            const Icon = meta.icon;
-            return (
-              <button
-                key={k}
-                onClick={() => setTab(k)}
-                className={cn("bg-card border rounded-xl p-3 text-left transition relative overflow-hidden", tab === k ? "border-border-vault" : "border-border hover:border-border-strong")}
-              >
-                <span aria-hidden className={cn("absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-border-vault to-transparent", tab === k ? "opacity-90" : "opacity-30")} />
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className={cn("w-7 h-7 rounded-md flex items-center justify-center", meta.bg)}>
-                    <Icon className={cn("w-3.5 h-3.5", meta.color)} />
-                  </span>
-                  <span className={cn("text-[18px] font-mono font-medium", meta.color)}>{counts[k]}</span>
-                </div>
-                <p className="text-[11px] m-0 text-text">{meta.label}</p>
-              </button>
-            );
-          })}
-        </div>
-        <button onClick={() => setManualOpen(true)} className="flex items-center gap-1.5 px-3.5 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium hover:brightness-110 transition shrink-0">
-          <UserPlus className="w-3.5 h-3.5" />
-          Manual activate
-        </button>
-      </div>
+      <AdminTabs
+        tabs={STATUS_TABS.map((k) => ({ id: k, label: statusMeta[k].label, icon: statusMeta[k].icon, count: counts[k], attention: k === "pending" && counts.pending > 0 }))}
+        value={tab}
+        onChange={setTab}
+        right={
+          <button onClick={() => setManualOpen(true)} className="flex items-center gap-1.5 px-3 py-1.5 bg-gold text-gold-dark rounded-lg text-[11px] font-medium hover:brightness-110 transition shrink-0">
+            <UserPlus className="w-3.5 h-3.5" />
+            Manual activate
+          </button>
+        }
+      />
 
       <Card>
         <CardHeader

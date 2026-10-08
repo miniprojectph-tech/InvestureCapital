@@ -15,6 +15,7 @@ import {
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -31,11 +32,12 @@ const statusMeta = {
   approved: { label: "Approved", icon: Check, color: "text-green", bg: "bg-green/15" },
   rejected: { label: "Rejected", icon: X, color: "text-red", bg: "bg-red/15" },
 };
+const STATUS_TABS: TopUpStatus[] = ["pending", "approved", "rejected"];
 
 export default function AdminTopUpsPage() {
   const { user } = useAuth();
   const { rows, loading } = useTopUps("all");
-  const [tab, setTab] = useState<TopUpStatus>("pending");
+  const [tab, setTab] = useHashTab<TopUpStatus>(STATUS_TABS, "pending");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [viewReceipt, setViewReceipt] = useState<TopUpRequest | null>(null);
@@ -93,37 +95,11 @@ export default function AdminTopUpsPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        {(["pending", "approved", "rejected"] as TopUpStatus[]).map((k) => {
-          const meta = statusMeta[k];
-          const Icon = meta.icon;
-          return (
-            <button
-              key={k}
-              onClick={() => setTab(k)}
-              className={cn(
-                "bg-card border rounded-xl p-3 text-left transition relative overflow-hidden",
-                tab === k ? "border-border-vault" : "border-border hover:border-border-strong"
-              )}
-            >
-              <span
-                aria-hidden
-                className={cn(
-                  "absolute inset-x-3 top-0 h-px bg-gradient-to-r from-transparent via-border-vault to-transparent",
-                  tab === k ? "opacity-90" : "opacity-30"
-                )}
-              />
-              <div className="flex items-center justify-between mb-1.5">
-                <span className={cn("w-7 h-7 rounded-md flex items-center justify-center", meta.bg)}>
-                  <Icon className={cn("w-3.5 h-3.5", meta.color)} />
-                </span>
-                <span className={cn("text-[18px] font-mono font-medium", meta.color)}>{counts[k]}</span>
-              </div>
-              <p className="text-[11px] m-0 text-text">{meta.label}</p>
-            </button>
-          );
-        })}
-      </div>
+      <AdminTabs
+        tabs={STATUS_TABS.map((k) => ({ id: k, label: statusMeta[k].label, icon: statusMeta[k].icon, count: counts[k], attention: k === "pending" && counts.pending > 0 }))}
+        value={tab}
+        onChange={setTab}
+      />
 
       <Card>
         <CardHeader

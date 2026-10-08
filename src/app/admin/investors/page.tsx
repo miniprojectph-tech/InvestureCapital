@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye } from "lucide-react";
+import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye, Users, Gift, Wallet, Layers, Gamepad2, type LucideIcon } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { InvestorPlansPanel } from "@/components/admin/InvestorPlansPanel";
@@ -84,13 +85,15 @@ const TAB_LABELS: Record<ChipKey, string> = {
   joined: "Joined",
   games: "Games",
 };
+const TAB_ORDER: ChipKey[] = ["joined", "vault", "wallet", "plans", "games"];
+const TAB_ICONS: Record<ChipKey, LucideIcon> = { joined: Users, vault: Gift, wallet: Wallet, plans: Layers, games: Gamepad2 };
 
 export default function AdminInvestorsPage() {
   const { user, demoMode } = useAuth();
   const [rows, setRows] = useState<InvestorRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [sortKey, setSortKey] = useState<ChipKey>("joined");
+  const [sortKey, setSortKey] = useHashTab<ChipKey>(TAB_ORDER, "joined");
 
   const { config } = useGameConfig();
   const { settings: gamesSettings } = useGamesSettings();
@@ -323,46 +326,33 @@ export default function AdminInvestorsPage() {
     <div>
       <TopHeader title="Investors" subtitle={subtitle[sortKey]} />
 
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-full flex-1 sm:flex-none sm:min-w-[260px]">
-          <Search className="w-3 h-3 text-text-subtle" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search name or email…"
-            className="bg-transparent text-[11px] outline-none flex-1 text-text placeholder:text-text-subtle"
-          />
-        </div>
-        <div className="flex items-center gap-1">
-          {(["joined", "vault", "wallet", "plans", "games"] as const).map((k) => (
+      <AdminTabs
+        tabs={TAB_ORDER.map((k) => ({ id: k, label: TAB_LABELS[k], icon: TAB_ICONS[k], count: k === "joined" ? rows.length : undefined }))}
+        value={sortKey}
+        onChange={setSortKey}
+        right={
+          <>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-full min-w-[180px] sm:min-w-[240px]">
+              <Search className="w-3 h-3 text-text-subtle" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search name or email…"
+                className="bg-transparent text-[11px] outline-none flex-1 min-w-0 text-text placeholder:text-text-subtle"
+              />
+            </div>
+            <MembersExportButton />
             <button
-              key={k}
-              onClick={() => setSortKey(k)}
-              className={cn(
-                "text-[10px] px-2.5 py-1.5 rounded-full transition",
-                sortKey === k
-                  ? k === "games"
-                    ? "bg-gold/15 text-gold font-medium"
-                    : "bg-vault/15 text-vault font-medium"
-                  : "text-text-subtle hover:text-text"
-              )}
+              onClick={exportCsv}
+              title="Exports the rows of the tab you are looking at"
+              className="text-[11px] px-3 py-1.5 bg-card border border-border rounded-full text-text-muted hover:text-text flex items-center gap-1.5"
             >
-              {TAB_LABELS[k]}
+              <Download className="w-3 h-3" /> This tab (CSV)
             </button>
-          ))}
-        </div>
-        <div className="ml-auto">
-          <MembersExportButton />
-        </div>
-        <button
-          onClick={exportCsv}
-          title="Exports the rows of the tab you are looking at"
-          className="text-[11px] px-3 py-1.5 bg-card border border-border rounded-full text-text-muted hover:text-text flex items-center gap-1.5"
-        >
-          <Download className="w-3 h-3" /> This tab (CSV)
-        </button>
-      </div>
+          </>
+        }
+      />
 
       {/* ── Games tab ── */}
       {sortKey === "games" && (

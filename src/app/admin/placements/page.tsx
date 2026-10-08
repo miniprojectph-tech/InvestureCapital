@@ -5,6 +5,7 @@ import { Loader2, Play, FastForward, RefreshCw, Search, AlertTriangle, CheckCirc
 import { TopHeader } from "@/components/TopHeader";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -21,13 +22,16 @@ import {
   peso,
 } from "@/lib/compplan";
 
+type Tab = "active" | "completed" | "reset";
+const TAB_IDS: Tab[] = ["active", "completed", "reset"];
+
 export default function AdminPlacementsPage() {
   const { user, demoMode } = useAuth();
   const { cfg } = useCompPlan();
   const now = useNow(30_000);
   const [rows, setRows] = useState<PlacementRow[] | null>(null);
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"active" | "completed">("active");
+  const [tab, setTab] = useHashTab<Tab>(TAB_IDS, "active");
   const [busy, setBusy] = useState<string | null>(null);
   const [advanceDays, setAdvanceDays] = useState(cfg.cycleDays);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -47,7 +51,7 @@ export default function AdminPlacementsPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return (rows ?? []).filter((r) => r.status === tab && (!q || r.userName.toLowerCase().includes(q) || r.userEmail.toLowerCase().includes(q) || r.id.toLowerCase().includes(q)));
+    return (rows ?? []).filter((r) => r.status === (tab === "reset" ? "active" : tab) && (!q || r.userName.toLowerCase().includes(q) || r.userEmail.toLowerCase().includes(q) || r.id.toLowerCase().includes(q)));
   }, [rows, tab, search]);
 
   const active = (rows ?? []).filter((r) => r.status === "active");
@@ -88,33 +92,42 @@ export default function AdminPlacementsPage() {
         <Kpi label="Completed" value={String((rows ?? []).filter((r) => r.status === "completed").length)} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 mb-3">
-        {(["active", "completed"] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={cn("text-[11px] px-3 py-1.5 rounded-full border transition capitalize", tab === t ? "bg-gold/15 border-border-gold text-gold font-medium" : "bg-card border-border text-text-muted hover:text-text")}>
-            {t}
-          </button>
-        ))}
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-full">
-          <Search className="w-3 h-3 text-text-subtle" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Member or Plan ID…" className="bg-transparent text-[11px] outline-none w-36 text-text placeholder:text-text-subtle" />
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          <label className="flex items-center gap-1.5 text-[10px] text-text-subtle">
-            Fast-forward by
-            <input type="number" min={1} max={400} value={advanceDays} onChange={(e) => setAdvanceDays(Math.max(1, parseInt(e.target.value) || 1))} className="w-14 bg-canvas border border-border rounded-md px-2 py-1 text-[11px] text-text outline-none focus:border-gold/40 tabular-nums" />
-            days
-          </label>
-          <button onClick={load} className="p-1.5 text-text-subtle hover:text-text" aria-label="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
-          <button
-            onClick={() => run("run", async () => { const r = await runPayoutsNow(); return `Payout run: ${r.usersScanned} scanned · ${r.payouts} payouts credited · ${r.plansCompleted} completed`; })}
-            disabled={busy !== null}
-            className="text-[11px] px-3 py-1.5 rounded-lg bg-gold text-gold-dark font-medium flex items-center gap-1.5 disabled:opacity-50"
-          >
-            {busy === "run" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} Run payouts now
-          </button>
-        </div>
-      </div>
+      <AdminTabs
+        tabs={[
+          { id: "active", label: "Active", icon: Clock, count: active.length },
+          { id: "completed", label: "Completed", icon: CheckCircle2, count: (rows ?? []).filter((r) => r.status === "completed").length },
+          { id: "reset", label: "Reset test economy", icon: AlertTriangle },
+        ]}
+        value={tab}
+        onChange={setTab}
+        right={
+          tab !== "reset" ? (
+            <>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-full">
+                <Search className="w-3 h-3 text-text-subtle" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Member or Plan ID…" className="bg-transparent text-[11px] outline-none w-36 text-text placeholder:text-text-subtle" />
+              </div>
+              {tab === "active" && (
+                <label className="flex items-center gap-1.5 text-[10px] text-text-subtle">
+                  Fast-forward by
+                  <input type="number" min={1} max={400} value={advanceDays} onChange={(e) => setAdvanceDays(Math.max(1, parseInt(e.target.value) || 1))} className="w-14 bg-canvas border border-border rounded-md px-2 py-1 text-[11px] text-text outline-none focus:border-gold/40 tabular-nums" />
+                  days
+                </label>
+              )}
+              <button onClick={load} className="p-1.5 text-text-subtle hover:text-text" aria-label="Refresh"><RefreshCw className="w-3.5 h-3.5" /></button>
+              <button
+                onClick={() => run("run", async () => { const r = await runPayoutsNow(); return `Payout run: ${r.usersScanned} scanned · ${r.payouts} payouts credited · ${r.plansCompleted} completed`; })}
+                disabled={busy !== null}
+                className="text-[11px] px-3 py-1.5 rounded-lg bg-gold text-gold-dark font-medium flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {busy === "run" ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />} Run payouts now
+              </button>
+            </>
+          ) : undefined
+        }
+      />
 
+      {tab !== "reset" && (
       <Card className="mb-3">
         <CardHeader title={tab === "active" ? "Running placements" : "Completed placements"} subtitle={tab === "active" ? `Fast-forward pushes a placement's clock ahead and runs its payouts immediately — its start date (and history dates) are untouched. More tools in Investors › Plans.` : "Capital and any Locked-In Bonus were paid with the final payout"} />
         {rows === null ? (
@@ -181,8 +194,9 @@ export default function AdminPlacementsPage() {
           </ResponsiveTable>
         )}
       </Card>
+      )}
 
-      <DangerZone onDone={load} disabled={demoMode || !user?.isAdmin} />
+      {tab === "reset" && <DangerZone onDone={load} disabled={demoMode || !user?.isAdmin} />}
     </div>
   );
 }

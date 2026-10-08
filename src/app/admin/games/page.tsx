@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, Save, Sparkles, AlertCircle, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Loader2, Plus, Trash2, Save, Sparkles, AlertCircle, CheckCircle2, AlertTriangle, Sliders, Coins, Image as ImageIcon, Fish as FishIcon, Users, type LucideIcon } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
 import { cn } from "@/lib/utils";
@@ -34,13 +35,14 @@ import {
 import { PlayerPointsPanel } from "@/components/admin/PlayerPointsPanel";
 
 type SettingsTab = "access" | "reef" | "assets" | "fish" | "players";
-const SETTINGS_TABS: { key: SettingsTab; label: string }[] = [
-  { key: "access", label: "Access & general" },
-  { key: "reef", label: "Reef economy" },
-  { key: "assets", label: "Assets" },
-  { key: "fish", label: "Fish" },
-  { key: "players", label: "Players & points" },
+const SETTINGS_TABS: { key: SettingsTab; label: string; icon: LucideIcon }[] = [
+  { key: "access", label: "Access & general", icon: Sliders },
+  { key: "reef", label: "Reef economy", icon: Coins },
+  { key: "assets", label: "Assets", icon: ImageIcon },
+  { key: "fish", label: "Fish", icon: FishIcon },
+  { key: "players", label: "Players & points", icon: Users },
 ];
+const SETTINGS_TAB_IDS = SETTINGS_TABS.map((t) => t.key);
 
 function assetKind(url?: string): "video" | "audio" | "image" {
   if (!url) return "image";
@@ -205,7 +207,7 @@ export default function AdminGamesPage() {
   // Fish editor
   const [editing, setEditing] = useState<Fish | null>(null);
   const [isNew, setIsNew] = useState(false);
-  const [tab, setTab] = useState<SettingsTab>("access");
+  const [tab, setTab] = useHashTab<SettingsTab>(SETTINGS_TAB_IDS, "access");
 
   useEffect(() => {
     if (!loading && !draft) setDraft(config);
@@ -342,21 +344,7 @@ export default function AdminGamesPage() {
         </div>
       )}
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 mb-4 border-b border-border">
-        {SETTINGS_TABS.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={cn(
-              "px-3 py-2 text-[12px] font-medium -mb-px border-b-2 transition-colors",
-              tab === t.key ? "border-gold text-gold" : "border-transparent text-text-muted hover:text-text"
-            )}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <AdminTabs tabs={SETTINGS_TABS.map((t) => ({ id: t.key, label: t.label, icon: t.icon }))} value={tab} onChange={setTab} />
 
       {tab === "access" && (
         <>

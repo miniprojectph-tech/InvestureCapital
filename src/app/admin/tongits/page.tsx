@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Spade, Loader2, Ban, Flag, Trash2, Users, Upload, RotateCcw, Image as ImageIcon, AlertTriangle } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
+import { AdminTabs, useHashTab, type AdminTab } from "@/components/admin/AdminTabs";
 import { httpsCallable } from "firebase/functions";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -29,11 +30,12 @@ import {
 import { uploadGameAsset, describeStorageError } from "@/lib/storage";
 
 type Tab = "rooms" | "matches" | "reports" | "player-reports" | "ledger" | "assets";
+const TAB_IDS: Tab[] = ["rooms", "matches", "reports", "player-reports", "ledger", "assets"];
 
 export default function AdminTongitsPage() {
   const { user } = useAuth();
   const isAdmin = user?.isAdmin === true;
-  const [tab, setTab] = useState<Tab>("rooms");
+  const [tab, setTab] = useHashTab<Tab>(TAB_IDS, "rooms");
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,13 +57,13 @@ export default function AdminTongitsPage() {
     }
   }
 
-  const tabs: { id: Tab; label: string; count: number }[] = [
-    { id: "rooms", label: "Active rooms", count: rooms.rows.length },
-    { id: "matches", label: "Matches", count: matches.rows.length },
-    { id: "reports", label: "Chat reports", count: reports.rows.length },
-    { id: "player-reports", label: "Player reports", count: playerReports.rows.length },
-    { id: "ledger", label: "Point ledger", count: ledger.rows.length },
-    { id: "assets", label: "Assets", count: TONGITS_ASSET_SLOTS.length },
+  const tabs: AdminTab<Tab>[] = [
+    { id: "rooms", label: "Active rooms", icon: Spade, count: rooms.rows.length },
+    { id: "matches", label: "Matches", icon: Users, count: matches.rows.length },
+    { id: "reports", label: "Chat reports", icon: Flag, count: reports.rows.length, attention: reports.rows.length > 0 },
+    { id: "player-reports", label: "Player reports", icon: Ban, count: playerReports.rows.length, attention: playerReports.rows.length > 0 },
+    { id: "ledger", label: "Point ledger", icon: RotateCcw, count: ledger.rows.length },
+    { id: "assets", label: "Assets", icon: ImageIcon, count: TONGITS_ASSET_SLOTS.length },
   ];
 
   return (
@@ -72,20 +74,7 @@ export default function AdminTongitsPage() {
         <div className="mb-3 px-3 py-2 bg-red/10 border border-red/30 rounded-lg text-[11px] text-red">{error}</div>
       )}
 
-      <div className="flex items-center gap-1 mb-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-[11px] whitespace-nowrap transition shrink-0",
-              tab === t.id ? "bg-gold text-gold-dark font-medium" : "bg-card-elev text-text-muted hover:text-text"
-            )}
-          >
-            {t.label} · {t.count}
-          </button>
-        ))}
-      </div>
+      <AdminTabs tabs={tabs} value={tab} onChange={setTab} />
 
       {tab === "rooms" && (
         <Card className="p-0">

@@ -11,6 +11,7 @@ import { getFirebase } from "@/lib/firebase";
 import { useRealAuth, type AuthContextValue } from "@/lib/auth";
 import { ViewAsContext, type ViewAsValue } from "@/lib/viewAs";
 import { ViewOnlyGuard } from "@/components/admin/ViewOnlyGuard";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 
 /**
  * Admin › Investors › View: the member's own money screens, exactly as they
@@ -31,6 +32,7 @@ const SCREENS = [
   { key: "transactions", label: "Transactions", C: dynamic(() => import("@/app/(app)/transactions/page"), { ssr: false, loading }) },
 ] as const;
 type ScreenKey = (typeof SCREENS)[number]["key"];
+const SCREEN_KEYS = SCREENS.map((s) => s.key);
 
 const initialsOf = (name: string, email: string) =>
   (name.trim().split(/\s+/).map((p) => p[0]).slice(0, 2).join("") || email[0] || "?").toUpperCase();
@@ -40,7 +42,7 @@ export default function AdminMemberViewPage() {
   const real = useRealAuth();
   const [member, setMember] = useState<{ name: string; email: string; isAdmin: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<ScreenKey>("dashboard");
+  const [tab, setTab] = useHashTab<ScreenKey>(SCREEN_KEYS, "dashboard");
 
   useEffect(() => {
     let cancelled = false;
@@ -99,19 +101,7 @@ export default function AdminMemberViewPage() {
             </p>
           </div>
         </div>
-        <div className="flex gap-1 mt-2 overflow-x-auto" role="tablist" aria-label="Member screens">
-          {SCREENS.map((s) => (
-            <button
-              key={s.key}
-              role="tab"
-              aria-selected={tab === s.key}
-              onClick={() => setTab(s.key)}
-              className={cn("px-3 py-1.5 rounded-lg text-[11px] font-medium whitespace-nowrap transition-colors", tab === s.key ? "bg-card-elev text-text" : "text-text-muted hover:bg-card-elev/50")}
-            >
-              {s.label}
-            </button>
-          ))}
-        </div>
+        <AdminTabs sticky={false} className="mb-0 pb-0" tabs={SCREENS.map((s) => ({ id: s.key, label: s.label }))} value={tab} onChange={setTab} />
       </div>
 
       {error ? (

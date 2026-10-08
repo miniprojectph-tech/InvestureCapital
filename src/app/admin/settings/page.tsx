@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import {
@@ -56,6 +57,7 @@ const TABS: { id: Tab; label: string; icon: typeof Sliders }[] = [
   { id: "ai", label: "AI Trading", icon: Bot },
   { id: "state", label: "Platform state", icon: Power },
 ];
+const TAB_IDS = TABS.map((t) => t.id);
 
 const methodIcons = {
   gotyme: Building2,
@@ -86,10 +88,7 @@ export default function AdminSettingsPage() {
   const [error, setError] = useState<string | null>(null);
   const [uploadingQr, setUploadingQr] = useState<PaymentMethodId | null>(null);
   // One group at a time — no long page. #withdrawal-schedule (from the queue's "Edit schedule") opens that tab.
-  const [tab, setTab] = useState<Tab>("general");
-  useEffect(() => {
-    if (window.location.hash === "#withdrawal-schedule") setTab("withdrawals");
-  }, []);
+  const [tab, setTab] = useHashTab<Tab>(TAB_IDS, "general", { "withdrawal-schedule": "withdrawals" });
 
   const baseline = useMemo(
     () => ({
@@ -234,51 +233,34 @@ export default function AdminSettingsPage() {
       )}
 
       {/* Tab bar + Save, pinned so every group is one click away and Save is never off-screen */}
-      <div className="sticky top-0 z-10 -mx-1 px-1 py-2 mb-3 bg-canvas/95 backdrop-blur-sm flex flex-wrap items-center gap-2">
-        <div className="flex gap-1 p-1 rounded-xl bg-card border border-border overflow-x-auto max-w-full [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {TABS.map((t) => {
-            const Icon = t.icon;
-            const on = tab === t.id;
-            const hint =
-              t.id === "payments" ? `${(Object.values(draft.paymentMethods ?? DEFAULT_PAYMENT_METHODS).filter((m) => m.enabled).length)} of 3 on`
-              : t.id === "withdrawals" ? (schedule.enabled && schedule.releaseDays.length ? schedule.releaseDays.slice().sort().map((d) => DAY_SHORT[d]).join(" · ") : "off")
-              : t.id === "ai" ? (draft.aiTrading?.enabled ? "on" : "off")
-              : t.id === "state" ? (draft.maintenanceMode ? "maintenance" : "live")
-              : null;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setTab(t.id)}
-                className={cnInline(
-                  "flex items-center gap-1.5 px-3 py-2 rounded-lg text-[12px] whitespace-nowrap transition",
-                  on ? "bg-gold/15 text-gold font-medium" : "text-text-muted hover:text-text"
-                )}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {t.label}
-                {hint && (
-                  <span className={cnInline("text-[9px] px-1.5 py-0.5 rounded-full", on ? "bg-gold/15" : "bg-card-elev text-text-subtle", t.id === "state" && !draft.maintenanceMode && "text-green")}>
-                    {hint}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <div className="ml-auto flex items-center gap-2">
-          {saved && <span className="text-[11px] text-green">Saved</span>}
-          {dirty && !saved && <span className="text-[10px] px-2 py-1 rounded-full bg-[#F5C66B]/10 border border-[#F5C66B]/30 text-[#F5C66B]">Unsaved changes</span>}
-          <button
-            onClick={save}
-            disabled={saving || !dirty}
-            className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center gap-2 hover:brightness-110 transition disabled:opacity-50"
-          >
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            {saving ? "Saving…" : "Save changes"}
-          </button>
-        </div>
-      </div>
+      <AdminTabs
+        tabs={TABS.map((t) => ({
+          ...t,
+          hint:
+            t.id === "payments" ? `${(Object.values(draft.paymentMethods ?? DEFAULT_PAYMENT_METHODS).filter((m) => m.enabled).length)} of 3 on`
+            : t.id === "withdrawals" ? (schedule.enabled && schedule.releaseDays.length ? schedule.releaseDays.slice().sort().map((d) => DAY_SHORT[d]).join(" · ") : "off")
+            : t.id === "ai" ? (draft.aiTrading?.enabled ? "on" : "off")
+            : t.id === "state" ? (draft.maintenanceMode ? "maintenance" : "live")
+            : null,
+          hintTone: t.id === "state" ? (draft.maintenanceMode ? "warn" : "ok") : undefined,
+        }))}
+        value={tab}
+        onChange={setTab}
+        right={
+          <>
+            {saved && <span className="text-[11px] text-green">Saved</span>}
+            {dirty && !saved && <span className="text-[10px] px-2 py-1 rounded-full bg-[#F5C66B]/10 border border-[#F5C66B]/30 text-[#F5C66B]">Unsaved changes</span>}
+            <button
+              onClick={save}
+              disabled={saving || !dirty}
+              className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium flex items-center gap-2 hover:brightness-110 transition disabled:opacity-50"
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+              {saving ? "Saving…" : "Save changes"}
+            </button>
+          </>
+        }
+      />
 
       {tab === "general" && (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-3">

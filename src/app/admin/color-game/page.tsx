@@ -6,6 +6,9 @@ import { TopHeader } from "@/components/TopHeader";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { KpiCard } from "@/components/KpiCard";
+import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
+
+const TAB_IDS = ["dashboard", "rounds", "leaderboard"] as const;
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import {
@@ -50,7 +53,7 @@ export default function AdminColorGamePage() {
   const [adjusting, setAdjusting] = useState(false);
   const [adjustError, setAdjustError] = useState<string | null>(null);
   const [settingColor, setSettingColor] = useState(false);
-  const [tab, setTab] = useState<"dashboard" | "rounds" | "leaderboard">("dashboard");
+  const [tab, setTab] = useHashTab<"dashboard" | "rounds" | "leaderboard">(TAB_IDS, "dashboard");
 
   useEffect(() => {
     async function loadRounds() {
@@ -149,8 +152,6 @@ export default function AdminColorGamePage() {
     return new Date(ts).toLocaleString("en-PH", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   }
 
-  const tabs = ["dashboard", "rounds", "leaderboard"] as const;
-
   return (
     <div>
       <TopHeader
@@ -158,19 +159,15 @@ export default function AdminColorGamePage() {
         subtitle={`${gs.totalRounds} rounds played · ${gs.jackpotPool} GP jackpot`}
       />
 
-      <div className="flex gap-1 mb-3">
-        {tabs.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${
-              tab === t ? "bg-card-elev text-text" : "text-text-muted hover:bg-card-elev/50"
-            }`}
-          >
-            {t === "dashboard" ? "Dashboard" : t === "rounds" ? "Recent Rounds" : "Leaderboard"}
-          </button>
-        ))}
-      </div>
+      <AdminTabs
+        tabs={[
+          { id: "dashboard", label: "Dashboard", icon: Dice1 },
+          { id: "rounds", label: "Recent rounds", icon: Coins },
+          { id: "leaderboard", label: "Leaderboard", icon: Trophy },
+        ]}
+        value={tab}
+        onChange={setTab}
+      />
 
       {tab === "dashboard" && (
         <>
