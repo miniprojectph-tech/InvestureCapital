@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { listInvestors, type InvestorRow } from "@/lib/adminQueries";
-import { useSettings, saveSettings, DEFAULT_COMMUNITY, uploadLimitsFor, cleanUploadLimits, MAX_UPLOAD_MB, MAX_VIDEO_SECONDS_CAP, type CommunityConfig, type UploadLimits } from "@/lib/settings";
+import { useSettings, saveSettings, DEFAULT_COMMUNITY, uploadLimitsFor, cleanUploadLimits, MAX_UPLOAD_MB, MAX_VIDEO_SECONDS_CAP, DEFAULT_WELCOME, DEFAULT_WELCOME_TEXT, fillWelcome, type CommunityConfig, type UploadLimits } from "@/lib/settings";
 import {
   useMutedUsers,
   useCommunityRoom,
@@ -28,6 +28,66 @@ import {
   removeChatMod,
   formatRelative,
 } from "@/lib/community";
+
+/** The greeting every new sign-up gets: a pop-up on first sign-in and the first message in their private chat. */
+function WelcomeCard({ uid }: { uid: string }) {
+  const { settings } = useSettings();
+  const saved = { ...DEFAULT_WELCOME, ...(settings.welcome ?? {}) };
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [text, setText] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const on = enabled ?? saved.enabled;
+  const body = text ?? saved.text;
+  const dirty = on !== saved.enabled || body !== saved.text;
+
+  async function save() {
+    const { db } = getFirebase();
+    if (!db) return;
+    if (on && body.trim().length < 10) return setMsg({ ok: false, text: "Write a welcome message first." });
+    setSaving(true);
+    setMsg(null);
+    try {
+      await saveSettings(db, { welcome: { enabled: on, text: body.trim().slice(0, 600) } }, uid);
+      setEnabled(null); setText(null);
+      setMsg({ ok: true, text: on ? "Saved. Every new sign-up from now on gets this." : "Saved. New sign-ups get no welcome until you switch it back on." });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : "Could not save. Please try again." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="mb-3">
+      <CardHeader
+        title="Welcome for new members"
+        subtitle="On their first sign-in: a pop-up with this message and a “Message the admin” button, and the same message placed in their private chat. They then appear in the inbox as New member until someone replies."
+        right={
+          <button type="button" onClick={() => setEnabled(!on)} className={cn("px-3 py-1 rounded-full text-[10px] font-medium border transition", on ? "bg-green/15 border-green/40 text-green" : "bg-canvas border-border text-text-muted")}>
+            {on ? "On" : "Off"}
+          </button>
+        }
+      />
+      <div className={cn("grid grid-cols-1 lg:grid-cols-2 gap-3", !on && "opacity-60")}>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-medium text-text">Message <span className="font-normal text-text-subtle">· type {"{{name}}"} for their first name</span></span>
+          <textarea value={body} maxLength={600} rows={6} disabled={!on} onChange={(e) => setText(e.target.value)} placeholder={DEFAULT_WELCOME_TEXT} className="w-full bg-canvas border border-border rounded-lg px-3 py-2 text-[12px] text-text outline-none focus:border-gold/40 resize-y leading-relaxed" />
+        </label>
+        <div>
+          <p className="text-[11px] font-medium text-text m-0 mb-1">How it reads</p>
+          <div className="rounded-xl border border-border bg-canvas px-4 py-3 text-[12px] leading-relaxed text-text whitespace-pre-line">{fillWelcome(body || DEFAULT_WELCOME_TEXT, "Maria")}</div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 mt-3">
+        <button onClick={save} disabled={!dirty || saving} className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium disabled:opacity-40">{saving ? "Saving…" : "Save"}</button>
+        {dirty && !saving && <button onClick={() => { setEnabled(null); setText(null); setMsg(null); }} className="text-[11px] text-text-muted hover:text-text">Discard</button>}
+        {msg && <span className={cn("text-[11px]", msg.ok ? "text-green" : "text-red")}>{msg.text}</span>}
+      </div>
+      <p className="text-[10px] text-text-subtle m-0 mt-2">Sign-ups only: members who joined before you switched this on are not messaged.</p>
+    </Card>
+  );
+}
 
 /** Who may post pictures, video and links in the Community Room. Saved to settings; the rules enforce it. */
 function PostingRulesCard({ uid }: { uid: string }) {
@@ -332,6 +392,8 @@ export default function AdminCommunityPage() {
           );
         })()}
       </Card>
+
+      <WelcomeCard uid={user.uid} />
 
       <PostingRulesCard uid={user.uid} />
 

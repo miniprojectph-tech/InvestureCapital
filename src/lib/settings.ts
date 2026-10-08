@@ -91,6 +91,16 @@ export function uploadLimitsFor(settings: PlatformSettings, chat: "room" | "inbo
   return cleanUploadLimits(settings.uploads?.[chat]);
 }
 
+/** The greeting a new member gets on first sign-in (pop-up + first message in their private chat). */
+export type WelcomeConfig = { enabled: boolean; text: string };
+export const DEFAULT_WELCOME_TEXT =
+  "Welcome to Investure, {{name}}!\n\nCongratulations on joining — we're glad to have you. If you have any question, big or small, just message us and we'll reply right here in the app.";
+export const DEFAULT_WELCOME: WelcomeConfig = { enabled: true, text: DEFAULT_WELCOME_TEXT };
+/** Fill in {{name}}. */
+export function fillWelcome(text: string, firstName: string): string {
+  return text.replace(/\{\{\s*name\s*\}\}/gi, firstName || "there");
+}
+
 export type PlatformSettings = {
   vaultDailyRate: number; // percent, e.g. 1.0
   vaultLockDays: number;
@@ -110,6 +120,8 @@ export type PlatformSettings = {
   uploads?: Partial<Record<"room" | "inbox", Partial<UploadLimits>>>;
   /** Masterlist: how many recent months members may open, and whether month totals are shown. */
   masterlist?: { windowMonths?: number; showTotals?: boolean; archiveNote?: string };
+  /** New-member welcome (pop-up + first private-chat message). */
+  welcome?: Partial<WelcomeConfig>;
   /** Admin-arranged member menu: page order per group, and hidden pages (see lib/nav). */
   menu?: { groups?: { items?: string[] }[]; hidden?: string[] };
   updatedAt?: number;

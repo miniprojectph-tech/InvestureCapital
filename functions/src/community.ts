@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
-import { onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onDocumentWritten, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { getDatabase } from "firebase-admin/database";
 import { getStorage } from "firebase-admin/storage";
 import { logger } from "firebase-functions";
@@ -179,6 +179,46 @@ export function communitySettingsOf(data: FirebaseFirestore.DocumentData | undef
 export const onPlatformSettingsWritten = onDocumentWritten("settings/platform", async (event) => {
   const after = event.data?.after.exists ? event.data.after.data() : undefined;
   await getDatabase().ref("community/settings").set(communitySettingsOf(after));
+});
+
+/**
+ * New sign-up → the admin's welcome message goes into their private chat, the
+ * thread is marked "new member" for the inbox, and the member's record is
+ * stamped so the app shows the welcome pop-up once. Nothing is sent when the
+ * admin has switched the welcome off. Test sign-ups (example.com) are skipped.
+ */
+const DEFAULT_WELCOME_TEXT =
+  "Welcome to Investure, {{name}}!\n\nCongratulations on joining — we're glad to have you. If you have any question, big or small, just message us and we'll reply right here in the app.";
+export const onUserCreatedWelcome = onDocumentCreated("users/{uid}", async (event) => {
+  const uid = event.params.uid;
+  const u = event.data?.data() as { profile?: { name?: string; email?: string; joinedAt?: number }; isAdmin?: boolean } | undefined;
+  if (!u || u.isAdmin === true) return;
+  const email = String(u.profile?.email ?? "").toLowerCase();
+  if (email.endsWith("@example.com")) return; // throwaway test accounts
+  const settings = (await db.doc("settings/platform").get()).data() as { welcome?: { enabled?: boolean; text?: string } } | undefined;
+  const w = settings?.welcome ?? {};
+  if (w.enabled === false) return;
+  const text = String(w.text || DEFAULT_WELCOME_TEXT).slice(0, 600);
+  const name = String(u.profile?.name ?? "").trim();
+  const first = name.split(/\s+/)[0] || "there";
+  const filled = text.replace(/\{\{\s*name\s*\}\}/gi, first);
+  const now = Date.now();
+  const rtdb = getDatabase();
+  const id = rtdb.ref(`community/inbox/${uid}`).push().key as string;
+  await rtdb.ref().update({
+    [`community/inbox/${uid}/${id}`]: { from: "admin", name: "Admin", kind: "text", text: filled, at: now },
+    [`community/inboxMeta/${uid}`]: {
+      name: (name || email.split("@")[0] || "Member").slice(0, 40),
+      ...(email ? { email } : {}),
+      lastAt: now,
+      lastText: filled.replace(/\s+/g, " ").slice(0, 120),
+      lastFrom: "admin",
+      newMember: true,
+      joinedAt: u.profile?.joinedAt ?? now,
+    },
+  });
+  await db.collection("users").doc(uid).set({ welcomeSentAt: now }, { merge: true });
+  logger.info("welcome sent", { uid });
 });
 
 /** Admin: set (or switch off) the starting range for "N active now". Applies at once. */

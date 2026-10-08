@@ -43,7 +43,9 @@ service cloud.firestore {
       // admin flag are written by Cloud Functions alone.
       allow update: if isSignedIn() && request.auth.uid == userId
         && request.resource.data.diff(resource.data).affectedKeys()
-            .hasOnly(['profile', 'payoutMethod', 'referralCode', 'referredByUserId'])
+            .hasOnly(['profile', 'payoutMethod', 'referralCode', 'referredByUserId', 'welcomeSeenAt'])
+        // the welcome pop-up: a member may only note WHEN they closed it
+        && request.resource.data.get('welcomeSeenAt', 0) is number
         // sign-up date and email are fixed
         && request.resource.data.get('profile', {}).get('joinedAt', null) == resource.data.get('profile', {}).get('joinedAt', null)
         && request.resource.data.get('profile', {}).get('email', null) == resource.data.get('profile', {}).get('email', null)

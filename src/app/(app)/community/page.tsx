@@ -86,7 +86,7 @@ export default function CommunityPage() {
   const canImage = isStaff || perms.membersImages;
   const canInbox = !!user?.isAdmin || (modRole.isMod && modRole.inbox);
   const inboxThreads = useInboxList(canInbox);
-  const inboxUnread = inboxThreads.filter((t) => isInboxUnread(t, "admin")).length;
+  const inboxUnread = inboxThreads.filter((t) => isInboxUnread(t, "admin") || t.newMember === true).length;
 
   // Deep link from Support: /community#admin
   useEffect(() => {

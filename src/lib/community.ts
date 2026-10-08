@@ -81,6 +81,9 @@ export type InboxMeta = {
   lastFrom: string;
   userReadAt?: number;
   adminReadAt?: number;
+  /** Set when the welcome message opened the thread; cleared by the first staff reply. */
+  newMember?: boolean;
+  joinedAt?: number;
 };
 
 export type MutedUser = { uid: string; name: string; at: number };
@@ -747,6 +750,7 @@ export async function sendInboxMessage(
     upd[`${metaBase}/userReadAt`] = serverTimestamp();
   } else {
     upd[`${metaBase}/adminReadAt`] = serverTimestamp();
+    upd[`${metaBase}/newMember`] = false; // greeted — no longer waiting as a new member
   }
   await update(ref(rtdb), upd);
 }

@@ -81,6 +81,9 @@ export type UserState = {
   completedPlans?: CompletedPlan[];
   /** Where approved withdrawals are paid out. Set by the investor on /withdrawals. */
   payoutMethod?: PayoutMethod;
+  /** Set by the server when the welcome message was placed in their chat; cleared from view once seen. */
+  welcomeSentAt?: number;
+  welcomeSeenAt?: number;
   /** Admin role — set manually in Firestore console. Defaults false on seed. */
   isAdmin?: boolean;
   /** This user's unique affiliate code (also shared as ?ref=CODE). Backfilled

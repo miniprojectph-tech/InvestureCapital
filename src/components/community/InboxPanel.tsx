@@ -39,6 +39,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
   const inboxCaps = uploadLimitsFor(settings, "inbox");
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [show, setShow] = useState<"all" | "unread" | "new">("all");
 
   const threads = useInboxList(true);
   const feed = useInbox(selected);
@@ -56,11 +57,16 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return threads;
-    return threads.filter((t) => t.name.toLowerCase().includes(q) || (t.email ?? "").toLowerCase().includes(q));
-  }, [threads, search]);
+    let list = threads;
+    if (show === "unread") list = list.filter((t) => isInboxUnread(t, "admin") || t.newMember === true);
+    if (show === "new") list = list.filter((t) => t.newMember === true);
+    if (!q) return list;
+    return list.filter((t) => t.name.toLowerCase().includes(q) || (t.email ?? "").toLowerCase().includes(q));
+  }, [threads, search, show]);
 
-  const unreadCount = threads.filter((t) => isInboxUnread(t, "admin")).length;
+  // A new member counts as unread until someone on the team has replied to them.
+  const unreadCount = threads.filter((t) => isInboxUnread(t, "admin") || t.newMember === true).length;
+  const newCount = threads.filter((t) => t.newMember === true).length;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-3">
@@ -71,9 +77,21 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
             <p className="text-[12px] font-medium m-0 flex items-center gap-1.5">
               <Inbox className="w-3.5 h-3.5 text-text-subtle" /> Inbox
             </p>
-            {unreadCount > 0 && (
-              <span className="text-[9px] font-semibold bg-red/15 text-red px-1.5 py-0.5 rounded-full">{unreadCount} new</span>
-            )}
+            <span className="flex items-center gap-1">
+              {newCount > 0 && (
+                <span className="text-[9px] font-semibold bg-green/15 text-green px-1.5 py-0.5 rounded-full">{newCount} new member{newCount === 1 ? "" : "s"}</span>
+              )}
+              {unreadCount > 0 && (
+                <span className="text-[9px] font-semibold bg-red/15 text-red px-1.5 py-0.5 rounded-full">{unreadCount} unread</span>
+              )}
+            </span>
+          </div>
+          <div className="flex gap-1 mb-2">
+            {([["all", "All"], ["unread", "Unread"], ["new", "New members"]] as const).map(([k, label]) => (
+              <button key={k} type="button" onClick={() => setShow(k)} aria-pressed={show === k} className={cn("px-2.5 py-1 rounded-full text-[10px] font-medium border transition", show === k ? "bg-gold/15 border-gold/40 text-gold" : "bg-canvas border-border text-text-muted hover:text-text")}>
+                {label}
+              </button>
+            ))}
           </div>
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-text-subtle absolute left-2.5 top-1/2 -translate-y-1/2" />
@@ -87,10 +105,10 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
         </div>
         <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100dvh - 330px)", minHeight: 240 }}>
           {filtered.length === 0 ? (
-            <p className="text-[11px] text-text-subtle text-center py-8 m-0">No conversations yet.</p>
+            <p className="text-[11px] text-text-subtle text-center py-8 m-0">{show === "new" ? "No new members waiting." : show === "unread" ? "Nothing unread." : "No conversations yet."}</p>
           ) : (
             filtered.map((t) => {
-              const unread = isInboxUnread(t, "admin");
+              const unread = isInboxUnread(t, "admin") || t.newMember === true;
               const active = t.uid === selected;
               return (
                 <button
@@ -106,8 +124,11 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                      <p className={cn("text-[12px] m-0 truncate text-text", unread && "font-semibold")}>{t.name}</p>
-                      <span className="text-[9px] text-text-subtle shrink-0">{formatRelative(t.lastAt)}</span>
+                      <p className={cn("text-[12px] m-0 truncate text-text flex items-center gap-1.5 min-w-0", unread && "font-semibold")}>
+                        <span className="truncate">{t.name}</span>
+                        {t.newMember && <span className="text-[8px] font-semibold uppercase tracking-wide bg-green/15 text-green px-1.5 py-px rounded-full shrink-0">New member</span>}
+                      </p>
+                      <span className="text-[9px] text-text-subtle shrink-0">{t.newMember && t.joinedAt ? `Joined ${formatRelative(t.joinedAt)} ago` : formatRelative(t.lastAt)}</span>
                     </div>
                     <p className={cn("text-[10px] m-0 truncate mt-0.5", unread ? "text-text-muted" : "text-text-subtle")}>
                       {t.lastFrom === "admin" ? "You: " : ""}
