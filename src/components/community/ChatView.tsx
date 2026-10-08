@@ -559,8 +559,14 @@ export function ChatView({
                 )}
                 aria-label={`${rx.total} reaction${rx.total === 1 ? "" : "s"}`}
               >
-                <span className="tracking-[-0.15em]">{rx.list.slice(0, 3).map((r) => r.emoji).join("")}</span>
-                {rx.total > 1 && <span className="font-mono text-[10px] text-text-muted ml-1">{rx.total}</span>}
+                {/* Telegram style: each emoji with its own count (a lone single reaction shows just the emoji). */}
+                {rx.list.slice(0, 4).map((r, i) => (
+                  <span key={r.emoji} className={cn("flex items-center gap-0.5 whitespace-nowrap", i > 0 && "ml-1.5")}>
+                    {r.emoji}
+                    {(r.count > 1 || rx.list.length > 1) && <span className="font-mono text-[10px] text-text-muted">{r.count.toLocaleString()}</span>}
+                  </span>
+                ))}
+                {rx.list.length > 4 && <span className="font-mono text-[10px] text-text-muted ml-1">+{rx.list.length - 4}</span>}
               </button>
             )}
           </div>
