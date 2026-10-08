@@ -27,6 +27,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +39,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
 
   const isSignup = mode === "signup";
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const passwordsMatch = confirm.length > 0 && confirm === password;
 
   // Capture an inbound referral code (?ref=CODE). Read from window to stay
   // SSR-safe and avoid a useSearchParams Suspense boundary on this route.
@@ -52,6 +54,7 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
 
   function switchMode(next: Mode) {
     setMode(next);
+    setConfirm("");
     setError(null);
     setNotice(null);
   }
@@ -114,6 +117,10 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
     try {
       if (demoMode) {
         router.push("/dashboard");
+        return;
+      }
+      if (isSignup && password !== confirm) {
+        setError("The two passwords don't match. Please type the same password in both boxes.");
         return;
       }
       if (isSignup) await signUp(name, email, password, referralCode ?? undefined);
@@ -338,6 +345,27 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
                 {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
               </button>
             </Field>
+
+            {isSignup && (
+              <Field label="Confirm password" icon={Lock}>
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  placeholder="Type it again"
+                  className="flex-1 bg-transparent text-[13px] outline-none text-white placeholder:text-white/30"
+                  required={!demoMode}
+                  minLength={6}
+                  autoComplete="new-password"
+                  aria-invalid={confirm.length > 0 && !passwordsMatch}
+                />
+                {confirm && (
+                  passwordsMatch
+                    ? <CheckCircle2 className="w-3.5 h-3.5 text-green" aria-label="Passwords match" />
+                    : <span className="text-[10px] text-red whitespace-nowrap">Doesn&apos;t match</span>
+                )}
+              </Field>
+            )}
 
             {!isSignup && (
               <label className="flex items-center gap-2 mt-0.5 cursor-pointer">
