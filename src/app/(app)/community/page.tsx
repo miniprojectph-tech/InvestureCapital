@@ -34,6 +34,7 @@ import {
   markInboxRead,
   ensureCommunityAdmin,
   formatRelative,
+  STAFF_NAME,
   type ChatItem,
 } from "@/lib/community";
 
@@ -71,7 +72,8 @@ export default function CommunityPage() {
 
   // Typing indicators for whichever conversation is open
   const typingScope = useMemo(() => (tab === "room" ? { room: true as const } : tab === "admin" && uid ? { thread: uid } : null), [tab, uid]);
-  const typing = useTypingSignal(typingScope, uid ?? "", user?.name ?? "");
+  // The admin account types and posts as "Admin", never under its own name.
+  const typing = useTypingSignal(typingScope, uid ?? "", user?.isAdmin ? STAFF_NAME : user?.name ?? "");
   const typingNames = useTypingNames(typingScope, uid ?? "");
 
   // Staff = full admin or chat moderator. Inbox access needs the per-mod toggle.
@@ -219,7 +221,7 @@ export default function CommunityPage() {
       {tab === "inbox" && canInbox ? (
         <>
           <button onClick={() => setTab("room")} className="hidden lg:inline-flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text mb-2">← Back to chats</button>
-          <InboxPanel staff={{ uid: user.uid, name: user.isAdmin ? "Admin" : "Moderator", isAdmin: user.isAdmin, isMod: modRole.isMod }} canSend={!demoMode} />
+          <InboxPanel staff={{ uid: user.uid, name: STAFF_NAME, isAdmin: user.isAdmin, isMod: modRole.isMod }} canSend={!demoMode} />
         </>
       ) : (
         <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-3">

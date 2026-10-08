@@ -673,7 +673,8 @@ export function ChatView({
                   )}
                   {!own && first && (
                     <div className={cn("pl-[38px] text-[11px] text-text-muted mb-0.5 flex items-center gap-1.5", !gap && "mt-2")}>
-                      {m.name}
+                      {/* The team posts as "Admin": the gold pill IS the name, so a member who calls themselves "Admin" still looks different. */}
+                      {!(m.admin && m.name === "Admin") && m.name}
                       {m.admin && <span className="text-[8px] font-extrabold uppercase tracking-[0.1em] text-[#F5C66B] bg-[#F5C66B]/15 px-1.5 py-px rounded-full">{m.mod ? "Mod" : "Admin"}</span>}
                     </div>
                   )}

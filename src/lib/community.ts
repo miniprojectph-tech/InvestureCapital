@@ -96,6 +96,8 @@ export const MAX_GIF_BYTES = 3 * 1024 * 1024;
 
 /** isAdmin = full app admin; isMod = chat-only moderator (see ChatMod). */
 export type Sender = { uid: string; name: string; isAdmin: boolean; isMod?: boolean };
+/** The one name the team posts under: the admin account in the room, and admin or moderators in private chats. */
+export const STAFF_NAME = "Admin";
 export type SendPayload = { kind: ChatKind; text?: string; media?: ChatMedia; sticker?: string; replyTo?: ReplyRef };
 
 type RawCommon = { kind: ChatKind; text?: string; media?: ChatMedia; at: number; sticker?: string; replyTo?: ReplyRef; re?: Reactions };
@@ -106,12 +108,16 @@ type RawInbox = RawCommon & { from: string; name: string };
 
 const roomToItem = (id: string, raw: unknown): ChatItem => {
   const m = raw as RawRoom;
-  return { id, senderId: m.uid, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: !!m.admin && !m.mod, mod: false, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
+  // The admin account never shows its own name in the room — always "Admin" (older posts included).
+  const admin = !!m.admin && !m.mod;
+  return { id, senderId: m.uid, name: admin ? STAFF_NAME : m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, mod: false, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
 };
 
 const inboxToItem = (id: string, raw: unknown): ChatItem => {
   const m = raw as RawInbox;
-  return { id, senderId: m.from, name: m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: m.from === "admin", sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
+  // Every reply from the team — admin or a moderator with inbox access — reads as "Admin" (older "Moderator" replies included).
+  const admin = m.from === "admin";
+  return { id, senderId: m.from, name: admin ? STAFF_NAME : m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
 };
 
 const byTime = (a: ChatItem, b: ChatItem) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -616,7 +622,8 @@ export async function sendRoomMessage(sender: Sender, payload: SendPayload): Pro
   if (!id) throw new Error("Couldn't create message");
   const msg: Record<string, unknown> = {
     uid: sender.uid,
-    name: sender.name.slice(0, 40),
+    // The admin account posts as "Admin", never under its own profile name.
+    name: (sender.isAdmin ? STAFF_NAME : sender.name).slice(0, 40),
     kind: payload.kind,
     at: serverTimestamp(),
     ...optionalFields(payload, MAX_TEXT),
@@ -794,7 +801,8 @@ export async function sendInboxMessage(
   const from = staff ? "admin" : sender.uid;
   const msg: Record<string, unknown> = {
     from,
-    name: (sender.isAdmin ? "Admin" : sender.isMod ? "Moderator" : sender.name).slice(0, 40),
+    // The team — admin or a moderator with inbox access — always replies as "Admin".
+    name: (sender.isAdmin || sender.isMod ? STAFF_NAME : sender.name).slice(0, 40),
     kind: payload.kind,
     at: serverTimestamp(),
     ...optionalFields(payload, 1000),
