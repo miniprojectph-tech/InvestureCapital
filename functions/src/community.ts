@@ -4,6 +4,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onDocumentWritten, onDocumentCreated } from "firebase-functions/v2/firestore";
 import { getDatabase } from "firebase-admin/database";
 import { getStorage } from "firebase-admin/storage";
+import { FieldValue } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
 import { db } from "./init";
 
@@ -104,21 +105,76 @@ async function computeCommunityStats(): Promise<CommunityStats> {
  * Entries older than 12 h are dropped as leftovers of connections that died
  * without a clean disconnect.
  */
-export const updateOnlineCount = onSchedule("every 5 minutes", async () => {
+export const updateOnlineCount = onSchedule("every 1 minutes", async () => {
   await recomputeOnline(false);
 });
 
 /**
  * Admin-set starting number for "N active now". When switched on, the number
- * members see is a base drawn at random from [min, max] — redrawn every 15
- * minutes — PLUS the members really connected. The settings and the real count
- * live in `admin_private` (admins only); members only ever get the final number
- * at `community/online`.
+ * members see is a "starting number" PLUS the members really connected. The
+ * starting number follows the admin's time windows (Manila time): each window
+ * has its own lowest / highest and "change every N minutes". At each change
+ * the number drifts a few steps up or down and stays inside the window's
+ * range; when a new window begins it eases toward the new range over the next
+ * few changes instead of jumping. The settings and the real count live in
+ * `admin_private` (admins only); members only ever get the final number at
+ * `community/online`.
  */
-type ActiveBase = { enabled: boolean; min: number; max: number; base: number; baseAt: number };
+export type ActiveWindow = { start: string; end: string; min: number; max: number; everyMin: number };
+type ActiveBase = {
+  enabled: boolean;
+  windows?: ActiveWindow[];
+  /** Older one-range setting; read as one all-day window when `windows` is missing. */
+  min?: number;
+  max?: number;
+  base: number;
+  baseAt: number;
+};
 const ACTIVE_BASE_DOC = "admin_private/communityActive";
-const BASE_REDRAW_MS = 15 * 60_000;
 const MAX_ACTIVE_BASE = 100_000;
+const MAX_WINDOWS = 12;
+const LEGACY_EVERY_MIN = 15;
+
+const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
+export function minuteOf(hhmm: string): number {
+  const m = HHMM.exec(hhmm);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : -1;
+}
+/** Minute of the day in Manila (UTC+8), 0..1439. */
+export function manilaMinute(now: number): number {
+  return Math.floor(((now + 8 * 3_600_000) % 86_400_000) / 60_000);
+}
+/** Does the window cover this minute? `end` is inclusive (5:59 means up to 5:59:59); end < start wraps past midnight. */
+export function windowCovers(w: ActiveWindow, minute: number): boolean {
+  const s = minuteOf(w.start), e = minuteOf(w.end);
+  if (s < 0 || e < 0) return false;
+  return s <= e ? minute >= s && minute <= e : minute >= s || minute <= e;
+}
+export function windowsOf(cfg: Partial<ActiveBase>): ActiveWindow[] {
+  if (Array.isArray(cfg.windows) && cfg.windows.length) return cfg.windows;
+  if (Number.isFinite(Number(cfg.min)) && Number.isFinite(Number(cfg.max))) {
+    const min = Math.max(0, Math.floor(Number(cfg.min)));
+    return [{ start: "00:00", end: "23:59", min, max: Math.max(min, Math.floor(Number(cfg.max))), everyMin: LEGACY_EVERY_MIN }];
+  }
+  return [];
+}
+/**
+ * One drift step: a few steps up or down inside the range; from outside, ease
+ * toward it. The easing step is half the remaining distance (at least a fifth
+ * of the range), so a busy-evening → quiet-night hand-over takes about six
+ * changes however far apart the two ranges are.
+ */
+export function driftStep(current: number, min: number, max: number): number {
+  const span = Math.max(0, max - min);
+  if (current < min || current > max) {
+    const dist = current < min ? min - current : current - max;
+    const step = Math.min(dist, Math.max(1, Math.ceil(dist * 0.5), Math.round(span * 0.2)));
+    return current < min ? current + step : current - step;
+  }
+  const step = Math.max(1, Math.round(span * 0.1));
+  const next = current + randomInt(-step, step + 1);
+  return Math.min(max, Math.max(min, next));
+}
 
 async function recomputeOnline(forceRedraw: boolean): Promise<{ real: number; base: number; shown: number }> {
   const rtdb = getDatabase();
@@ -141,15 +197,24 @@ async function recomputeOnline(forceRedraw: boolean): Promise<{ real: number; ba
   const cfg = (cfgSnap.exists ? cfgSnap.data() : {}) as Partial<ActiveBase>;
   let base = 0;
   let baseAt = cfg.baseAt ?? 0;
+  let window: ActiveWindow | null = null;
   if (cfg.enabled === true) {
-    const min = Math.max(0, Math.floor(Number(cfg.min) || 0));
-    const max = Math.max(min, Math.floor(Number(cfg.max) || 0));
+    const minute = manilaMinute(now);
+    window = windowsOf(cfg).find((w) => windowCovers(w, minute)) ?? null;
+  }
+  if (window) {
+    const min = Math.max(0, Math.floor(Number(window.min) || 0));
+    const max = Math.max(min, Math.floor(Number(window.max) || 0));
+    const everyMs = Math.max(1, Math.floor(Number(window.everyMin) || LEGACY_EVERY_MIN)) * 60_000;
     const current = Number(cfg.base);
-    // Keep the number for the full 15 minutes (a few seconds of slack for the
-    // scheduler), unless the range was just changed or it no longer fits.
-    const due = now - baseAt >= BASE_REDRAW_MS - 20_000;
-    if (forceRedraw || due || !Number.isFinite(current) || current < min || current > max) {
+    // Keep the number until the window's interval has passed (a few seconds of
+    // slack for the scheduler). A fresh switch-on or an admin save draws anew.
+    const due = now - baseAt >= everyMs - 20_000;
+    if (forceRedraw || !Number.isFinite(current) || current <= 0) {
       base = randomInt(min, max + 1);
+      baseAt = now;
+    } else if (due) {
+      base = driftStep(current, min, max);
       baseAt = now;
     } else {
       base = current;
@@ -157,8 +222,34 @@ async function recomputeOnline(forceRedraw: boolean): Promise<{ real: number; ba
   }
   const shown = real + base;
   await rtdb.ref().update({ ...stale, "community/online": shown });
-  await db.doc(ACTIVE_BASE_DOC).set({ base, baseAt, real, shown, updatedAt: now }, { merge: true });
+  await db.doc(ACTIVE_BASE_DOC).set({ base, baseAt, real, shown, updatedAt: now, window }, { merge: true });
   return { real, base, shown };
+}
+
+/** Check a windows list from the admin; returns the clean list or a message for them. */
+function cleanWindows(raw: unknown): { windows?: ActiveWindow[]; error?: string } {
+  if (!Array.isArray(raw) || raw.length === 0) return { error: "Add at least one time window." };
+  if (raw.length > MAX_WINDOWS) return { error: `Up to ${MAX_WINDOWS} windows.` };
+  const windows: ActiveWindow[] = [];
+  for (const [i, r] of (raw as Record<string, unknown>[]).entries()) {
+    const start = String(r?.start ?? ""), end = String(r?.end ?? "");
+    const min = Math.floor(Number(r?.min)), max = Math.floor(Number(r?.max)), everyMin = Math.floor(Number(r?.everyMin));
+    const n = `Window ${i + 1}`;
+    if (minuteOf(start) < 0 || minuteOf(end) < 0) return { error: `${n}: choose a start and an end time.` };
+    if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > MAX_ACTIVE_BASE) return { error: `${n}: enter a range between 0 and ${MAX_ACTIVE_BASE.toLocaleString()}.` };
+    if (max < min) return { error: `${n}: the highest number must not be lower than the lowest.` };
+    if (!Number.isFinite(everyMin) || everyMin < 1 || everyMin > 1440) return { error: `${n}: "change every" is 1 to 1440 minutes.` };
+    windows.push({ start, end, min, max, everyMin });
+  }
+  // Two windows must not cover the same minute — the number could not know which range to follow.
+  for (let m = 0; m < 1440; m += 1) {
+    const hits = windows.filter((w) => windowCovers(w, m));
+    if (hits.length > 1) {
+      const hh = String(Math.floor(m / 60)).padStart(2, "0"), mm = String(m % 60).padStart(2, "0");
+      return { error: `Two windows overlap at ${hh}:${mm}. Make each minute belong to one window.` };
+    }
+  }
+  return { windows };
 }
 
 /**
@@ -221,23 +312,34 @@ export const onUserCreatedWelcome = onDocumentCreated("users/{uid}", async (even
   logger.info("welcome sent", { uid });
 });
 
-/** Admin: set (or switch off) the starting range for "N active now". Applies at once. */
+/**
+ * Admin: set (or switch off) the time windows behind "N active now". Applies at
+ * once. Also accepts the older `{ min, max }` shape as one all-day window.
+ */
 export const adminSetCommunityActive = onCall(async (request) => {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
   const caller = await db.collection("users").doc(request.auth.uid).get();
   if (caller.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Admin role required.");
-  const d = (request.data ?? {}) as { enabled?: unknown; min?: unknown; max?: unknown };
+  const d = (request.data ?? {}) as { enabled?: unknown; windows?: unknown; min?: unknown; max?: unknown };
   const enabled = d.enabled === true;
-  const min = Math.floor(Number(d.min));
-  const max = Math.floor(Number(d.max));
-  if (enabled) {
-    if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > MAX_ACTIVE_BASE) {
-      throw new HttpsError("invalid-argument", `Enter a range between 0 and ${MAX_ACTIVE_BASE.toLocaleString()}.`);
+  const raw = Array.isArray(d.windows)
+    ? d.windows
+    : d.min !== undefined || d.max !== undefined
+      ? [{ start: "00:00", end: "23:59", min: d.min, max: d.max, everyMin: LEGACY_EVERY_MIN }]
+      : undefined;
+  let windows: ActiveWindow[] | undefined;
+  if (raw !== undefined) {
+    const c = cleanWindows(raw);
+    if (c.error) {
+      if (enabled) throw new HttpsError("invalid-argument", c.error);
+    } else {
+      windows = c.windows;
     }
-    if (max < min) throw new HttpsError("invalid-argument", "The highest number must not be lower than the lowest.");
+  } else if (enabled && windowsOf((await db.doc(ACTIVE_BASE_DOC).get()).data() ?? {}).length === 0) {
+    throw new HttpsError("invalid-argument", "Add at least one time window.");
   }
   await db.doc(ACTIVE_BASE_DOC).set(
-    { enabled, ...(Number.isFinite(min) && Number.isFinite(max) && min >= 0 && max >= min && max <= MAX_ACTIVE_BASE ? { min, max } : {}) },
+    { enabled, ...(windows ? { windows, min: FieldValue.delete(), max: FieldValue.delete() } : {}) },
     { merge: true },
   );
   return { ok: true, enabled, ...(await recomputeOnline(true)) };

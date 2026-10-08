@@ -432,20 +432,76 @@ export function useCommunityStats(enabled: boolean): CommunityStats | null {
   return stats;
 }
 
+/** One time window (Manila time) for the "N active now" starting number. `end` is inclusive; end before start wraps past midnight. */
+export type ActiveWindow = { start: string; end: string; min: number; max: number; everyMin: number };
+
 /** Admin-only settings behind the "N active now" number (Firestore `admin_private/communityActive`). */
 export type CommunityActiveSettings = {
   enabled: boolean;
-  min: number;
-  max: number;
-  /** Current starting number, redrawn every 15 minutes. */
+  windows: ActiveWindow[];
+  /** Current starting number; drifts a few steps at each change. */
   base: number;
   baseAt: number;
+  /** The window the number is following right now (null = in a gap or off). */
+  window: ActiveWindow | null;
   /** Members really connected at the last count. */
   real: number;
   /** What members see: base + real. */
   shown: number;
   updatedAt: number;
 };
+
+/** The four windows a fresh setup starts with: quiet night, busier through the evening. */
+export const DEFAULT_ACTIVE_WINDOWS: ActiveWindow[] = [
+  { start: "00:00", end: "05:59", min: 5, max: 15, everyMin: 10 },
+  { start: "06:00", end: "11:59", min: 20, max: 45, everyMin: 5 },
+  { start: "12:00", end: "16:59", min: 30, max: 60, everyMin: 3 },
+  { start: "17:00", end: "23:59", min: 40, max: 80, everyMin: 2 },
+];
+
+const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
+export function minuteOf(hhmm: string): number {
+  const m = HHMM.exec(hhmm);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : -1;
+}
+export function manilaMinute(now = Date.now()): number {
+  return Math.floor(((now + 8 * 3_600_000) % 86_400_000) / 60_000);
+}
+export function windowCovers(w: ActiveWindow, minute: number): boolean {
+  const s = minuteOf(w.start), e = minuteOf(w.end);
+  if (s < 0 || e < 0) return false;
+  return s <= e ? minute >= s && minute <= e : minute >= s || minute <= e;
+}
+export function formatHHMM(hhmm: string): string {
+  const m = minuteOf(hhmm);
+  if (m < 0) return hhmm;
+  const h = Math.floor(m / 60), mm = String(m % 60).padStart(2, "0");
+  return `${h % 12 === 0 ? 12 : h % 12}:${mm} ${h < 12 ? "AM" : "PM"}`;
+}
+/** Problems the admin should fix before saving, plus the minutes no window covers. */
+export function activeWindowIssues(windows: ActiveWindow[]): { errors: string[]; gaps: string[] } {
+  const errors: string[] = [];
+  windows.forEach((w, i) => {
+    const n = `Window ${i + 1}`;
+    if (minuteOf(w.start) < 0 || minuteOf(w.end) < 0) errors.push(`${n}: choose a start and an end time.`);
+    if (!Number.isFinite(w.min) || !Number.isFinite(w.max) || w.min < 0) errors.push(`${n}: enter a lowest and a highest number.`);
+    else if (w.max < w.min) errors.push(`${n}: the highest number must not be lower than the lowest.`);
+    if (!Number.isFinite(w.everyMin) || w.everyMin < 1 || w.everyMin > 1440) errors.push(`${n}: "change every" is 1 to 1440 minutes.`);
+  });
+  const valid = windows.filter((w) => minuteOf(w.start) >= 0 && minuteOf(w.end) >= 0);
+  const gaps: string[] = [];
+  let gapStart: number | null = null;
+  let overlapAt: number | null = null;
+  const fmt = (m: number) => formatHHMM(`${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`);
+  for (let m = 0; m <= 1440; m++) {
+    const hits = m < 1440 ? valid.filter((w) => windowCovers(w, m)).length : 1;
+    if (hits > 1 && overlapAt === null) overlapAt = m;
+    if (hits === 0 && gapStart === null) gapStart = m;
+    if (hits > 0 && gapStart !== null) { gaps.push(`${fmt(gapStart)} – ${fmt(m - 1)}`); gapStart = null; }
+  }
+  if (overlapAt !== null) errors.push(`Two windows overlap at ${fmt(overlapAt)}. Make each minute belong to one window.`);
+  return { errors, gaps };
+}
 
 export function useCommunityActiveSettings(enabled: boolean): CommunityActiveSettings | null {
   const [v, setV] = useState<CommunityActiveSettings | null>(null);
@@ -455,14 +511,23 @@ export function useCommunityActiveSettings(enabled: boolean): CommunityActiveSet
     if (!db) return;
     return onSnapshot(
       doc(db, "admin_private", "communityActive"),
-      (s) => setV({ enabled: false, min: 25, max: 50, base: 0, baseAt: 0, real: 0, shown: 0, updatedAt: 0, ...(s.exists() ? (s.data() as Partial<CommunityActiveSettings>) : {}) }),
+      (s) => {
+        const d = (s.exists() ? s.data() : {}) as Partial<CommunityActiveSettings> & { min?: number; max?: number };
+        // An older one-range setting reads as one all-day window.
+        const windows = Array.isArray(d.windows) && d.windows.length
+          ? d.windows
+          : typeof d.min === "number" && typeof d.max === "number"
+            ? [{ start: "00:00", end: "23:59", min: d.min, max: d.max, everyMin: 15 }]
+            : [];
+        setV({ enabled: false, base: 0, baseAt: 0, window: null, real: 0, shown: 0, updatedAt: 0, ...d, windows });
+      },
       () => setV(null),
     );
   }, [enabled]);
   return v;
 }
 
-export function setCommunityActive(input: { enabled: boolean; min: number; max: number }) {
+export function setCommunityActive(input: { enabled: boolean; windows: ActiveWindow[] }) {
   const { functions } = getFirebase();
   if (!functions) throw new Error("Firebase not initialized");
   return httpsCallable<typeof input, { ok: boolean; real: number; base: number; shown: number }>(functions, "adminSetCommunityActive")(input).then((r) => r.data);

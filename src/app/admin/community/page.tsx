@@ -23,6 +23,10 @@ import {
   refreshCommunityStats,
   useCommunityActiveSettings,
   setCommunityActive,
+  activeWindowIssues,
+  formatHHMM,
+  DEFAULT_ACTIVE_WINDOWS,
+  type ActiveWindow,
   unmuteUser,
   setPinnedMessage,
   ensureCommunityAdmin,
@@ -240,34 +244,39 @@ function UploadLimitsCard({ uid }: { uid: string }) {
   );
 }
 
-/** The "N active now" number members see: a starting number from a range, plus who is really online. */
+/** The "N active now" number members see: a starting number that follows the admin's time windows, plus who is really online. */
+type WindowDraft = { start: string; end: string; min: string; max: string; everyMin: string };
+const toDraft = (w: ActiveWindow): WindowDraft => ({ start: w.start, end: w.end, min: String(w.min), max: String(w.max), everyMin: String(w.everyMin) });
+const fromDraft = (d: WindowDraft): ActiveWindow => ({ start: d.start, end: d.end, min: parseInt(d.min, 10), max: parseInt(d.max, 10), everyMin: parseInt(d.everyMin, 10) });
+
 function ActiveNowCard({ enabled }: { enabled: boolean }) {
   const s = useCommunityActiveSettings(enabled);
   const [on, setOn] = useState(false);
-  const [min, setMin] = useState("25");
-  const [max, setMax] = useState("50");
+  const [rows, setRows] = useState<WindowDraft[]>(DEFAULT_ACTIVE_WINDOWS.map(toDraft));
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = setInterval(() => setNow(Date.now()), 15_000); return () => clearInterval(id); }, []);
 
   // Fill the form once from the saved settings; after that the admin's typing wins.
   useEffect(() => {
     if (!s || loaded) return;
     setOn(s.enabled);
-    setMin(String(s.min));
-    setMax(String(s.max));
+    if (s.windows.length) setRows(s.windows.map(toDraft));
     setLoaded(true);
   }, [s, loaded]);
 
+  const windows = rows.map(fromDraft);
+  const issues = activeWindowIssues(windows);
+  const edit = (i: number, patch: Partial<WindowDraft>) => { setRows((r) => r.map((w, j) => (j === i ? { ...w, ...patch } : w))); setMsg(null); };
+
   async function save() {
-    const lo = parseInt(min, 10);
-    const hi = parseInt(max, 10);
-    if (on && (isNaN(lo) || isNaN(hi) || lo < 0)) return setMsg({ ok: false, text: "Enter a lowest and a highest number." });
-    if (on && hi < lo) return setMsg({ ok: false, text: "The highest number must not be lower than the lowest." });
+    if (on && issues.errors.length) return setMsg({ ok: false, text: issues.errors[0] });
     setSaving(true);
     setMsg(null);
     try {
-      const r = await setCommunityActive({ enabled: on, min: isNaN(lo) ? 0 : lo, max: isNaN(hi) ? 0 : hi });
+      const r = await setCommunityActive({ enabled: on, windows });
       setMsg({ ok: true, text: `Saved. Members now see ${r.shown.toLocaleString()} active now.` });
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : "Could not save. Please try again." });
@@ -276,7 +285,9 @@ function ActiveNowCard({ enabled }: { enabled: boolean }) {
     }
   }
 
-  const input = "w-24 bg-canvas border border-border rounded-md px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-gold/40";
+  const nextChangeIn = s?.window && s.enabled ? Math.max(0, Math.ceil((s.baseAt + s.window.everyMin * 60_000 - now) / 60_000)) : null;
+  const num = "w-16 bg-canvas border border-border rounded-md px-2 py-1.5 text-[12px] font-mono text-text text-right outline-none focus:border-gold/40 disabled:opacity-50";
+  const time = "bg-canvas border border-border rounded-md px-2 py-1.5 text-[12px] text-text outline-none focus:border-gold/40 disabled:opacity-50 [color-scheme:dark]";
   return (
     <Card className="mb-3">
       <CardHeader
@@ -285,41 +296,94 @@ function ActiveNowCard({ enabled }: { enabled: boolean }) {
         right={
           <button
             type="button"
-            onClick={() => setOn(!on)}
+            onClick={() => { setOn(!on); setMsg(null); }}
             className={cn("px-3 py-1 rounded-full text-[10px] font-medium border transition", on ? "bg-gold/15 border-gold/40 text-gold" : "bg-canvas border-border text-text-muted")}
           >
             {on ? "Starting number: ON" : "Starting number: OFF"}
           </button>
         }
       />
-      <div className="grid grid-cols-3 gap-2 mb-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-4">
         <StorageTile label="Members see" value={s ? s.shown.toLocaleString() : "—"} sub="active now" tone="text-gold" />
-        <StorageTile label="Really online" value={s ? s.real.toLocaleString() : "—"} sub="counted every 5 minutes" />
-        <StorageTile label="Starting number" value={s ? s.base.toLocaleString() : "—"} sub={s?.enabled ? "changes every 15 minutes" : "off"} />
+        <StorageTile label="Really online" value={s ? s.real.toLocaleString() : "—"} sub="counted every minute" />
+        <StorageTile
+          label="Starting number"
+          value={s ? s.base.toLocaleString() : "—"}
+          sub={!s?.enabled ? "off" : !s.window ? "no window covers this time" : nextChangeIn === 0 ? "changing now" : `next change in ${nextChangeIn} min`}
+        />
+        <StorageTile
+          label="Current window"
+          value={s?.enabled && s.window ? `${formatHHMM(s.window.start)} – ${formatHHMM(s.window.end)}` : "—"}
+          sub={s?.enabled && s.window ? `range ${s.window.min.toLocaleString()} – ${s.window.max.toLocaleString()} · every ${s.window.everyMin} min` : s?.enabled ? "gap: members see the real count" : "off"}
+        />
       </div>
-      <div className={cn("flex flex-wrap items-end gap-3", !on && "opacity-50")}>
-        <div>
-          <label className="block text-[10px] text-text-muted mb-1">Lowest</label>
-          <input type="number" min={0} value={min} disabled={!on} onChange={(e) => setMin(e.target.value)} className={input} />
-        </div>
-        <div>
-          <label className="block text-[10px] text-text-muted mb-1">Highest</label>
-          <input type="number" min={0} value={max} disabled={!on} onChange={(e) => setMax(e.target.value)} className={input} />
-        </div>
+
+      <p className="text-[12px] font-medium m-0 mb-1">
+        Time windows <span className="font-normal text-text-subtle">· Manila time · the number drifts a few steps each change and stays inside the window&apos;s range</span>
+      </p>
+      <div className={cn("overflow-x-auto -mx-1 px-1", !on && "opacity-60")}>
+        <table className="w-full text-[12px] min-w-[560px]">
+          <thead>
+            <tr className="text-[10px] text-text-subtle text-left">
+              <th className="font-medium py-1.5 pr-2">From</th>
+              <th className="font-medium py-1.5 pr-2">To</th>
+              <th className="font-medium py-1.5 pr-2 text-right">Lowest</th>
+              <th className="font-medium py-1.5 pr-2 text-right">Highest</th>
+              <th className="font-medium py-1.5 pr-2 text-right">Change every</th>
+              <th className="w-8" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((w, i) => {
+              const live = s?.enabled && s.window && s.window.start === w.start && s.window.end === w.end;
+              return (
+                <tr key={i} className={cn("border-t border-border", live && "bg-gold/5")}>
+                  <td className="py-1.5 pr-2"><input type="time" value={w.start} disabled={!on} onChange={(e) => edit(i, { start: e.target.value })} className={cn(time, live && "border-gold/40")} aria-label={`Window ${i + 1} from`} /></td>
+                  <td className="py-1.5 pr-2"><input type="time" value={w.end} disabled={!on} onChange={(e) => edit(i, { end: e.target.value })} className={time} aria-label={`Window ${i + 1} to`} /></td>
+                  <td className="py-1.5 pr-2 text-right"><input type="number" min={0} value={w.min} disabled={!on} onChange={(e) => edit(i, { min: e.target.value })} className={num} aria-label={`Window ${i + 1} lowest`} /></td>
+                  <td className="py-1.5 pr-2 text-right"><input type="number" min={0} value={w.max} disabled={!on} onChange={(e) => edit(i, { max: e.target.value })} className={num} aria-label={`Window ${i + 1} highest`} /></td>
+                  <td className="py-1.5 pr-2 text-right whitespace-nowrap">
+                    <input type="number" min={1} max={1440} value={w.everyMin} disabled={!on} onChange={(e) => edit(i, { everyMin: e.target.value })} className={cn(num, "w-14")} aria-label={`Window ${i + 1} change every (minutes)`} /> <span className="text-[10px] text-text-subtle">min</span>
+                  </td>
+                  <td className="py-1.5 text-right">
+                    <button type="button" onClick={() => { setRows((r) => r.filter((_, j) => j !== i)); setMsg(null); }} disabled={!on || rows.length <= 1} className="p-1 text-text-subtle hover:text-red disabled:opacity-30" aria-label={`Remove window ${i + 1}`}>
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
+      {on && issues.errors.map((e) => <p key={e} className="text-[10px] text-red m-0 mt-1.5">{e}</p>)}
+      {on && !issues.errors.length && issues.gaps.map((g) => <p key={g} className="text-[10px] text-[#F5C66B] m-0 mt-1.5">Gap: {g} is not covered — members see only the real count then.</p>)}
+
       <div className="flex flex-wrap items-center gap-3 mt-3">
+        <button
+          type="button"
+          onClick={() => { setRows((r) => [...r, { start: r.at(-1)?.end ?? "00:00", end: "23:59", min: "20", max: "40", everyMin: "5" }]); setMsg(null); }}
+          disabled={!on || rows.length >= 12}
+          className="text-[11px] text-gold hover:underline flex items-center gap-1 disabled:opacity-40"
+        >
+          <Plus className="w-3 h-3" /> Add window
+        </button>
+        <button type="button" onClick={() => { setRows(DEFAULT_ACTIVE_WINDOWS.map(toDraft)); setMsg(null); }} disabled={!on} className="text-[11px] text-text-muted hover:text-text disabled:opacity-40">
+          Reset to the four defaults
+        </button>
         <button
           onClick={save}
           disabled={saving || !enabled}
-          className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium disabled:opacity-50"
+          className="ml-auto px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save"}
         </button>
-        {msg && <span className={cn("text-[11px]", msg.ok ? "text-green" : "text-red")}>{msg.text}</span>}
       </div>
+      {msg && <p className={cn("text-[11px] m-0 mt-2", msg.ok ? "text-green" : "text-red")}>{msg.text}</p>}
       <p className="text-[10px] text-text-subtle m-0 mt-2 leading-relaxed max-w-2xl">
-        When on, a random number between Lowest and Highest is picked every 15 minutes, and everyone really online is
-        added on top. When off, members see only the real count. Only admins can see this range and the real count.
+        A window that ends before it starts wraps past midnight (e.g. 10:00 PM – 1:59 AM). When one window ends, the number eases
+        into the next range over the next few changes instead of jumping. Everyone really online is added on top. When off,
+        members see only the real count. Only admins can see these ranges and the real count.
       </p>
     </Card>
   );
