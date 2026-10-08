@@ -810,7 +810,8 @@ export function ChatView({
       {/* Hold-a-message sheet: reactions + actions (Messenger style) */}
       {sheet && (
         <div className="fixed inset-0 z-[85] bg-black/65 backdrop-blur-[2px] flex flex-col" onClick={() => setSheet(null)} role="dialog" aria-label="Message actions">
-          <div className="flex-1 flex flex-col justify-center px-4 gap-2.5 min-h-0" onClick={(e) => e.stopPropagation()}>
+          {/* Empty dark space closes the sheet; the reaction bar and the message preview inside it do not. */}
+          <div className="flex-1 flex flex-col justify-center px-4 gap-2.5 min-h-0" onClick={(e) => { if (e.target === e.currentTarget) setSheet(null); else e.stopPropagation(); }}>
             {canReact && (
               sheet.picker ? (
                 <div className="bg-card border border-border-strong rounded-2xl overflow-hidden shadow-2xl shadow-black/60 self-stretch" style={{ height: "min(340px, 42dvh)" }}>
@@ -846,6 +847,10 @@ export function ChatView({
             {(() => { const a = muteAction(sheet.item); return a && <SheetItem icon={a.label.startsWith("Unmute") ? Volume2 : VolumeX} label={a.label} tag="Mods" onClick={() => { setSheet(null); a.run(); }} />; })()}
             {onDelete && (sheet.item.senderId === meUid || hasModeration) && <SheetItem icon={Trash2} label="Remove" danger onClick={() => { setSheet(null); onDelete(sheet.item); }} />}
             {!canSend && !sheet.item.text && !onPin && !onDelete && <p className="text-[11px] text-text-subtle text-center m-0 py-2">Tap a reaction above.</p>}
+            {/* A clear way out, so an accidental long-press never forces a choice (tapping the dark area closes it too). */}
+            <button type="button" onClick={() => setSheet(null)} className="w-full mt-1.5 py-3 rounded-xl text-[14px] font-medium text-text-muted bg-canvas border border-border hover:text-text">
+              Cancel
+            </button>
           </div>
         </div>
       )}
