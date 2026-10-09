@@ -16,7 +16,11 @@ import {
   useLeaderboard,
   claimDailyEnergy,
   effectiveDailyCredits,
+  dailyBonusPoints,
+  DEFAULT_DAILY_BONUS,
 } from "@/lib/game";
+import { useUserState } from "@/lib/useUserState";
+import { DailyBonusPopup } from "@/components/games/DailyBonusPopup";
 import { useOpenRooms, MIN_CHALLENGE } from "@/lib/tongits";
 import { rankTier, useMyMatchHistory } from "@/lib/tongits-social";
 import { useColorGameState, useCurrentRound, useColorLeaderboard } from "@/lib/colorgame";
@@ -76,6 +80,20 @@ export default function GamesHubPage() {
   const dailyCredits = effectiveDailyCredits(config.dailyEnergy, settings.universalDailyCredits);
   const today = manilaDay(now);
   const energyClaimed = state?.energyClaimedDay === today;
+
+  // Daily placement bonus: N points per full ₱1,000 active, once a Manila day.
+  const { state: member } = useUserState();
+  const bonusCfg = { ...DEFAULT_DAILY_BONUS, ...(settings.dailyBonus ?? {}) };
+  const activeCapital = (member?.placements ?? []).reduce((s, p) => s + (p.capital ?? 0), 0);
+  const bonusPoints = bonusCfg.enabled ? dailyBonusPoints(activeCapital, bonusCfg) : 0;
+  const bonusClaimed = state?.bonusClaimedDay === today;
+  const [bonusDismissed, setBonusDismissed] = useState(false);
+  const bonusOpen = !access.loading && !stateLoading && !!member && access.allowed && bonusPoints > 0 && !bonusClaimed && !bonusDismissed;
+  const untilMidnight = (() => {
+    const d = new Date(now + 8 * HOUR_MS);
+    const left = 86_400_000 - (((d.getUTCHours() * 60 + d.getUTCMinutes()) * 60 + d.getUTCSeconds()) * 1000);
+    return `${Math.floor(left / HOUR_MS)}h ${Math.floor((left % HOUR_MS) / 60_000)}m`;
+  })();
   const streak = state?.streak ?? 0;
   const streakLen = Math.max(1, config.streakBonus.length - 1);
   const nextStreakBonus = config.streakBonus[Math.min(streak + 1, config.streakBonus.length - 1)] ?? 0;
@@ -141,6 +159,39 @@ export default function GamesHubPage() {
   return (
     <div>
       <TopHeader title="Games" subtitle="Play, earn Game Points, redeem rewards." />
+
+      <DailyBonusPopup
+        cfg={bonusCfg}
+        points={bonusPoints}
+        capital={activeCapital}
+        open={bonusOpen}
+        onClose={() => setBonusDismissed(true)}
+        onClaimed={(r) => patchState({ points: points + r.points, bonusClaimedDay: r.day, lastBonusPoints: r.points, lastBonusCapital: r.capital })}
+      />
+
+      {bonusCfg.enabled && !locked && (
+        bonusClaimed ? (
+          <div className="flex items-center gap-3 rounded-xl bg-card border border-border px-4 py-2.5 mb-3">
+            <Gift className="w-4 h-4 text-gold shrink-0" />
+            <div className="flex-1 min-w-0 text-[12px]">
+              <span className="font-medium text-text">Daily bonus claimed</span>
+              {state?.lastBonusPoints ? <span className={cn(mono, "text-green ml-1.5")}>+{state.lastBonusPoints.toLocaleString()}</span> : null}
+              <span className="text-text-subtle"> · next bonus in {untilMidnight}</span>
+            </div>
+          </div>
+        ) : bonusPoints > 0 ? (
+          <button type="button" onClick={() => setBonusDismissed(false)} className="w-full flex items-center gap-3 rounded-xl bg-card border border-gold/40 px-4 py-2.5 mb-3 text-left hover:bg-card-elev transition">
+            <Gift className="w-4 h-4 text-gold shrink-0" />
+            <span className="flex-1 min-w-0 text-[12px]">
+              <span className="font-medium text-text">Today&apos;s bonus is waiting</span>
+              <span className={cn(mono, "text-gold ml-1.5")}>+{bonusPoints.toLocaleString()}</span>
+              <span className="text-text-subtle"> · tap to claim · gone at midnight</span>
+            </span>
+          </button>
+        ) : (
+          <p className="text-[11px] text-text-subtle m-0 mb-3 px-1">Place capital to earn {bonusCfg.pointsPerThousand.toLocaleString()} Game Points a day for every ₱1,000 active.</p>
+        )
+      )}
 
       {/* hero banner: balance + daily bonus over the games key art */}
       <div className="relative rounded-2xl overflow-hidden border border-border mb-3 p-3 sm:p-4">

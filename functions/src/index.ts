@@ -5,7 +5,7 @@ import { db } from "./init";
 import { loadCompPlan, processPlacementsForUser } from "./compplan";
 
 // Game functions live in their own module.
-export { castLine, claimQuest, claimDailyEnergy, redeemReward, fishOfTheHour, weeklyReef } from "./game";
+export { castLine, claimQuest, claimDailyEnergy, claimDailyGameBonus, redeemReward, fishOfTheHour, weeklyReef } from "./game";
 
 // Color Game callables.
 export { placeColorBet, resolveColorRound, adminAdjustColorJackpot, adminSetColorJackpotColor, adminSetColorJackpotConfig } from "./colorgame";

@@ -571,3 +571,66 @@ export const weeklyReef = onSchedule(
     logger.info("Weekly Reef reset complete", { players: lbSnap.size });
   }
 );
+
+// ===== Callable: daily Game Points bonus for active placements =====
+// Admin-set: N points per full ₱1,000 of active placements, claimable once a
+// Manila day from Games Central. Unclaimed days don't carry over. The server
+// works the capital out itself, so the amount can't be set from the app.
+export type DailyBonusConfig = { enabled: boolean; pointsPerThousand: number; cap: number; text: string };
+export const DEFAULT_DAILY_BONUS: DailyBonusConfig = {
+  enabled: false,
+  pointsPerThousand: 100,
+  cap: 0,
+  text: "100 points for every ₱1,000 you have active. Claim it every day — it doesn't carry over.",
+};
+async function loadDailyBonus(): Promise<DailyBonusConfig> {
+  const snap = await db.doc("settings/games").get();
+  const d = (snap.exists ? (snap.data() as { dailyBonus?: Partial<DailyBonusConfig> }).dailyBonus : undefined) ?? {};
+  return {
+    enabled: d.enabled === true,
+    pointsPerThousand: Math.max(0, Math.floor(Number(d.pointsPerThousand ?? DEFAULT_DAILY_BONUS.pointsPerThousand) || 0)),
+    cap: Math.max(0, Math.floor(Number(d.cap ?? 0) || 0)),
+    text: String(d.text ?? DEFAULT_DAILY_BONUS.text).slice(0, 300),
+  };
+}
+/** Points for a given active capital under the config: per full ₱1,000, then the cap (0 = none). */
+export function dailyBonusPoints(activeCapital: number, cfg: DailyBonusConfig): number {
+  const raw = Math.floor(Math.max(0, activeCapital) / 1000) * cfg.pointsPerThousand;
+  return cfg.cap > 0 ? Math.min(cfg.cap, raw) : raw;
+}
+
+export const claimDailyGameBonus = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+  const cfg = await loadDailyBonus();
+  if (!cfg.enabled || cfg.pointsPerThousand <= 0) throw new HttpsError("failed-precondition", "The daily bonus is not running right now.");
+
+  const now = Date.now();
+  const today = dayKey(now);
+  const userRef = db.collection("users").doc(uid);
+  const stateRef = db.doc(`users/${uid}/game/state`);
+  const statsRef = db.doc("games/dailyBonusStats");
+
+  return db.runTransaction(async (tx) => {
+    const [userSnap, stateSnap] = await Promise.all([tx.get(userRef), tx.get(stateRef)]);
+    const user = userSnap.data() as { placements?: { capital?: number }[] } | undefined;
+    const capital = (user?.placements ?? []).reduce((s, p) => s + (Number(p.capital) || 0), 0);
+    const points = dailyBonusPoints(capital, cfg);
+    if (points <= 0) throw new HttpsError("failed-precondition", "You need an active placement of at least ₱1,000 to earn the daily bonus.");
+
+    const cur = (stateSnap.exists ? stateSnap.data() : {}) as Partial<GameState> & { bonusClaimedDay?: string };
+    if (cur.bonusClaimedDay === today) throw new HttpsError("failed-precondition", "Already claimed today. Come back tomorrow.");
+
+    tx.set(stateRef, { points: FieldValue.increment(points), bonusClaimedDay: today, lastBonusPoints: points, lastBonusCapital: capital }, { merge: true });
+    tx.set(userRef.collection("activity").doc(), {
+      type: "reinvest",
+      title: "Daily game bonus",
+      subtitle: `${points.toLocaleString()} points for ₱${capital.toLocaleString()} active`,
+      amount: points,
+      amountKind: "in",
+      at: FieldValue.serverTimestamp(),
+    });
+    tx.set(statsRef, { days: { [today]: { claims: FieldValue.increment(1), points: FieldValue.increment(points) } }, updatedAt: now }, { merge: true });
+    return { points, capital, day: today };
+  });
+});

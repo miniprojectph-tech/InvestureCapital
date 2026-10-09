@@ -5,6 +5,7 @@ import { Loader2, Plus, Trash2, Save, Sparkles, AlertCircle, CheckCircle2, Alert
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { Card, CardHeader } from "@/components/Card";
+import { doc, onSnapshot } from "firebase/firestore";
 import { Modal } from "@/components/Modal";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -14,6 +15,9 @@ import {
   useGameConfig,
   useGamesSettings,
   saveGamesSettings,
+  dailyBonusPoints,
+  DEFAULT_DAILY_BONUS,
+  type DailyBonusConfig,
   useFish,
   saveGameConfig,
   saveFish,
@@ -425,6 +429,9 @@ export default function AdminGamesPage() {
           </>
         )}
       </Card>
+
+      {/* Daily placement bonus */}
+      <DailyBonusCard />
 
       {/* General (cross-game) settings */}
       <Card className="mb-3">
@@ -1015,5 +1022,95 @@ function FishEditor({
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** Daily Game Points for active placements: on/off, points per ₱1,000, a cap, the pop-up text, and today's tally. */
+function DailyBonusCard() {
+  const { user } = useAuth();
+  const { settings } = useGamesSettings();
+  const saved: DailyBonusConfig = { ...DEFAULT_DAILY_BONUS, ...(settings.dailyBonus ?? {}) };
+  const [draft, setDraft] = useState<DailyBonusConfig | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [stats, setStats] = useState<{ claims: number; points: number } | null>(null);
+  const cur = draft ?? saved;
+  const dirty = JSON.stringify(cur) !== JSON.stringify(saved);
+
+  useEffect(() => {
+    const { db } = getFirebase();
+    if (!db) return;
+    const today = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10);
+    return onSnapshot(doc(db, "games", "dailyBonusStats"), (s) => {
+      const d = (s.data() as { days?: Record<string, { claims?: number; points?: number }> } | undefined)?.days?.[today];
+      setStats({ claims: d?.claims ?? 0, points: d?.points ?? 0 });
+    }, () => setStats(null));
+  }, []);
+
+  async function save() {
+    const { db } = getFirebase();
+    if (!db || !user?.isAdmin) return;
+    const rate = Math.floor(Number(cur.pointsPerThousand));
+    const cap = Math.floor(Number(cur.cap));
+    if (cur.enabled && (!Number.isFinite(rate) || rate < 1)) return setMsg({ ok: false, text: "Enter the points per ₱1,000 (at least 1)." });
+    if (!Number.isFinite(cap) || cap < 0) return setMsg({ ok: false, text: "The daily cap is 0 (none) or a positive number." });
+    setSaving(true);
+    setMsg(null);
+    try {
+      await saveGamesSettings(db, { dailyBonus: { enabled: cur.enabled, pointsPerThousand: Math.max(0, rate || 0), cap, text: cur.text.trim().slice(0, 300) || DEFAULT_DAILY_BONUS.text } });
+      setDraft(null);
+      setMsg({ ok: true, text: cur.enabled ? "Saved. Members see the bonus the next time they open Games." : "Saved. The daily bonus is off." });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : "Save failed" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const input = "bg-canvas border border-border rounded-md px-3 py-2 text-[13px] font-mono text-text outline-none focus:border-gold/40 w-full";
+  return (
+    <Card className="mb-3">
+      <CardHeader
+        title="Daily game bonus"
+        subtitle="Game Points a member can claim once a day in Games Central, based on their active placements. Unclaimed days don't carry over."
+        right={
+          <button
+            type="button"
+            onClick={() => { setDraft({ ...cur, enabled: !cur.enabled }); setMsg(null); }}
+            className={cn("px-3 py-1 rounded-full text-[10px] font-medium border transition", cur.enabled ? "bg-green/15 border-green/40 text-green" : "bg-canvas border-border text-text-muted")}
+          >
+            {cur.enabled ? "On" : "Off"}
+          </button>
+        }
+      />
+      <div className={cn("grid grid-cols-1 md:grid-cols-[1fr_1fr_1.6fr] gap-3", !cur.enabled && "opacity-60")}>
+        <div>
+          <label className="block text-[11px] text-text-muted mb-1">Points per ₱1,000 active</label>
+          <input type="number" min={0} value={cur.pointsPerThousand} disabled={!cur.enabled} onChange={(e) => { setDraft({ ...cur, pointsPerThousand: Number(e.target.value) }); setMsg(null); }} className={input} />
+        </div>
+        <div>
+          <label className="block text-[11px] text-text-muted mb-1">Daily cap (0 = none)</label>
+          <input type="number" min={0} value={cur.cap} disabled={!cur.enabled} onChange={(e) => { setDraft({ ...cur, cap: Number(e.target.value) }); setMsg(null); }} className={input} />
+        </div>
+        <div>
+          <label className="block text-[11px] text-text-muted mb-1">Pop-up text</label>
+          <input value={cur.text} maxLength={300} disabled={!cur.enabled} onChange={(e) => { setDraft({ ...cur, text: e.target.value }); setMsg(null); }} className={cn(input, "font-sans")} />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 mt-3">
+        <button onClick={save} disabled={saving || !dirty} className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium disabled:opacity-50 flex items-center gap-1.5">
+          {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save
+        </button>
+        {dirty && !saving && <button onClick={() => { setDraft(null); setMsg(null); }} className="text-[11px] text-text-muted hover:text-text">Discard</button>}
+        {msg && <span className={cn("text-[11px]", msg.ok ? "text-green" : "text-red")}>{msg.text}</span>}
+        <span className="ml-auto text-[11px] text-text-subtle">
+          Today: <span className="text-text font-mono">{stats ? stats.claims.toLocaleString() : "—"}</span> claims · <span className="text-text font-mono">{stats ? stats.points.toLocaleString() : "—"}</span> points given
+        </span>
+      </div>
+      <p className="text-[10px] text-text-subtle m-0 mt-2 leading-relaxed max-w-2xl">
+        Example at {cur.pointsPerThousand || 0} per ₱1,000: ₱2,500 active earns {dailyBonusPoints(2500, cur).toLocaleString()} points a day; ₱10,000 earns {dailyBonusPoints(10000, cur).toLocaleString()}.
+        Members with nothing active see only a line inviting them to place capital. The bonus goes to the Game Points balance, not the weekly rankings.
+      </p>
+    </Card>
   );
 }

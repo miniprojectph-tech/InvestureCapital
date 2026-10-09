@@ -160,6 +160,10 @@ export type GameState = {
   dailyPointsEarned?: number;
   dailyCatches?: DailyCatch[];
   energyClaimedDay?: string;
+  /** Daily placement bonus (Function-written): the Manila day it was last claimed and what it paid. */
+  bonusClaimedDay?: string;
+  lastBonusPoints?: number;
+  lastBonusCapital?: number;
   // Shared economy fields used by Community Tongits (Function-written).
   lockedPoints?: number; // points escrowed in an active/ready Tongits challenge
   rankingPoints?: number; // competitive ranking score (leaderboards)
@@ -340,11 +344,27 @@ export async function saveGameConfig(db: Firestore, patch: Partial<GameConfig>):
 // ===== General (cross-game) settings =====
 // Universal knobs that apply to every game (Reef today, more later). Stored in
 // settings/games — separate from the Reef-specific settings/game config.
+/** Daily Game Points bonus for active placements, claimed once a day in Games Central. */
+export type DailyBonusConfig = { enabled: boolean; pointsPerThousand: number; cap: number; text: string };
+export const DEFAULT_DAILY_BONUS: DailyBonusConfig = {
+  enabled: false,
+  pointsPerThousand: 100,
+  cap: 0,
+  text: "100 points for every ₱1,000 you have active. Claim it every day — it doesn't carry over.",
+};
+/** Points for a given active capital: per full ₱1,000, then the cap (0 = none). Same rule as the server. */
+export function dailyBonusPoints(activeCapital: number, cfg: DailyBonusConfig): number {
+  const raw = Math.floor(Math.max(0, activeCapital) / 1000) * Math.max(0, cfg.pointsPerThousand);
+  return cfg.cap > 0 ? Math.min(cfg.cap, raw) : raw;
+}
+
 export type GamesSettings = {
   universalDailyCredits: number;
+  dailyBonus?: DailyBonusConfig;
 };
 export const DEFAULT_GAMES_SETTINGS: GamesSettings = {
   universalDailyCredits: 20,
+  dailyBonus: DEFAULT_DAILY_BONUS,
 };
 
 /** A game's effective daily credits: its own value if it overrides (>0), else universal. */
@@ -600,6 +620,14 @@ export async function castLine(power = 0): Promise<CastResult> {
   if (!functions) throw new Error("Not connected");
   const call = httpsCallable<{ power: number }, CastResult>(functions, "castLine");
   const res = await call({ power });
+  return res.data;
+}
+
+export async function claimDailyGameBonus(): Promise<{ points: number; capital: number; day: string }> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Not connected");
+  const call = httpsCallable<Record<string, never>, { points: number; capital: number; day: string }>(functions, "claimDailyGameBonus");
+  const res = await call({});
   return res.data;
 }
 
