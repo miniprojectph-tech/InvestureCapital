@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Trash2, Save, Sparkles, AlertCircle, CheckCircle2, AlertTriangle, Sliders, Coins, Image as ImageIcon, Fish as FishIcon, Users, type LucideIcon } from "lucide-react";
+import { Loader2, Plus, Trash2, Save, Sparkles, AlertCircle, CheckCircle2, AlertTriangle, Sliders, Coins, Image as ImageIcon, Fish as FishIcon, Users, Flame, type LucideIcon } from "lucide-react";
+import { DragonSpireAdmin, HubGamesCard } from "@/components/admin/DragonSpireAdmin";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { Card, CardHeader } from "@/components/Card";
@@ -38,9 +39,10 @@ import {
 } from "@/lib/settings";
 import { PlayerPointsPanel } from "@/components/admin/PlayerPointsPanel";
 
-type SettingsTab = "access" | "reef" | "assets" | "fish" | "players";
+type SettingsTab = "access" | "slot" | "reef" | "assets" | "fish" | "players";
 const SETTINGS_TABS: { key: SettingsTab; label: string; icon: LucideIcon }[] = [
   { key: "access", label: "Access & general", icon: Sliders },
+  { key: "slot", label: "Dragon Spire", icon: Flame },
   { key: "reef", label: "Reef economy", icon: Coins },
   { key: "assets", label: "Assets", icon: ImageIcon },
   { key: "fish", label: "Fish", icon: FishIcon },
@@ -430,6 +432,9 @@ export default function AdminGamesPage() {
         )}
       </Card>
 
+      {/* Which games show on the hub */}
+      <HubGamesCard />
+
       {/* Daily placement bonus */}
       <DailyBonusCard />
 
@@ -701,6 +706,7 @@ export default function AdminGamesPage() {
       )}
 
       {tab === "players" && <PlayerPointsPanel />}
+      {tab === "slot" && <DragonSpireAdmin />}
 
       <FishEditor
         fish={editing}

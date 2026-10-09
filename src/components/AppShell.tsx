@@ -37,6 +37,10 @@ export function AppShell({ nav, badge, children }: AppShellProps) {
     return <div className="min-h-[100dvh] bg-[#1a0a2e]">{children}</div>;
   }
 
+  if (pathname.startsWith("/dragon-spire")) {
+    return <div className="min-h-[100dvh] bg-[#070C19]">{children}</div>;
+  }
+
   return (
     <div className="h-[100dvh] flex flex-col p-2 sm:p-3 bg-canvas overflow-hidden md:overflow-hidden max-md:!h-auto max-md:!min-h-screen max-md:!overflow-visible">
       <div className="mb-2 sm:mb-3 shrink-0">

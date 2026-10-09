@@ -3,11 +3,12 @@
 import { useEffect, type ReactNode } from "react";
 import { useIsPortraitMobile } from "@/lib/tongits-social";
 import { GameAccessGate } from "@/components/GameAccessGate";
+import { GameSwitchGate } from "@/components/GameSwitchGate";
 
 export default function ColorGameLayout({ children }: { children: ReactNode }) {
   const portraitMobile = useIsPortraitMobile();
   if (portraitMobile) return <RotateDevicePrompt />;
-  return <GameAccessGate>{children}</GameAccessGate>;
+  return <GameSwitchGate game="color"><GameAccessGate>{children}</GameAccessGate></GameSwitchGate>;
 }
 
 async function enterImmersive() {

@@ -3,12 +3,13 @@
 import { useEffect, type ReactNode } from "react";
 import { useIsPortraitMobile } from "@/lib/tongits-social";
 import { GameAccessGate } from "@/components/GameAccessGate";
+import { GameSwitchGate } from "@/components/GameSwitchGate";
 
 /** Whole-section landscape gate: any /tongits/* route in portrait shows the rotate prompt. */
 export default function TongitsSectionLayout({ children }: { children: ReactNode }) {
   const portraitMobile = useIsPortraitMobile();
   if (portraitMobile) return <RotateDevicePrompt />;
-  return <GameAccessGate>{children}</GameAccessGate>;
+  return <GameSwitchGate game="tongits"><GameAccessGate>{children}</GameAccessGate></GameSwitchGate>;
 }
 
 /** Ask the browser to go fullscreen and lock landscape (Android). Soft-fails on iOS. */

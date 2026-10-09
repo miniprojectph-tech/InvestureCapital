@@ -21,6 +21,7 @@ import {
 } from "@/lib/game";
 import { useUserState } from "@/lib/useUserState";
 import { DailyBonusPopup } from "@/components/games/DailyBonusPopup";
+import { useSlotSettings, useSlotPots, useSlotPlayerState, slotOpenFor } from "@/lib/slot";
 import { useOpenRooms, MIN_CHALLENGE } from "@/lib/tongits";
 import { rankTier, useMyMatchHistory } from "@/lib/tongits-social";
 import { useColorGameState, useCurrentRound, useColorLeaderboard } from "@/lib/colorgame";
@@ -66,6 +67,12 @@ export default function GamesHubPage() {
   const { live, timer } = useCurrentRound();
   const colorLeaders = useColorLeaderboard(200);
   const { rewards } = useRewards();
+
+  // Which games the admin has switched on, and whether this member may see Dragon Spire yet.
+  const { slot, hub } = useSlotSettings();
+  const slotPots = useSlotPots();
+  const { state: slotPlayer } = useSlotPlayerState();
+  const slotOpen = slotOpenFor(slot, user?.uid, !!user?.isAdmin);
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -267,7 +274,33 @@ export default function GamesHubPage() {
         {!locked && <div className="text-[10px] text-text-subtle">Unlocked by your active placement</div>}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 mb-3">
+        {slotOpen && (
+          <GameCard
+            href="/dragon-spire"
+            cover="/games/dragon-spire/bg-holdwin.jpg"
+            locked={locked}
+            icon={Flame}
+            tint="#F5C66B"
+            name="Dragon Spire"
+            blurb="1,024 ways, cascading wins, multiplier orbs, free spins and a Hold & Win jackpot round."
+            pill={slot.status === "testers" ? "Testers only" : slot.testing ? "Test mode" : "New"}
+            pillLive={slot.status === "everyone" && !slot.testing}
+            hero={
+              <>
+                {Math.round(slotPots.pots.grand).toLocaleString()} <span className="text-[14px] text-text-subtle">GP</span>
+              </>
+            }
+            heroLabel="Grand jackpot right now"
+            stats={[
+              { v: Math.round(slotPots.pots.major).toLocaleString(), l: "Major" },
+              { v: (slotPlayer.biggestWin ?? 0).toLocaleString(), l: "Your best win" },
+              { v: slotPlayer.freeSpinsLeft > 0 ? `${slotPlayer.freeSpinsLeft} left` : "5 – 500 GP", l: slotPlayer.freeSpinsLeft > 0 ? "Free spins" : "Bet range" },
+            ]}
+            cta={slotPlayer.freeSpinsLeft > 0 ? "Continue free spins" : "Spin the dragon"}
+          />
+        )}
+        {hub.reef && (
         <GameCard
           href="/play"
           cover="/games/reef-cover.webp"
@@ -290,6 +323,8 @@ export default function GamesHubPage() {
           ]}
           cta="Go fishing"
         />
+        )}
+        {hub.tongits && (
         <GameCard
           href="/tongits"
           cover="/games/tongits-cover.webp"
@@ -309,6 +344,8 @@ export default function GamesHubPage() {
           ]}
           cta="Find a table"
         />
+        )}
+        {hub.color && (
         <GameCard
           href="/color-game"
           cover="/games/color-cover.webp"
@@ -332,10 +369,15 @@ export default function GamesHubPage() {
           ]}
           cta="Place a bet"
         />
+        )}
+        {!hub.reef && !hub.tongits && !hub.color && !slotOpen && (
+          <Card><p className="text-[12px] text-text-muted m-0 text-center py-6">No games are open right now. Check back soon.</p></Card>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3">
-        {/* Reef weekly ranking */}
+        {/* Reef weekly ranking (hidden with the fishing game) */}
+        {hub.reef && (
         <Card>
           <div className="flex items-baseline justify-between mb-1">
             <div className="text-[13px] font-medium text-text">Reef weekly ranking</div>
@@ -362,6 +404,8 @@ export default function GamesHubPage() {
             </div>
           )}
         </Card>
+
+        )}
 
         {/* Nearest reward */}
         <Card gold>

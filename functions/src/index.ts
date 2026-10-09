@@ -7,6 +7,9 @@ import { loadCompPlan, processPlacementsForUser } from "./compplan";
 // Game functions live in their own module.
 export { castLine, claimQuest, claimDailyEnergy, claimDailyGameBonus, redeemReward, fishOfTheHour, weeklyReef } from "./game";
 
+// Dragon Spire slot.
+export { slotSpin, slotSimulate, adminSetSlotPots } from "./slot";
+
 // Color Game callables.
 export { placeColorBet, resolveColorRound, adminAdjustColorJackpot, adminSetColorJackpotColor, adminSetColorJackpotConfig } from "./colorgame";
 
