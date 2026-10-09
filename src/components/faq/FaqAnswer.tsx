@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Play, X, ExternalLink } from "lucide-react";
+import Link from "next/link";
+import { Play, X, ExternalLink, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { parseFaqAnswer, parseFaqInline, formatDuration, type FaqItem, type FaqMedia } from "@/lib/faq";
 
@@ -101,6 +102,19 @@ export function FaqAnswer({ item, compact }: { item: FaqItem; compact?: boolean 
             </figure>
           ))}
         </div>
+      )}
+
+      {item.link?.label && item.link.href && (
+        item.link.href.startsWith("/") ? (
+          // In-app page: tell it which question to come back to (the page's Back button reads ?back=).
+          <Link href={`${item.link.href}${item.link.href.includes("?") ? "&" : "?"}back=${encodeURIComponent(`/faq#${item.id}`)}`} className="self-start inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gold text-gold-dark text-[12.5px] font-semibold hover:brightness-110 transition">
+            {item.link.label} <ArrowRight className="w-4 h-4" />
+          </Link>
+        ) : (
+          <a href={item.link.href} target="_blank" rel="noopener noreferrer" className="self-start inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gold text-gold-dark text-[12.5px] font-semibold hover:brightness-110 transition">
+            {item.link.label} <ExternalLink className="w-4 h-4" />
+          </a>
+        )
       )}
 
       {lightbox && (

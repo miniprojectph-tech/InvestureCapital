@@ -23,6 +23,7 @@ import {
   FAQ_MAX_QUESTION,
   FAQ_MAX_ANSWER,
   FAQ_MAX_CAPTION,
+  FAQ_MAX_LINK_LABEL,
   DEFAULT_CATEGORY,
   type FaqItem,
   type FaqMedia,
@@ -338,6 +339,16 @@ export default function AdminFaqPage() {
                     <textarea className={cn(fields, "mt-1 leading-relaxed resize-y")} rows={8} value={current.answer} maxLength={FAQ_MAX_ANSWER} onChange={(e) => patch({ answer: e.target.value })} placeholder="Type the answer here" />
                     <span className="block text-[10px] text-text-subtle font-normal mt-1">Blank line = new paragraph · start a line with &ldquo;- &rdquo; for a bullet · **bold** · links are allowed</span>
                   </label>
+
+                  {/* Optional button under the answer, e.g. "Read his full story" → /founder */}
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[11px] font-medium text-text">Link button <span className="text-text-subtle font-normal">· optional, shown under the answer and media</span></span>
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_1.4fr] gap-2">
+                      <input className={cn(fields, "py-1.5")} value={current.link?.label ?? ""} maxLength={FAQ_MAX_LINK_LABEL} placeholder="Button text, e.g. Read his full story" aria-label="Link button text" onChange={(e) => patch({ link: { label: e.target.value, href: current.link?.href ?? "" } })} />
+                      <input className={cn(fields, "py-1.5 font-mono text-[11px]")} value={current.link?.href ?? ""} placeholder="Page, e.g. /founder or https://…" aria-label="Link button page" onChange={(e) => patch({ link: { label: current.link?.label ?? "", href: e.target.value } })} />
+                    </div>
+                    <span className="text-[10px] text-text-subtle">A page in the app starts with / and opens with a Back button. Leave both boxes empty for no button.</span>
+                  </div>
 
                   <div className="flex flex-col gap-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">

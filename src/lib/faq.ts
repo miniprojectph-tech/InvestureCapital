@@ -41,10 +41,22 @@ export type FaqItem = {
   /** Lightweight markup: blank line = paragraph, "- " = bullet, **bold**, URLs auto-link. */
   answer: string;
   media: FaqMedia[];
+  /** Optional button under the answer: a label and a page in the app (e.g. /founder) or a full web address. */
+  link?: { label: string; href: string };
   status: FaqStatus;
   createdAt: number;
   updatedAt: number;
 };
+
+export const FAQ_MAX_LINK_LABEL = 40;
+/** Keep a typed link usable: in-app paths and https addresses only. */
+export function cleanFaqLink(link: { label?: string; href?: string } | undefined): { label: string; href: string } | undefined {
+  const label = (link?.label ?? "").trim().slice(0, FAQ_MAX_LINK_LABEL);
+  let href = (link?.href ?? "").trim().slice(0, 500);
+  if (!label || !href) return undefined;
+  if (!href.startsWith("/") && !/^https?:\/\//i.test(href)) href = `https://${href}`;
+  return { label, href };
+}
 
 export type FaqDoc = { items: FaqItem[]; updatedAt?: number; updatedBy?: string };
 export type FaqVotes = Record<string, { up: number; down: number }>;
@@ -129,7 +141,11 @@ export async function saveFaq(items: FaqItem[], uid: string): Promise<void> {
     category: it.category.trim().slice(0, 40) || DEFAULT_CATEGORY,
     answer: it.answer.slice(0, FAQ_MAX_ANSWER),
     media: it.media.slice(0, FAQ_MAX_MEDIA).map((m) => stripUndefined({ ...m, caption: m.caption?.trim().slice(0, FAQ_MAX_CAPTION) || undefined })),
-  }));
+  })).map((it) => {
+    const link = cleanFaqLink(it.link);
+    const { link: _drop, ...rest } = it; // eslint-disable-line @typescript-eslint/no-unused-vars
+    return link ? { ...rest, link } : rest; // Firestore refuses undefined fields
+  });
   await setDoc(doc(db, "content", "faq"), { items: clean, updatedAt: Date.now(), updatedBy: uid, serverUpdatedAt: serverTimestamp() });
 }
 
