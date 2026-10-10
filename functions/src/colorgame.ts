@@ -3,6 +3,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { getDatabase, ServerValue } from "firebase-admin/database";
 import { FieldValue, Timestamp } from "firebase-admin/firestore";
 import { db, gameDb } from "./init";
+import { recordPoints } from "./points-ledger";
 import {
   ALL_COLORS,
   DEFAULT_COLOR_CONFIG,
@@ -169,6 +170,7 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
       throw new HttpsError("failed-precondition", "Not enough Game Points.");
     }
     tx.update(userStateRef(uid), { points: pts - amount });
+    recordPoints(tx, { uid, name, at: now, type: "color_bet", delta: -amount, balanceAfter: pts - amount, description: `Color Game bet ${amount} on ${color}`, ref: { game: "color", roundId: rid, color }, stats: { "color.bets": 1, "color.bet": amount }, daily: { colorBet: amount, colorBets: 1 } });
   });
 
   // Record the bet on gameDb. Each (player, colour) has its OWN document under
@@ -207,7 +209,10 @@ export const placeColorBet = onCall({ region: GAME_REGION }, async (request) => 
     return !bSnap.exists;
   }).catch(async (err) => {
     try {
-      await userStateRef(uid).update({ points: FieldValue.increment(amount) });
+      const batch = db.batch();
+      batch.update(userStateRef(uid), { points: FieldValue.increment(amount) });
+      recordPoints(batch, { uid, name, at: Date.now(), type: "color_refund", delta: amount, balanceAfter: null, description: `Color Game bet returned (round not open)`, ref: { game: "color", roundId: rid, color }, stats: { "color.bets": -1, "color.bet": -amount }, daily: { colorBet: -amount, colorBets: -1 } });
+      await batch.commit();
     } catch (refundErr) {
       console.error(`BET REFUND FAILED uid=${uid} round=${rid} amount=${amount}`, refundErr);
     }
@@ -298,11 +303,12 @@ async function payRound(roundId: string, payouts: Record<string, number>): Promi
       const marker = await tx.get(payoutMarkerRef(roundId));
       if (marker.exists) return; // already credited by an earlier attempt
       const snaps = await Promise.all(entries.map(([uid]) => tx.get(userStateRef(uid))));
+      const now = Date.now();
       entries.forEach(([uid, payout], i) => {
         const pts = (snaps[i].data() as { points?: number } | undefined)?.points ?? 0;
         tx.set(userStateRef(uid), { points: pts + payout }, { merge: true });
+        recordPoints(tx, { uid, at: now, type: "color_win", delta: payout, balanceAfter: pts + payout, description: `Color Game payout, round ${roundId}`, ref: { game: "color", roundId }, stats: { "color.won": payout, "color.wins": 1 }, daily: { colorWon: payout } });
       });
-      const now = Date.now();
       tx.create(payoutMarkerRef(roundId), {
         roundId,
         at: now,

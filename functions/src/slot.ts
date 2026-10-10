@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { FieldValue } from "firebase-admin/firestore";
 import { db } from "./init";
+import { recordPoints } from "./points-ledger";
 import { spin, simulate, mergeSlotConfig, POT_KEYS, type SlotConfig, type PotKey, type SpinResult } from "./slot-engine";
 import {
   cleanDaily, cleanPots, cleanGrand, spinsFor, planDay, dailyOutcome, ensurePotQueue, dueDrop, effectiveSpinValue,
@@ -158,6 +159,14 @@ export const slotSpin = onCall(async (request) => {
     if (drop) patch.potHistory = [...(st.potHistory ?? []).slice(-19), { pot: drop.pot, amount: drop.amount, at: now }];
     if (payout) tx.set(stateRef, { points: points + payout }, { merge: true });
     tx.set(slotRef, patch, { merge: true });
+    recordPoints(tx, {
+      uid, name: (userSnap.data()?.profile as { name?: string } | undefined)?.name, at: now,
+      type: drop ? "slot_jackpot" : "slot_win", delta: payout, balanceAfter: points + payout,
+      description: drop ? `Dragon Spire ${drop.pot.toUpperCase()} jackpot${win - drop.amount > 0 ? ` + ${win - drop.amount} on the spin` : ""}` : `Dragon Spire free spin`,
+      ref: { game: "slot", ...(drop ? { pot: drop.pot, potAmount: drop.amount } : {}), ...(testing ? { test: true } : {}) },
+      stats: testing ? { "slot.testSpins": 1 } : { "slot.spins": 1, "slot.won": payout, ...(drop ? { "slot.jackpots": 1, "slot.jackpotPoints": drop.amount } : {}) },
+      daily: testing ? {} : { slotWon: payout, slotSpins: 1 },
+    });
     if (drop?.pot === "grand") {
       // the Grand switches itself off and the win goes on record
       tx.set(db.doc("settings/games"), { slot: { grand: { armedUid: null, armedAt: null, armedBy: null, lastWinner: { uid, amount: drop.amount, at: now } } } }, { merge: true });
@@ -217,6 +226,9 @@ async function paidSpin(uid: string, settings: SlotSettings, cfg: SlotConfig, da
     const freeSpinsLeft = (mode === "free" ? freeLeft - 1 : 0) + result.freeSpinsAwarded;
     const freeTotal = mode === "free" || result.freeSpinsAwarded > 0 ? Math.round(Number(st.freeTotal ?? 0) + (mode === "free" ? win : 0)) : 0;
     if (charge || payout) tx.set(stateRef, { points: newPoints }, { merge: true });
+    if (charge) recordPoints(tx, { uid, at: now, type: "slot_bet", delta: -charge, balanceAfter: points - charge, description: `Dragon Spire bet ${charge}`, ref: { game: "slot" }, stats: { "slot.spins": 1, "slot.wagered": charge }, daily: { slotBet: charge, slotSpins: 1 } });
+    if (payout) recordPoints(tx, { uid, at: now, type: "slot_win", delta: payout, balanceAfter: newPoints, description: `Dragon Spire ${mode === "free" ? "free spin" : "win"}`, ref: { game: "slot" }, stats: { "slot.won": payout, ...(charge ? {} : { "slot.spins": 1 }) }, daily: { slotWon: payout } });
+    if (testing) recordPoints(tx, { uid, at: now, type: "slot_win", delta: 0, balanceAfter: null, description: "", stats: { "slot.testSpins": 1 } });
     tx.set(slotRef, { freeSpinsLeft, freeBet: freeSpinsLeft > 0 ? effBet : FieldValue.delete(), freeTotal: freeSpinsLeft > 0 ? freeTotal : FieldValue.delete(), spins: FieldValue.increment(1), wagered: FieldValue.increment(charge), paid: FieldValue.increment(payout), biggestWin: Math.max(Number(st.biggestWin ?? 0), payout), lastAt: now, lastBet: effBet }, { merge: true });
     if (!testing) {
       tx.set(potsRef, { pots: potsAfter, updatedAt: now }, { merge: true });

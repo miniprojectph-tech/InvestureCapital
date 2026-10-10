@@ -3,6 +3,7 @@ import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions";
 import { db } from "./init";
+import { recordPoints } from "./points-ledger";
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
@@ -347,6 +348,13 @@ export const castLine = onCall(async (request) => {
       { merge: true }
     );
     tx.set(lbRef, { uid, name, weeklyScore, updatedAt: now }, { merge: true });
+    const reefDelta = points - (cur.points ?? 0);
+    recordPoints(tx, {
+      uid, name, at: now, type: "reef_catch", delta: reefDelta, balanceAfter: points,
+      description: `Reef catch: ${caught.name}${treasure ? ` + treasure ${treasure}` : ""}${completionBonus ? ` + ${completionBonus.label} set bonus ${completionBonus.points}` : ""}`,
+      ref: { game: "reef", fishId: caught.id, rarity: caught.rarity },
+      stats: { "reef.catches": 1, "reef.won": reefDelta }, daily: { reefWon: reefDelta, reefCatches: 1 },
+    });
 
     return {
       fish: caught,
@@ -396,6 +404,7 @@ export const claimQuest = onCall(async (request) => {
 
     tx.set(stateRef, { points, weeklyScore, quests: { ...quests, claimed } }, { merge: true });
     tx.set(lbRef, { uid, name, weeklyScore, updatedAt: Date.now() }, { merge: true });
+    recordPoints(tx, { uid, name, at: Date.now(), type: "reef_quest", delta: quest.reward, balanceAfter: points, description: `Reef daily quest reward`, ref: { game: "reef", questId }, stats: { "reef.quests": 1, "reef.won": quest.reward }, daily: { reefWon: quest.reward } });
     return { reward: quest.reward, points };
   });
 });
@@ -442,6 +451,7 @@ export const redeemReward = onCall(async (request) => {
 
     tx.set(stateRef, { points: points - cost }, { merge: true });
     if (typeof reward.stock === "number") tx.update(rewardRef, { stock: reward.stock - 1 });
+    recordPoints(tx, { uid, name, at: Date.now(), type: "reward_redeem", delta: -cost, balanceAfter: points - cost, description: `Redeemed: ${reward.name ?? data.rewardId}`, ref: { rewardId: data.rewardId, rewardType: reward.type ?? "gadget" }, stats: { "reward.count": 1, "reward.spent": cost }, daily: { redeemed: cost, redemptions: 1 } });
 
     const redemptionRef = db.collection("redemptions").doc();
     tx.set(redemptionRef, {
@@ -545,9 +555,11 @@ export const weeklyReef = onSchedule(
     for (const d0 of lbSnap.docs) {
       const data = d0.data() as { uid: string; weeklyScore?: number };
       const stateRef = db.doc(`users/${data.uid}/game/state`);
-      if (ops + 3 > BATCH_LIMIT) await flush();
+      if (ops + 6 > BATCH_LIMIT) await flush();
       if (rank < prizes.length && (data.weeklyScore ?? 0) > 0) {
         const prize = prizes[rank];
+        recordPoints(batch, { uid: data.uid, at: Date.now(), type: "reef_weekly", delta: prize, balanceAfter: null, description: `Weekly Reef prize, rank #${rank + 1}`, ref: { game: "reef", rank: rank + 1 }, stats: { "reef.weekly": prize, "reef.won": prize }, daily: { reefWon: prize } });
+        ops += 3;
         const actRef = db.collection("users").doc(data.uid).collection("activity").doc();
         batch.set(actRef, {
           type: "reinvest",

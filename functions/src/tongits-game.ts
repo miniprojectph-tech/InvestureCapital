@@ -1,6 +1,7 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { FieldValue, type Transaction } from "firebase-admin/firestore";
 import { db, gameDb } from "./init";
+import { recordPoints } from "./points-ledger";
 
 // Region for all live Tongits actions — sits next to the game-live-asia DB.
 const GAME_REGION = "asia-southeast1";
@@ -460,18 +461,15 @@ async function settleEconomy(input: SettleEcoInputs) {
 
       const didFold = hasFight && (fightResponses[s.uid] === "fold" || fightResponses[s.uid] === "burned");
       const txnType = isWinner ? "challenge_points_won" : didFold ? "challenge_points_lost_fold" : "challenge_points_lost";
-      tx.set(txnCol().doc(), {
-        userId: s.uid,
-        type: txnType,
-        amount: Math.abs(net) + winnerJackpot,
-        roomCode: code,
-        matchId,
-        description: isWinner
-          ? `Won ${net + winnerJackpot} in Tongits room ${code}`
-          : didFold
-            ? `Folded — lost ${-net} in room ${code}`
-            : `Lost ${-net} in Tongits room ${code}`,
-        createdAt: now,
+      // The ledger line is the settlement only: the stake was logged when it was locked, and
+      // `release` is that stake coming back, so the signed movement here is the win or the loss.
+      recordPoints(tx, {
+        uid: s.uid, name: s.name, at: now, type: txnType,
+        delta: isWinner ? net + winnerJackpot : net, balanceAfter: Math.max(0, points + winnings),
+        description: isWinner ? `Won ${net + winnerJackpot} in Tongits room ${code}` : didFold ? `Folded — lost ${-net} in room ${code}` : `Lost ${-net} in Tongits room ${code}`,
+        ref: { game: "tongits", roomCode: code, matchId, stakeReturned: release },
+        stats: { "tongits.games": 1, "tongits.wins": isWinner ? 1 : 0, "tongits.losses": isWinner ? 0 : 1, "tongits.won": pointsGained, "tongits.lost": pointsLost },
+        daily: { tongitsWon: pointsGained, tongitsLost: pointsLost, tongitsGames: 1 },
       });
 
       const lb = lbSnaps[s.uid];

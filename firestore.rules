@@ -356,6 +356,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // === Game Points per player per game (Functions write; admins and the owner read) ===
+    match /game_stats/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if false;
+    }
+
     // === Community Tongits: leaderboard (Functions write, public read) ===
     match /tongits_leaderboard/{uid} {
       allow read: if isSignedIn();

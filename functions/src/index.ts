@@ -9,6 +9,7 @@ export { castLine, claimQuest, claimDailyEnergy, claimDailyGameBonus, redeemRewa
 
 // Dragon Spire slot.
 export { slotDayStart, slotSpin, slotSimulate, adminArmGrand, adminSetSlotPots, adminSlotPlayerSpins } from "./slot";
+export { adminSetPoints } from "./admin-points";
 
 // Color Game callables.
 export { placeColorBet, resolveColorRound, adminAdjustColorJackpot, adminSetColorJackpotColor, adminSetColorJackpotConfig } from "./colorgame";

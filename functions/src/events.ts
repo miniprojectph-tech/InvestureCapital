@@ -3,6 +3,7 @@ import { onDocumentWritten, onDocumentCreated } from "firebase-functions/v2/fire
 import { FieldValue, type Transaction } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
 import { db } from "./init";
+import { recordPoints } from "./points-ledger";
 import { loadCompPlan, activateInTx, displayName, type UserDoc } from "./compplan";
 import { peso } from "./compplan-config";
 import {
@@ -482,14 +483,7 @@ export const spinWheel = onCall(async (request) => {
     if (points > 0) {
       const cur = gsSnap.exists ? ((gsSnap.data()?.points as number) ?? 0) : 0;
       tx.set(gameStateRef(uid), { points: cur + points }, { merge: true });
-      tx.set(db.collection("game_point_transactions").doc(), {
-        userId: uid,
-        type: "spin_won",
-        amount: points,
-        eventId,
-        description: `Spin the wheel — ${prize.label} (${ev.name})`,
-        createdAt: now,
-      });
+      recordPoints(tx, { uid, name: displayName(member, uid), at: now, type: "spin_won", delta: points, balanceAfter: cur + points, description: `Spin the wheel — ${prize.label} (${ev.name})`, ref: { game: "event", eventId }, stats: { "event.spins": 1, "event.won": points }, daily: { eventWon: points } });
     }
     return {
       ok: true,
