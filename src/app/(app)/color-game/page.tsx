@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, Volume2, VolumeX } from "lucide-react";
+import { useSound } from "@/lib/sound";
 import { useAuth } from "@/lib/auth";
 import { useGameState } from "@/lib/game";
 import {
@@ -111,6 +112,7 @@ export default function ColorGamePage() {
   const coverStyle = useCoverStyle();
 
   const prevDiceRef = useRef<[DieColor, DieColor, DieColor] | undefined>(undefined);
+  const snd = useSound();
 
   const phase = timer.phase;
   const bettingOpen = phase === "betting";
@@ -199,19 +201,79 @@ export default function ColorGamePage() {
     setError(null);
     try {
       await placeColorBet(color, betAmount);
+      snd.play("color/chip-place");
       const mine = myBetsRef.current;
       if (mine.roundId !== roundId) { mine.roundId = roundId; mine.bets = {}; }
       mine.bets[color] = (mine.bets[color] ?? 0) + betAmount;
     } catch (e: unknown) {
+      snd.play("common/error");
       setError(e instanceof Error ? e.message : "Failed to place bet");
     } finally {
       setPlacing(false);
     }
-  }, [betAmount, placing, bettingOpen, roundId]);
+  }, [betAmount, placing, bettingOpen, roundId, snd]);
 
   const betAmounts: Record<string, number> = (isCurrent && live?.betAmounts ? live.betAmounts : {}) as Record<string, number>;
   const totalBettors = isCurrent ? (live?.totalBettors ?? 0) : 0;
-  const liveBets = isCurrent ? (live?.bets ?? []) : [];
+  const liveBets = useMemo(() => (isCurrent ? (live?.bets ?? []) : []), [isCurrent, live?.bets]);
+
+  // ── sounds ──
+  // other players' chips landing on the board (only while betting, never my own)
+  const betCountRef = useRef(0);
+  useEffect(() => {
+    const n = liveBets.length;
+    if (bettingOpen && n > betCountRef.current && betCountRef.current > 0) {
+      const newest = liveBets[0];
+      if (!newest || newest.uid !== user?.uid) snd.play("color/chip-other", { volume: 0.7 });
+    }
+    betCountRef.current = bettingOpen ? n : 0;
+  }, [liveBets, bettingOpen, user?.uid, snd]);
+  // last five seconds of betting tick
+  const secondsLeft = bettingOpen ? Math.ceil(timer.remaining / 1000) : -1;
+  useEffect(() => {
+    if (secondsLeft >= 1 && secondsLeft <= 5) snd.play("color/countdown-tick", { volume: secondsLeft <= 2 ? 1 : 0.7 });
+  }, [secondsLeft, snd]);
+  // bets closed → dice rattle; the dice themselves report when they land
+  const prevPhaseRef = useRef(phase);
+  useEffect(() => {
+    const prev = prevPhaseRef.current;
+    prevPhaseRef.current = phase;
+    if (phase === "rolling" && prev === "betting") {
+      snd.play("color/bets-closed");
+      const t = setTimeout(() => snd.play("color/dice-rattle"), 350);
+      return () => clearTimeout(t);
+    }
+  }, [phase, snd]);
+  const onDiceSettled = useCallback(() => {
+    snd.play("color/dice-land-1");
+    setTimeout(() => snd.play("color/dice-land-2"), 110);
+    setTimeout(() => snd.play("color/dice-land-3"), 230);
+  }, [snd]);
+  // result: a win sized by how many dice matched, a soft lose, the siren for a jackpot share
+  const resultKeyRef = useRef("");
+  useEffect(() => {
+    if (!showResult || !myResult || !currentDice) return;
+    const key = `${roundId}:${user?.uid ?? ""}`;
+    if (resultKeyRef.current === key) return;
+    resultKeyRef.current = key;
+    const mine = myBetsRef.current.bets;
+    const matches = Math.max(0, ...(Object.keys(mine) as DieColor[]).map((c) => currentDice.filter((d) => d === c).length));
+    const t = setTimeout(() => {
+      if (myResult.payout > 0) snd.play(`color/win-${Math.min(3, Math.max(1, matches)) as 1 | 2 | 3}`);
+      else snd.play("color/lose");
+      if (myResult.jackpot > 0) setTimeout(() => snd.play("color/jackpot-siren"), 500);
+    }, 400);
+    return () => clearTimeout(t);
+  }, [showResult, myResult, currentDice, roundId, user?.uid, snd]);
+  // climbing the weekly board
+  const myRankRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (rolling) return;
+    const idx = leaders.findIndex((l) => l.uid === user?.uid);
+    const rank = idx >= 0 ? idx + 1 : null;
+    if (rank !== null && myRankRef.current !== null && rank < myRankRef.current) snd.play("color/rank-up");
+    myRankRef.current = rank;
+  }, [leaders, rolling, user?.uid, snd]);
 
   if (!bgReady || (loading && !live)) {
     return (
@@ -268,6 +330,20 @@ export default function ColorGamePage() {
           <ColorRoundTimer phase={phase} remaining={timer.remaining} />
         </div>
 
+        {/* Speaker — left of the online count */}
+        {snd.adminOn && (
+          <button
+            type="button"
+            onClick={snd.toggle}
+            aria-label={snd.local ? "Mute sounds" : "Unmute sounds"}
+            aria-pressed={snd.local}
+            className="absolute z-20 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
+            style={{ right: "15%", top: "2.2%", width: "2.6%", height: "4.6%", color: snd.local ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.35)" }}
+          >
+            {snd.local ? <Volume2 style={{ width: "60%", height: "60%" }} /> : <VolumeX style={{ width: "60%", height: "60%" }} />}
+          </button>
+        )}
+
         {/* Online count — left of the bigger timer */}
         <div className="absolute z-20 flex items-center justify-center"
           style={{ right: "9.5%", top: "2.5%", width: "5%", height: "4%" }}>
@@ -299,7 +375,7 @@ export default function ColorGamePage() {
         {/* Dice — showcase window in the lid, dice drop & scatter into the tray */}
         <div className="absolute z-10"
           style={{ left: "30%", top: "6%", width: "23%", height: "72%" }}>
-          <ColorDice results={currentDice} phase={phase} />
+          <ColorDice results={currentDice} phase={phase} onSettled={onDiceSettled} />
         </div>
 
         {/* Jackpot combination — 3 squares of the admin-set jackpot color,

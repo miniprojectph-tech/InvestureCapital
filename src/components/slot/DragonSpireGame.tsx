@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowLeft, Info, X, Zap, Repeat, Gift } from "lucide-react";
+import { ArrowLeft, Info, X, Zap, Repeat, Gift, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSound } from "@/lib/sound";
 import {
   slotSpin, orbImage, potCoinImage, SYMBOL_IMAGE, SYMBOL_NAME, POT_LABEL, POT_COLOR, ART, REELS, ROWS,
   type SpinResponse, type Cell, type PotKey, type Sym, type Step, type HoldWinResult, type DayState,
@@ -70,6 +71,9 @@ export function DragonSpireGame({
   onSpin?: () => Promise<SpinResponse>;
 }) {
   const spinFn = useMemo(() => onSpin ?? (() => slotSpin()), [onSpin]);
+  const snd = useSound();
+  // auto-spin keeps the small sounds quieter so fifty spins in a row don't grate
+  const vol = useCallback(() => (autoRef.current ? 0.6 : 1), []);
   const [tiles, setTiles] = useState<Tile[][]>(() => Array.from({ length: REELS }, (_, r) => Array.from({ length: ROWS }, (_, y) => ({ id: `init-${r}-${y}`, sym: RANDOM_SYMS[(r * 3 + y * 5) % RANDOM_SYMS.length] }))));
   const [phase, setPhase] = useState<Phase>("idle");
   const [spinningReels, setSpinningReels] = useState<boolean[]>(Array(REELS).fill(false));
@@ -107,6 +111,7 @@ export function DragonSpireGame({
 
   const playHoldWin = useCallback(async (h: HoldWinResult) => {
     setPhase("holdwin");
+    snd.play("slot/hw-trigger");
     setFeature({ text: "HOLD & WIN", img: `${ART}/coin-grand.png` });
     await t(T.feature);
     setFeature(null);
@@ -115,22 +120,33 @@ export function DragonSpireGame({
     const landedKeys = new Set(h.rounds.flatMap((r) => r.landed.map(([r2, y]) => r2 * 10 + y)));
     for (const c of order) if (!landedKeys.has(c.reel * 10 + c.row)) coins.set(c.reel * 10 + c.row, c.value);
     setHw({ coins: new Map(coins), respins: 3, total: null, potsHit: [], landing: new Set(), grand: false });
+    for (let i = 0; i < coins.size; i++) setTimeout(() => snd.play("slot/hw-coin-land", { volume: 0.7 }), i * 70);
     await t(T.hwRound);
+    let heartbeat: (() => void) | null = null;
     for (const round of h.rounds) {
+      snd.play("slot/hw-respin", { volume: 0.8 });
       setHw((s) => s && { ...s, landing: new Set(Array.from({ length: REELS * ROWS }, (_, i) => Math.floor(i / ROWS) * 10 + (i % ROWS)).filter((k) => !s.coins.has(k))) });
       await t(T.hwRound * 0.7);
       for (const [r, y] of round.landed) {
         const c = order.find((o) => o.reel === r && o.row === y && !coins.has(r * 10 + y));
         if (c) coins.set(r * 10 + y, c.value);
       }
+      round.landed.forEach((_, i) => setTimeout(() => snd.play("slot/hw-coin-land"), i * 90));
       setHw((s) => s && { ...s, coins: new Map(coins), respins: round.respinsLeft, landing: new Set() });
+      // the last respin gets a heartbeat
+      if (round.respinsLeft === 1 && !heartbeat && !h.grandFilled) heartbeat = snd.loop("slot/hw-heartbeat", { volume: 0.9 });
+      if (round.respinsLeft > 1 && heartbeat) { heartbeat(); heartbeat = null; }
       await t(T.hwRound * 0.6);
     }
+    if (heartbeat) (heartbeat as () => void)();
     setHw((s) => s && { ...s, total: h.total, potsHit: h.potsHit, grand: h.grandFilled });
+    if (h.grandFilled) snd.play("slot/jackpot-grand");
+    else if (h.potsHit.length) snd.play(`slot/jackpot-${h.potsHit[0] as "mini" | "minor" | "major"}`);
+    else snd.play("slot/win-small");
     await t(T.hwReveal + (h.potsHit.length ? 900 : 0));
     setHw(null);
     setPhase("cascade");
-  }, [t]);
+  }, [t, snd]);
 
   /* ─────────── one spin, fully animated ─────────── */
   const runSpin = useCallback(async () => {
@@ -144,13 +160,17 @@ export function DragonSpireGame({
     setShownWin(0);
     setPhase("spinning");
     setSpinningReels(Array(REELS).fill(true));
+    snd.play("slot/spin-press", { volume: vol() });
+    const stopWhir = snd.loop("slot/reel-whir", { volume: vol() * 0.8 });
 
     let res: SpinResponse;
     const started = Date.now();
     try {
       res = await spinFn();
     } catch (e) {
+      stopWhir();
       if (!mounted.current) return;
+      snd.play("common/error");
       setSpinningReels(Array(REELS).fill(false));
       setPhase("idle");
       setError(e instanceof Error ? e.message.replace(/^.*?:\s*/, "") : "Spin failed. Please try again.");
@@ -158,7 +178,7 @@ export function DragonSpireGame({
       busy.current = false;
       return;
     }
-    if (!mounted.current) return;
+    if (!mounted.current) { stopWhir(); return; }
     const { result } = res;
     const steps = result.steps;
     const minStop = T.reelSpin - (Date.now() - started);
@@ -168,7 +188,9 @@ export function DragonSpireGame({
       await t(T.reelStagger);
       setTiles((cur) => cur.map((col, i) => (i === r ? first[r] : col)));
       setSpinningReels((s) => s.map((v, i) => (i === r ? false : v)));
+      snd.play(`slot/reel-stop-${(r + 1) as 1 | 2 | 3 | 4 | 5}`, { volume: vol() });
     }
+    stopWhir();
     let cur = first;
     let total = 0;
 
@@ -182,8 +204,10 @@ export function DragonSpireGame({
       setLit(cells);
       total += step.stepWin;
       setRunningWin(total);
+      snd.play(`slot/cascade-${Math.min(4, i + 1) as 1 | 2 | 3 | 4}`, { volume: vol() });
       await t(T.highlight);
       setBursting(cells);
+      snd.play("slot/symbol-burst", { volume: vol() * 0.9 });
       await t(T.burst);
       setLit(new Set());
       setBursting(new Set());
@@ -194,6 +218,7 @@ export function DragonSpireGame({
       await t(T.drop + T.between);
     }
     if (result.orbSum > 0 && result.lineWin > 0) {
+      snd.play("slot/orb-merge");
       setOrbSum(result.orbSum);
       await t(T.orbMerge);
     }
@@ -212,7 +237,9 @@ export function DragonSpireGame({
     if (shownTotal > 0) {
       setShownWin(shownTotal);
       const tier = res.drop ? (res.drop.pot === "grand" ? "epic" : res.drop.pot === "major" ? "mega" : "big") : tierOf(shownTotal, spinValue);
+      if (tier === "win" && !result.holdWin) snd.play("slot/win-small", { volume: vol() });
       if (tier !== "win") {
+        if (!res.drop) snd.play(tier === "epic" ? "slot/win-epic" : tier === "mega" ? "slot/win-mega" : "slot/win-big");
         setBigWin({ tier, amount: shownTotal, label: res.drop ? `${POT_LABEL[res.drop.pot]} JACKPOT` : undefined });
         await t(T.bigWin + (res.drop ? 800 : 0));
         setBigWin(null);
@@ -231,7 +258,7 @@ export function DragonSpireGame({
     } else if (autoRef.current) {
       setAuto(false);
     }
-  }, [spinFn, t, testing, playHoldWin, spinValue]);
+  }, [spinFn, t, testing, playHoldWin, spinValue, snd, vol]);
   useEffect(() => { runSpinRef.current = runSpin; }, [runSpin]);
 
   /* ─────────── render ─────────── */
@@ -254,7 +281,14 @@ export function DragonSpireGame({
           <Link href="/games" className="w-9 h-9 rounded-full bg-black/40 border border-white/10 flex items-center justify-center text-white/80 hover:text-white" aria-label="Back to Games"><ArrowLeft className="w-4 h-4" /></Link>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={`${ART}/logo.png`} alt="Dragon Spire" className="h-12 w-auto drop-shadow-[0_2px_12px_rgba(245,198,107,0.35)]" />
-          <button type="button" onClick={() => setPaytable(true)} className="w-9 h-9 rounded-full bg-black/40 border border-white/10 flex items-center justify-center text-white/80 hover:text-white" aria-label="How it works"><Info className="w-4 h-4" /></button>
+          <div className="flex items-center gap-1.5">
+            {snd.adminOn && (
+              <button type="button" onClick={snd.toggle} className={cn("w-9 h-9 rounded-full bg-black/40 border border-white/10 flex items-center justify-center hover:text-white", snd.local ? "text-white/80" : "text-white/40")} aria-label={snd.local ? "Mute sounds" : "Unmute sounds"} aria-pressed={snd.local}>
+                {snd.local ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+              </button>
+            )}
+            <button type="button" onClick={() => setPaytable(true)} className="w-9 h-9 rounded-full bg-black/40 border border-white/10 flex items-center justify-center text-white/80 hover:text-white" aria-label="How it works"><Info className="w-4 h-4" /></button>
+          </div>
         </div>
 
         <div className="flex-1 flex flex-col justify-center min-h-0">
@@ -366,8 +400,8 @@ export function DragonSpireGame({
             <span className="text-[9px] uppercase tracking-[0.14em] text-white/55">Spins left</span>
             <span className="text-[18px] font-bold font-mono tabular-nums leading-none">{spinsLeft} <span className="text-[10px] text-white/50 font-normal">/ {localDay.total}</span></span>
             <div className="flex gap-1 mt-1">
-              <button type="button" onClick={() => setAuto((a) => !a)} disabled={spinsLeft === 0} className={cn("px-2 py-1 rounded-full text-[9px] font-bold tracking-wider border flex items-center gap-1 disabled:opacity-40", auto ? "bg-[#3DD598]/20 border-[#3DD598] text-[#3DD598]" : "bg-black/40 border-white/15 text-white/70")}><Repeat className="w-3 h-3" /> AUTO</button>
-              <button type="button" onClick={() => setTurbo((v) => !v)} className={cn("px-2 py-1 rounded-full text-[9px] font-bold tracking-wider border flex items-center gap-1", turbo ? "bg-[#F5C66B]/20 border-[#F5C66B] text-[#F5C66B]" : "bg-black/40 border-white/15 text-white/70")}><Zap className="w-3 h-3" /> TURBO</button>
+              <button type="button" onClick={() => { snd.play("common/tap"); setAuto((a) => !a); }} disabled={spinsLeft === 0} className={cn("px-2 py-1 rounded-full text-[9px] font-bold tracking-wider border flex items-center gap-1 disabled:opacity-40", auto ? "bg-[#3DD598]/20 border-[#3DD598] text-[#3DD598]" : "bg-black/40 border-white/15 text-white/70")}><Repeat className="w-3 h-3" /> AUTO</button>
+              <button type="button" onClick={() => { snd.play("common/tap"); setTurbo((v) => !v); }} className={cn("px-2 py-1 rounded-full text-[9px] font-bold tracking-wider border flex items-center gap-1", turbo ? "bg-[#F5C66B]/20 border-[#F5C66B] text-[#F5C66B]" : "bg-black/40 border-white/15 text-white/70")}><Zap className="w-3 h-3" /> TURBO</button>
             </div>
           </div>
 
@@ -482,18 +516,21 @@ function HwCoin({ value }: { value: number | PotKey }) {
 
 function CountUp({ to, className }: { to: number; className?: string }) {
   const [v, setV] = useState(0);
+  const snd = useSound();
   useEffect(() => {
     let raf = 0;
     const start = performance.now();
     const dur = 1400;
+    let lastTick = 0;
     const tick = (now: number) => {
       const p = Math.min(1, (now - start) / dur);
+      if (now - lastTick > 70 && p < 0.97) { lastTick = now; snd.play("common/count-tick", { volume: 0.5 }); }
       setV(Math.round(to * (1 - Math.pow(1 - p, 3))));
       if (p < 1) raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [to]);
+  }, [to, snd]);
   return <div className={className}>+{v.toLocaleString()}</div>;
 }
 

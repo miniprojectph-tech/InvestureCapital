@@ -361,6 +361,8 @@ export function dailyBonusPoints(activeCapital: number, cfg: DailyBonusConfig): 
 export type GamesSettings = {
   universalDailyCredits: number;
   dailyBonus?: DailyBonusConfig;
+  /** Master switch for every game's sound effects (players still mute per device). */
+  sounds?: { enabled: boolean };
 };
 export const DEFAULT_GAMES_SETTINGS: GamesSettings = {
   universalDailyCredits: 20,

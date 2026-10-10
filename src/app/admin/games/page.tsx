@@ -459,6 +459,26 @@ export default function AdminGamesPage() {
             </button>
           </div>
         )}
+        <div className="flex items-center justify-between gap-3 mt-4 pt-3 border-t border-border">
+          <div className="min-w-0">
+            <p className="text-[12px] m-0">Game sounds</p>
+            <p className="text-[10px] text-text-subtle m-0 mt-0.5">Sound effects in Dragon Spire and the Color Game. Off silences every device and hides the speaker button; on lets each player mute for themselves.</p>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              const { db } = getFirebase();
+              if (!db || !user?.isAdmin) return;
+              const next = gamesSettings.sounds?.enabled === false;
+              try { await saveGamesSettings(db, { sounds: { enabled: next } }); setMsg(next ? "Game sounds are on." : "Game sounds are off for everyone."); }
+              catch (e) { setError(e instanceof Error ? e.message : "Save failed"); }
+            }}
+            aria-pressed={gamesSettings.sounds?.enabled !== false}
+            className={cn("shrink-0 px-3 py-1 rounded-full text-[10px] font-medium border transition min-w-[64px]", gamesSettings.sounds?.enabled !== false ? "bg-green/15 border-green/40 text-green" : "bg-canvas border-border text-text-muted")}
+          >
+            {gamesSettings.sounds?.enabled !== false ? "On" : "Off"}
+          </button>
+        </div>
       </Card>
         </>
       )}
