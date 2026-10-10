@@ -19,12 +19,14 @@ type SmallPot = (typeof SMALL_POTS)[number];
 
 /** Which games appear on Games Central. Dragon Spire has its own three-way status in the tab beside this. */
 export function HubGamesCard() {
-  const { hub, loading } = useSlotSettings();
+  const { hub, slot, loading } = useSlotSettings();
   const [draft, setDraft] = useState<HubGames | null>(null);
+  const [statusDraft, setStatusDraft] = useState<SlotStatus | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const cur = draft ?? hub;
-  const dirty = JSON.stringify(cur) !== JSON.stringify(hub);
+  const curStatus = statusDraft ?? slot.status;
+  const dirty = JSON.stringify(cur) !== JSON.stringify(hub) || curStatus !== slot.status;
   const rows: { key: keyof HubGames; name: string; hint: string }[] = [
     { key: "reef", name: "Investure Reef (fishing)", hint: "Off hides the card and blocks /play. Game Points, rewards and rankings are untouched." },
     { key: "tongits", name: "Tongits", hint: "Off hides the card and blocks /tongits." },
@@ -32,15 +34,32 @@ export function HubGamesCard() {
   ];
   async function save() {
     setSaving(true); setMsg(null);
-    try { await saveHubGames(cur); setDraft(null); setMsg({ ok: true, text: "Saved. The hub updates for members straight away." }); }
-    catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : "Save failed" }); }
+    try {
+      if (JSON.stringify(cur) !== JSON.stringify(hub)) await saveHubGames(cur);
+      if (curStatus !== slot.status) await saveSlotSettings({ status: curStatus });
+      setDraft(null); setStatusDraft(null);
+      setMsg({ ok: true, text: "Saved. The hub updates for members straight away." });
+    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : "Save failed" }); }
     finally { setSaving(false); }
   }
   return (
     <Card className="mb-3">
-      <CardHeader title="Games on the hub" subtitle="Switch a game off to hide it from Games Central and block its page. Dragon Spire is controlled from its own tab." />
+      <CardHeader title="Games on the hub" subtitle="Switch a game off to hide it from Games Central and block its page. Dragon Spire can also open to testers only; its spins, band and jackpots are in its own tab." />
       {loading ? <Loader2 className="w-4 h-4 animate-spin text-text-subtle" /> : (
         <div className="flex flex-col">
+          <div className="flex flex-wrap items-center justify-between gap-3 py-2.5 border-b border-border">
+            <div className="min-w-0">
+              <p className="text-[12px] m-0">Dragon Spire (slot)</p>
+              <p className="text-[10px] text-text-subtle m-0 mt-0.5">Off hides the card and blocks /dragon-spire. Testers only shows it to the testers list and admins.</p>
+            </div>
+            <div className="flex gap-1 p-1 rounded-lg bg-canvas border border-border shrink-0">
+              {(["off", "testers", "everyone"] as SlotStatus[]).map((s) => (
+                <button key={s} type="button" onClick={() => { setStatusDraft(s); setMsg(null); }} className={cn("px-3 py-1 rounded-md text-[10px] font-medium transition", curStatus === s ? (s === "off" ? "bg-card-elev text-text" : s === "testers" ? "bg-[#F5C66B]/15 text-[#F5C66B]" : "bg-green/15 text-green") : "text-text-muted hover:text-text")}>
+                  {s === "off" ? "Off" : s === "testers" ? `Testers only${slot.testers.length ? ` · ${slot.testers.length}` : ""}` : "Everyone"}
+                </button>
+              ))}
+            </div>
+          </div>
           {rows.map((r) => (
             <div key={r.key} className="flex items-center justify-between gap-3 py-2.5 border-b border-border last:border-b-0">
               <div className="min-w-0">
@@ -56,7 +75,7 @@ export function HubGamesCard() {
       )}
       <div className="flex flex-wrap items-center gap-3 mt-3">
         <button onClick={save} disabled={saving || !dirty} className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium disabled:opacity-50 flex items-center gap-1.5">{saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save</button>
-        {dirty && !saving && <button onClick={() => { setDraft(null); setMsg(null); }} className="text-[11px] text-text-muted hover:text-text">Discard</button>}
+        {dirty && !saving && <button onClick={() => { setDraft(null); setStatusDraft(null); setMsg(null); }} className="text-[11px] text-text-muted hover:text-text">Discard</button>}
         {msg && <span className={cn("text-[11px]", msg.ok ? "text-green" : "text-red")}>{msg.text}</span>}
       </div>
     </Card>

@@ -354,7 +354,7 @@ export default function AdminGamesPage() {
       <Card className="mb-3">
         <CardHeader
           title="Community Games access"
-          subtitle="Require an active plan to unlock Fishing Game, Rewards, and Tongits"
+          subtitle="Require an active placement to unlock the games and Rewards: Reef, Tongits, Color Game and Dragon Spire"
         />
         {gaDraft && (
           <>
