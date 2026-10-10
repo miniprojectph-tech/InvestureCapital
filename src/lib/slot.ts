@@ -49,7 +49,7 @@ export type SpinResponse = {
   drop: { pot: PotKey; amount: number } | null;
   freeSpinsLeft: number; freeTotal: number; pots: Record<PotKey, number>;
 };
-export type DayState = { day: string; spinsTotal: number; spinsUsed: number; wonToday: number; capital: number; resetAt: number; minActive: number; testing: boolean };
+export type DayState = { day: string; spinsTotal: number; spinsUsed: number; wonToday: number; capital: number; resetAt: number; minActive: number; testing: boolean; spinValue?: number };
 
 export type SlotStatus = "off" | "testers" | "everyone";
 export type DailySettings = { baseSpins: number; minActive: number; perThousand: number; cap: number; bandMin: number; bandMax: number; spinValue: number; everydayHwOneIn: number };

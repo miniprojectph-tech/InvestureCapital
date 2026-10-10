@@ -4,7 +4,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { db } from "./init";
 import { spin, simulate, mergeSlotConfig, POT_KEYS, type SlotConfig, type PotKey, type SpinResult } from "./slot-engine";
 import {
-  cleanDaily, cleanPots, cleanGrand, spinsFor, planDay, dailyOutcome, ensurePotQueue, dueDrop,
+  cleanDaily, cleanPots, cleanGrand, spinsFor, planDay, dailyOutcome, ensurePotQueue, dueDrop, effectiveSpinValue,
   type DailySettings, type PotSettings, type GrandSettings, type DayPlan, type PotQueue,
 } from "./slot-daily";
 
@@ -92,10 +92,7 @@ export const slotDayStart = onCall(async (request) => {
     let patch: Partial<SlotState> = {};
     if (st.day !== today) {
       // a new day: fresh plan, yesterday's unused spins are gone
-      const d = settings.daily;
-      const per10 = d.bandMin + rng() * Math.max(0, d.bandMax - d.bandMin);
-      const target = Math.round((per10 * spinsTotal) / 10);
-      const plan = spinsTotal > 0 ? planDay(cfg, d, spinsTotal, target, randomInt(0, 2 ** 31 - 1)) : { seed: 0, wins: [], hw: [], target: 0 };
+      const plan = planDay(cfg, settings.daily, spinsTotal, randomInt(0, 2 ** 31 - 1));
       patch = { day: today, spinsTotal, spinsUsed: 0, wonToday: 0, plan };
     }
     const { queue, changed } = ensurePotQueue(st.potQueue, settings.pots, now, rng);
@@ -105,6 +102,7 @@ export const slotDayStart = onCall(async (request) => {
     return {
       day: today, spinsTotal: merged.spinsTotal ?? 0, spinsUsed: merged.spinsUsed ?? 0, wonToday: merged.wonToday ?? 0,
       capital, resetAt: nextMidnight(now), minActive: settings.daily.minActive, testing: settings.testing,
+      spinValue: merged.plan?.spinValue ?? effectiveSpinValue(cfg, settings.daily),
     };
   });
 });
@@ -167,7 +165,7 @@ export const slotSpin = onCall(async (request) => {
     }
     if (!testing) {
       tx.set(statsRef, { days: { [today]: { spins: FieldValue.increment(1), paid: FieldValue.increment(payout), holdWins: FieldValue.increment(result.holdWin ? 1 : 0), pots: FieldValue.increment(drop ? 1 : 0), potPoints: FieldValue.increment(drop?.amount ?? 0) } }, updatedAt: now }, { merge: true });
-      if (drop || payout >= settings.daily.spinValue * 50) {
+      if (drop || payout >= (st.plan.spinValue ?? effectiveSpinValue(cfg, settings.daily)) * 50) {
         tx.set(db.collection("users").doc(uid).collection("activity").doc(), {
           type: "reinvest",
           title: drop ? `Dragon Spire ${drop.pot === "grand" ? "GRAND" : drop.pot.toUpperCase()} jackpot` : "Dragon Spire big win",
@@ -291,14 +289,13 @@ export const adminSlotPlayerSpins = onCall(async (request) => {
       tx.set(slotRef, { day: FieldValue.delete(), plan: FieldValue.delete(), spinsTotal: 0, spinsUsed: 0, wonToday: 0 }, { merge: true });
       return { spinsTotal: 0, spinsUsed: 0 };
     }
-    const dd = settings.daily;
-    const per10 = dd.bandMin + rng() * Math.max(0, dd.bandMax - dd.bandMin);
-    const extraTarget = Math.round((per10 * add) / 10);
-    const extra = planDay(cfg, dd, add, extraTarget, randomInt(0, 2 ** 31 - 1));
+    // the extra spins are a day of their own (band × add/10), kept on their own seed inside the plan
+    const extra = planDay(cfg, settings.daily, add, randomInt(0, 2 ** 31 - 1));
     const sameDay = st.day === today && st.plan;
-    const base: DayPlan = sameDay ? (st.plan as DayPlan) : { seed: extra.seed, wins: [], hw: [], target: 0 };
+    const base: DayPlan = sameDay ? (st.plan as DayPlan) : { seed: extra.seed, wins: [], hw: [], target: 0, spinValue: extra.spinValue };
     const offset = base.wins.length;
-    const plan: DayPlan = { seed: base.seed, wins: [...base.wins, ...extra.wins], hw: [...base.hw, ...extra.hw.map((i) => i + offset)], target: base.target + extra.target };
+    const segments = offset > 0 ? [...(base.segments ?? []), { start: offset, seed: extra.seed, spinValue: extra.spinValue ?? effectiveSpinValue(cfg, settings.daily) }] : base.segments;
+    const plan: DayPlan = { seed: base.seed, spinValue: base.spinValue ?? extra.spinValue, wins: [...base.wins, ...extra.wins], hw: [...base.hw, ...extra.hw.map((i) => i + offset)], target: base.target + extra.target, ...(segments ? { segments } : {}) };
     const spinsTotal = (sameDay ? Number(st.spinsTotal ?? 0) : 0) + add;
     const patch: Partial<SlotState> = sameDay
       ? { plan, spinsTotal }

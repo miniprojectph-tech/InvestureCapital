@@ -156,7 +156,6 @@ export function DragonSpireAdmin() {
     }
     if (d.bandMax < d.bandMin) return setMsg({ ok: false, text: "The points band's high end must be at least its low end." });
     if (d.cap < d.baseSpins) return setMsg({ ok: false, text: "The daily cap can't be lower than the base spins." });
-    if (d.spinValue < 1) return setMsg({ ok: false, text: "The spin value must be at least 1 GP." });
     if (d.everydayHwOneIn < 1) return setMsg({ ok: false, text: "Everyday Hold & Win must be 1 in at least 1 spin." });
     const pots = {} as SlotSettings["pots"];
     for (const k of SMALL_POTS) {
@@ -247,7 +246,10 @@ export function DragonSpireAdmin() {
           </p>
           <div className="grid grid-cols-2 gap-3 mt-4">
             <Field label="Everyday Hold & Win · 1 in N spins" value={cur.daily.everydayHwOneIn} onChange={(v) => editDaily("everydayHwOneIn", v)} hint="Small medallions paid from the band, so members learn the round" />
-            <Field label="Spin value (GP)" value={cur.daily.spinValue} onChange={(v) => editDaily("spinValue", v)} hint="Sets the Big / Mega / Epic win labels (15× / 50× / 150×)" />
+            <div>
+              <label className="block text-[11px] text-text-muted mb-1">Paytable</label>
+              <p className="text-[10px] text-text-subtle m-0 leading-relaxed bg-canvas border border-border rounded-md px-3 py-2">Fixed. A pattern always pays the same points; the server picks a day whose real wins add up inside the band, nothing is stretched. The paytable scale follows the band&apos;s middle.</p>
+            </div>
           </div>
           <div className="mt-4">
             <label className="block text-[11px] text-text-muted mb-1">Games Central pop-up text</label>

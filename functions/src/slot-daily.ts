@@ -1,8 +1,9 @@
 /**
  * Dragon Spire — the daily free-spins model. Members don't stake points: each
- * day they get free spins from their active placements, and the day's total
- * is drawn from an admin band and planned up front from real slot outcomes,
- * so the pattern looks natural while the total is exact. Pots (Mini / Minor
+ * day they get free spins from their active placements. The day is planned up
+ * front from real slot outcomes whose paytable wins already add up inside the
+ * admin band, so every pattern pays what the paytable says and the total still
+ * lands where the admin wants it. Pots (Mini / Minor
  * / Major) drop on each player a set number of times per period at random
  * moments; the Grand is armed by the admin on one member.
  */
@@ -15,10 +16,10 @@ export type DailySettings = {
   /** Extra spins for every full ₱1,000 above the first. */
   perThousand: number;
   cap: number;
-  /** Points a member's day totals, per 10 spins — drawn once a day, then scaled by their spins. */
+  /** Points a member's day totals, per 10 spins (scaled by their spins). The spin value is derived from it. */
   bandMin: number;
   bandMax: number;
-  /** Notional bet the maths runs at (sets how a win looks relative to the symbols). */
+  /** Legacy: the maths now runs at `effectiveSpinValue(cfg, d)`; kept so old settings still parse. */
   spinValue: number;
   /** Everyday Hold & Win with small coins (no pot): about 1 in N spins. */
   everydayHwOneIn: number;
@@ -110,70 +111,94 @@ export function dailyEngineConfig(base: SlotConfig): SlotConfig {
 
 const NO_POTS: Record<PotKey, number> = { mini: 0, minor: 0, major: 0, grand: 0 };
 
-export type DayPlan = { seed: number; wins: number[]; hw: number[]; target: number };
-
-/**
- * Plan a day: `spins` real outcomes at the notional spin value, scaled so they
- * add up to `target`. Zero spins stay zero, big chains stay the big ones.
- * `hw` lists the spins that play as an everyday Hold & Win (small coins).
- */
-export function planDay(cfg: SlotConfig, d: DailySettings, spins: number, target: number, seed0: number): DayPlan {
-  const eng = dailyEngineConfig(cfg);
-  for (let attempt = 0; attempt < 20; attempt++) {
-    const seed = (seed0 + attempt * 7919) >>> 0;
-    const raw: number[] = [];
-    for (let i = 0; i < spins; i++) raw.push(spin(eng, d.spinValue, "base", NO_POTS, seededRng(seed, i)).totalWin);
-    const rawTotal = raw.reduce((s, w) => s + w, 0);
-    if (rawTotal <= 0 && target > 0) continue;
-    // no single spin carries more than 60% of the day: real chains can be 1,000×, which would leave
-    // every other spin at 1 point — soften the biggest ones and spread the excess over the rest
-    const capped = raw.slice();
-    const share = 0.6;
-    for (let pass = 0; pass < 5; pass++) {
-      const tot = capped.reduce((s, w) => s + w, 0);
-      const others = capped.filter((w) => w > 0 && w <= tot * share);
-      let excess = 0;
-      for (let i = 0; i < spins; i++) if (capped[i] > tot * share) { excess += capped[i] - tot * share; capped[i] = tot * share; }
-      if (excess <= 0 || others.length === 0) break;
-      const oSum = others.reduce((s, w) => s + w, 0);
-      for (let i = 0; i < spins; i++) if (capped[i] > 0 && capped[i] < tot * share) capped[i] += (excess * capped[i]) / oSum;
-    }
-    const cTotal = capped.reduce((s, w) => s + w, 0);
-    const wins = capped.map((w) => (cTotal > 0 ? Math.floor((w * target) / cTotal) : 0));
-    // tiny wins that rounded to nothing still show as a win on screen — give them 1
-    for (let i = 0; i < spins; i++) if (raw[i] > 0 && wins[i] === 0 && target > 0) wins[i] = 1;
-    let diff = target - wins.reduce((s, w) => s + w, 0);
-    // settle the rounding on the biggest wins (never below 1)
-    const order = wins.map((_, i) => i).sort((a, b) => wins[b] - wins[a]);
-    let guard = 0;
-    while (diff !== 0 && guard++ < 10_000) {
-      for (const i of order) {
-        if (diff === 0) break;
-        if (diff > 0) { wins[i]++; diff--; } else if (wins[i] > 1) { wins[i]--; diff++; }
-      }
-      if (diff < 0 && wins.every((w) => w <= 1)) break;
-    }
-    // everyday Hold & Win only on spins with enough points to split into 6–13 coins
-    const hw: number[] = [];
-    if (d.everydayHwOneIn > 0) {
-      const r = seededRng(seed, 1_000_003);
-      for (let i = 0; i < spins; i++) if (wins[i] >= 15 && r() < 1 / d.everydayHwOneIn) hw.push(i);
-    }
-    return { seed, wins, hw, target };
-  }
-  return { seed: seed0, wins: Array(spins).fill(0), hw: [], target: 0 };
+/** Average return of one daily spin per point of spin value (measured once per engine config). */
+const rtpCache = new Map<string, number>();
+export function dailyRtp(eng: SlotConfig): number {
+  const key = JSON.stringify({ p: eng.paytable, w: eng.weights, ov: eng.orbValues, ow: eng.orbWeights, c: eng.cascadeBase, m: eng.maxWinMultiple });
+  const hit = rtpCache.get(key);
+  if (hit !== undefined) return hit;
+  const r = seededRng(0x5EED, 1);
+  let paid = 0;
+  const n = 20_000;
+  for (let i = 0; i < n; i++) paid += spin(eng, 1, "base", NO_POTS, r).totalWin;
+  const rtp = Math.max(0.05, paid / n);
+  rtpCache.set(key, rtp);
+  return rtp;
 }
 
-/** Scale an outcome's step wins so the chain adds up to `win` (orbs included). */
-function scaleOutcome(r: SpinResult, win: number): SpinResult {
-  const chain = r.orbSum > 0 ? r.lineWin * r.orbSum : r.lineWin;
-  if (chain <= 0 || win <= 0) {
-    return { ...r, steps: r.steps.map((s) => ({ ...s, stepWin: 0 })), lineWin: 0, orbSum: 0, orbs: [], totalWin: win, holdWin: null, freeSpinsAwarded: 0, scatters: [] };
+/**
+ * The spin value that makes an average day land in the middle of the band, so
+ * the paytable never has to be bent: three dragons pay the same points every
+ * day, and the day's total still falls inside the admin's range.
+ */
+export function effectiveSpinValue(cfg: SlotConfig, d: DailySettings): number {
+  const eng = dailyEngineConfig(cfg);
+  const mid = (d.bandMin + d.bandMax) / 2;
+  return Math.max(1, Math.round(mid / (10 * dailyRtp(eng))));
+}
+
+/** A real spin at the day's value, with the payout rounded to whole points (a hit is never less than 1). */
+function naturalSpin(eng: SlotConfig, v: number, rng: Rng): SpinResult {
+  const r = spin(eng, v, "base", NO_POTS, rng);
+  const win = r.totalWin > 0 ? Math.max(1, Math.round(r.totalWin)) : 0;
+  return { ...r, totalWin: win, holdWin: null, freeSpinsAwarded: 0, scatters: [] };
+}
+
+export type PlanSegment = { start: number; seed: number; spinValue: number };
+export type DayPlan = {
+  seed: number; wins: number[]; hw: number[]; target: number;
+  /** Points one spin's maths runs at. Older plans without it fall back to the setting. */
+  spinValue?: number;
+  /** Spins added later by an admin keep their own seed, so picture and payout always come from the same spin. */
+  segments?: PlanSegment[];
+};
+/** Which seed, index and spin value regenerate spin `i` of a plan. */
+export function seedFor(plan: DayPlan, i: number, fallbackValue: number): { seed: number; index: number; spinValue: number } {
+  let seg: PlanSegment | null = null;
+  for (const s of plan.segments ?? []) if (s.start <= i && (!seg || s.start >= seg.start)) seg = s;
+  if (seg) return { seed: seg.seed, index: i - seg.start, spinValue: seg.spinValue };
+  return { seed: plan.seed, index: i, spinValue: plan.spinValue ?? fallbackValue };
+}
+
+/**
+ * Plan a day: look for a seed whose `spins` natural outcomes add up to a total
+ * inside the band (scaled by the spins). Nothing is stretched — every win is
+ * exactly what the paytable says. If no seed lands in the band after many
+ * tries (a band far from the maths), the closest one is used.
+ * `hw` lists the spins that play as an everyday Hold & Win (small coins).
+ */
+export function planDay(cfg: SlotConfig, d: DailySettings, spins: number, seed0: number): DayPlan {
+  const eng = dailyEngineConfig(cfg);
+  const v = effectiveSpinValue(cfg, d);
+  if (spins <= 0) return { seed: seed0 >>> 0, wins: [], hw: [], target: 0, spinValue: v };
+  const lo = Math.round((d.bandMin * spins) / 10), hi = Math.round((d.bandMax * spins) / 10);
+  // first choice: a day inside the band where no single spin carries more than half of it and the
+  // longest run of blanks is short, so it never feels like "lose, lose, lose, one jackpot"
+  let best: { seed: number; wins: number[]; total: number } | null = null;
+  let bestScore = Infinity;
+  for (let attempt = 0; attempt < 400; attempt++) {
+    const seed = (seed0 + attempt * 7919) >>> 0;
+    const wins: number[] = [];
+    let total = 0, biggest = 0, streak = 0, longest = 0;
+    for (let i = 0; i < spins; i++) {
+      const w = naturalSpin(eng, v, seededRng(seed, i)).totalWin;
+      wins.push(w); total += w; biggest = Math.max(biggest, w);
+      streak = w > 0 ? 0 : streak + 1; longest = Math.max(longest, streak);
+    }
+    const dist = total < lo ? lo - total : total > hi ? total - hi : 0;
+    const penalty = (biggest > total * 0.5 ? 1 : 0) + (longest > 6 ? 1 : 0);
+    const score = dist * 10 + penalty;
+    if (score < bestScore) { best = { seed, wins, total }; bestScore = score; }
+    if (score === 0) break;
   }
-  const line = r.orbSum > 0 ? win / r.orbSum : win;
-  const k = line / r.lineWin;
-  const steps = r.steps.map((s) => ({ ...s, stepWin: Math.round(s.stepWin * k * 100) / 100 }));
-  return { ...r, steps, lineWin: Math.round(line * 100) / 100, totalWin: win, holdWin: null, freeSpinsAwarded: 0, scatters: [] };
+  const { seed, wins, total } = best!;
+  // everyday Hold & Win only on spins with enough points to split into 6–13 coins
+  const hw: number[] = [];
+  if (d.everydayHwOneIn > 0) {
+    const r = seededRng(seed, 1_000_003);
+    for (let i = 0; i < spins; i++) if (wins[i] >= 15 && r() < 1 / d.everydayHwOneIn) hw.push(i);
+  }
+  return { seed, wins, hw, target: total, spinValue: v };
 }
 
 /** Split an amount into n coin values that look like a slot's: a few bigger, most small. */
@@ -226,23 +251,25 @@ export function buildHoldWin(grid: Grid, coinTotal: number, pot: PotKey | null, 
   return { grid: g, holdWin: { coins, rounds, total, potsHit: pot ? [pot] : [], grandFilled: grandFill } };
 }
 
-/** Regenerate spin `i` of a plan and shape it: scaled chain, everyday Hold & Win, or a pot / Grand drop. */
+/** Regenerate spin `i` of a plan: the natural outcome, or an everyday Hold & Win / pot / Grand drop in its place. */
 export function dailyOutcome(cfg: SlotConfig, d: DailySettings, plan: DayPlan, i: number, drop: { pot: PotKey; amount: number } | null): SpinResult {
   const eng = dailyEngineConfig(cfg);
-  const rng = seededRng(plan.seed, i);
-  const raw = spin(eng, d.spinValue, "base", NO_POTS, rng);
-  const win = plan.wins[i] ?? 0;
-  const base = scaleOutcome(raw, win);
+  const { seed, index, spinValue } = seedFor(plan, i, effectiveSpinValue(cfg, d));
+  const base = naturalSpin(eng, spinValue, seededRng(seed, index));
   const everydayHw = plan.hw.includes(i);
   if (!drop && !everydayHw) return base;
-  // a Hold & Win spin: the chain is replaced by coins (planned win) plus the pot if one drops
-  const hwRng = seededRng(plan.seed ^ 0xABCDEF, i);
+  // a Hold & Win spin: the planned win is paid as coins (plus the pot if one drops). The medallions sit on a
+  // grid with no winning ways of its own, so nothing on screen looks like an unpaid pattern.
+  const win = base.totalWin;
+  let blank = base;
+  for (let k = 1; k <= 60 && blank.steps[0].wins.length > 0; k++) blank = naturalSpin(eng, spinValue, seededRng(seed ^ 0x51A7, index * 64 + k));
+  const hwRng = seededRng(seed ^ 0xABCDEF, index);
   const grandFill = drop?.pot === "grand";
-  const { grid, holdWin } = buildHoldWin(base.steps[0].grid, win, drop?.pot ?? null, grandFill, hwRng);
+  const { grid, holdWin } = buildHoldWin(blank.steps[0].grid, win, drop?.pot ?? null, grandFill, hwRng);
   // the coins are the payout: on a tiny spin they may add a point or two over the plan, never less
   const potAmount = drop?.amount ?? 0;
-  const firstStep = { ...base.steps[0], grid, wins: [], stepWin: 0, removed: [] };
-  return { ...base, steps: [firstStep], lineWin: 0, orbSum: 0, orbs: [], holdWin: { ...holdWin, total: holdWin.total + potAmount }, totalWin: holdWin.total + potAmount };
+  const firstStep = { ...blank.steps[0], grid, wins: [], stepWin: 0, removed: [] };
+  return { ...blank, steps: [firstStep], lineWin: 0, orbSum: 0, orbs: [], holdWin: { ...holdWin, total: holdWin.total + potAmount }, totalWin: holdWin.total + potAmount };
 }
 
 // ===== pot periods (Manila weeks, Monday 00:00) =====

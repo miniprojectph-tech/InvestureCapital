@@ -44,7 +44,7 @@ export default function DragonSpirePage() {
       points={gameState?.points ?? 0}
       pots={{ mini: slot.pots.mini.amount, minor: slot.pots.minor.amount, major: slot.pots.major.amount, grand: slot.grand.amount }}
       day={day!}
-      spinValue={slot.daily.spinValue}
+      spinValue={day!.spinValue ?? slot.daily.spinValue}
       testing={slot.testing}
     />
   );
