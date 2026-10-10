@@ -8,7 +8,7 @@ import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { listInvestors, type InvestorRow } from "@/lib/adminQueries";
 import {
-  useSlotSettings, saveSlotSettings, saveHubGames, useSlotStatsToday, useGrandHistory, adminArmGrand, spinsFor, potPointsPerWeek,
+  useSlotSettings, saveSlotSettings, saveHubGames, useSlotStatsToday, useGrandHistory, adminArmGrand, adminSlotPlayerSpins, spinsFor, potPointsPerWeek,
   POT_LABEL, DEFAULT_POPUP_TEXT, type SlotStatus, type SlotSettings, type DailySettings, type HubGames,
 } from "@/lib/slot";
 
@@ -118,6 +118,19 @@ export function DragonSpireAdmin() {
   async function setTesters(next: string[], key: string) {
     setTesterBusy(key); setMsg(null);
     try { await saveSlotSettings({ testers: next }); } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : "Could not save" }); } finally { setTesterBusy(null); }
+  }
+  // per-tester spin tools
+  const [addSpins, setAddSpins] = useState<Record<string, string>>({});
+  async function testerSpins(t: { uid: string; name: string }, action: "reset" | "add") {
+    const n = action === "add" ? int(addSpins[t.uid] ?? "10") : 0;
+    if (action === "add" && (!Number.isFinite(n) || n < 1 || n > 200)) return setMsg({ ok: false, text: "Add between 1 and 200 spins." });
+    const key = `${action}-${t.uid}`;
+    setTesterBusy(key); setMsg(null);
+    try {
+      const r = await adminSlotPlayerSpins(t.uid, action, n);
+      setMsg({ ok: true, text: action === "reset" ? `${t.name}'s day is reset. Their next open gives a fresh plan and full spins.` : `${n} spins added for ${t.name}. Today they have ${r.spinsTotal} spins, ${r.spinsUsed} played.${slot.testing ? "" : " Test mode is off, so these pay real points."}` });
+    } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message.replace(/^.*?:\s*/, "") : "Could not update the spins" }); }
+    finally { setTesterBusy(null); }
   }
 
   // the Grand
@@ -320,7 +333,7 @@ export function DragonSpireAdmin() {
       </div>
 
       <Card>
-        <CardHeader title="Testers" subtitle="While the game is “Testers only”, only these members (and admins) can see and play it." right={<FlaskConical className="w-4 h-4 text-[#F5C66B]" />} />
+        <CardHeader title="Testers" subtitle={`While the game is “Testers only”, only these members (and admins) can see and play it. Reset gives a tester a fresh day; Add puts extra spins into today's plan${slot.testing ? " (test mode: they pay nothing)" : " (test mode is off: they pay real points)"}.`} right={<FlaskConical className="w-4 h-4 text-[#F5C66B]" />} />
         <div className="relative mb-2">
           <Search className="w-3.5 h-3.5 text-text-subtle absolute left-2.5 top-1/2 -translate-y-1/2" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search a member to add…" className="w-full bg-canvas border border-border rounded-lg pl-8 pr-3 py-2 text-[11px] text-text outline-none focus:border-gold/40 placeholder:text-text-subtle" />
@@ -336,12 +349,17 @@ export function DragonSpireAdmin() {
           )}
         </div>
         {testerRows.length === 0 ? <p className="text-[11px] text-text-subtle m-0">No testers yet. Search a member above to add one.</p> : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-1">
             {testerRows.map((t) => (
-              <div key={t.uid} className="flex items-center gap-2 bg-canvas border border-border rounded-lg px-3 py-2">
+              <div key={t.uid} className="flex flex-wrap items-center gap-2 bg-canvas border border-border rounded-lg px-3 py-2">
                 <FlaskConical className="w-3.5 h-3.5 text-[#F5C66B] shrink-0" />
-                <div className="flex-1 min-w-0"><p className="text-[11px] text-text m-0 truncate">{t.name}</p>{t.email && <p className="text-[9px] text-text-subtle m-0 truncate">{t.email}</p>}</div>
-                <button onClick={() => setTesters(slot.testers.filter((u) => u !== t.uid), `rm-${t.uid}`)} disabled={testerBusy === `rm-${t.uid}`} className="p-1 text-text-subtle hover:text-red" aria-label={`Remove ${t.name}`}><X className="w-3.5 h-3.5" /></button>
+                <div className="flex-1 min-w-[120px]"><p className="text-[11px] text-text m-0 truncate">{t.name}</p>{t.email && <p className="text-[9px] text-text-subtle m-0 truncate">{t.email}</p>}</div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => testerSpins(t, "reset")} disabled={testerBusy !== null} className="px-2 py-1 rounded-md border border-border-strong text-[10px] text-text disabled:opacity-50">{testerBusy === `reset-${t.uid}` ? "…" : "Reset day"}</button>
+                  <input type="number" min={1} max={200} value={addSpins[t.uid] ?? "10"} onChange={(e) => setAddSpins({ ...addSpins, [t.uid]: e.target.value })} className={cn(num, "w-14 py-1 px-2")} aria-label={`Spins to add for ${t.name}`} />
+                  <button onClick={() => testerSpins(t, "add")} disabled={testerBusy !== null} className="px-2 py-1 rounded-md bg-gold/15 text-gold text-[10px] font-medium disabled:opacity-50">{testerBusy === `add-${t.uid}` ? "…" : "Add spins"}</button>
+                  <button onClick={() => setTesters(slot.testers.filter((u) => u !== t.uid), `rm-${t.uid}`)} disabled={testerBusy !== null} className="p-1 text-text-subtle hover:text-red" aria-label={`Remove ${t.name}`}><X className="w-3.5 h-3.5" /></button>
+                </div>
               </div>
             ))}
           </div>

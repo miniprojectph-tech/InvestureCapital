@@ -261,6 +261,60 @@ export const adminArmGrand = onCall(async (request) => {
   return { armedUid: target };
 });
 
+/**
+ * Admin: reset a tester's day (fresh plan and full spins on their next open)
+ * or add spins to today's plan, paid from the band at the normal rate.
+ */
+export const adminSlotPlayerSpins = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sign in required.");
+  const caller = await db.collection("users").doc(uid).get();
+  if (caller.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Admin role required.");
+  const d = (request.data ?? {}) as { uid?: unknown; action?: unknown; spins?: unknown };
+  const target = typeof d.uid === "string" ? d.uid : "";
+  if (!target) throw new HttpsError("invalid-argument", "Pick a member.");
+  const action = d.action === "reset" || d.action === "add" ? d.action : null;
+  if (!action) throw new HttpsError("invalid-argument", "Action must be reset or add.");
+  const add = action === "add" ? Math.floor(Number(d.spins)) : 0;
+  if (action === "add" && (!Number.isFinite(add) || add < 1 || add > 200)) throw new HttpsError("invalid-argument", "Add between 1 and 200 spins.");
+  const [{ settings, cfg }, member] = await Promise.all([loadSlot(), db.collection("users").doc(target).get()]);
+  if (!member.exists) throw new HttpsError("not-found", "That member no longer exists.");
+  const name = (member.data()?.profile as { name?: string } | undefined)?.name ?? target;
+  const now = Date.now();
+  const today = dayKey(now);
+  const slotRef = db.doc(`users/${target}/game/slot`);
+  const result = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(slotRef);
+    const st = (snap.exists ? snap.data() : {}) as SlotState;
+    if (action === "reset") {
+      // Dropping the day makes the next open plan it again from scratch.
+      tx.set(slotRef, { day: FieldValue.delete(), plan: FieldValue.delete(), spinsTotal: 0, spinsUsed: 0, wonToday: 0 }, { merge: true });
+      return { spinsTotal: 0, spinsUsed: 0 };
+    }
+    const dd = settings.daily;
+    const per10 = dd.bandMin + rng() * Math.max(0, dd.bandMax - dd.bandMin);
+    const extraTarget = Math.round((per10 * add) / 10);
+    const extra = planDay(cfg, dd, add, extraTarget, randomInt(0, 2 ** 31 - 1));
+    const sameDay = st.day === today && st.plan;
+    const base: DayPlan = sameDay ? (st.plan as DayPlan) : { seed: extra.seed, wins: [], hw: [], target: 0 };
+    const offset = base.wins.length;
+    const plan: DayPlan = { seed: base.seed, wins: [...base.wins, ...extra.wins], hw: [...base.hw, ...extra.hw.map((i) => i + offset)], target: base.target + extra.target };
+    const spinsTotal = (sameDay ? Number(st.spinsTotal ?? 0) : 0) + add;
+    const patch: Partial<SlotState> = sameDay
+      ? { plan, spinsTotal }
+      : { day: today, plan, spinsTotal, spinsUsed: 0, wonToday: 0 };
+    tx.set(slotRef, patch, { merge: true });
+    return { spinsTotal, spinsUsed: sameDay ? Number(st.spinsUsed ?? 0) : 0 };
+  });
+  await db.collection("admin_audit").add({
+    type: action === "reset" ? "slot_day_reset" : "slot_spins_added", uid: target, userName: name,
+    title: action === "reset" ? `Dragon Spire day reset for ${name}` : `${add} Dragon Spire spins added for ${name}`,
+    subtitle: action === "reset" ? "Next open gives a fresh plan and full spins" : `Today now has ${result.spinsTotal} spins`,
+    spins: add, by: uid, at: now,
+  });
+  return result;
+});
+
 /** Admin: set the paid-path progressive pots by hand (unused in the daily model). */
 export const adminSetSlotPots = onCall(async (request) => {
   const uid = request.auth?.uid;

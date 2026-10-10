@@ -173,6 +173,14 @@ export async function adminArmGrand(uid: string | null): Promise<{ armedUid: str
   return res.data;
 }
 
+/** Admin: reset a tester's day, or add spins to today's plan. */
+export async function adminSlotPlayerSpins(uid: string, action: "reset" | "add", spins = 0): Promise<{ spinsTotal: number; spinsUsed: number }> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Not connected");
+  const res = await httpsCallable<{ uid: string; action: string; spins?: number }, { spinsTotal: number; spinsUsed: number }>(functions, "adminSlotPlayerSpins")({ uid, action, spins });
+  return res.data;
+}
+
 export type SimResult = { spins: number; rtp: number; hitRate: number; freeSpinRate: number; holdWinRate: number; maxWin: number; parts: { lines: number; freeSpins: number; holdWin: number; potsFeed: number } };
 export async function slotSimulate(spins = 50000): Promise<SimResult> {
   const { functions } = getFirebase();
