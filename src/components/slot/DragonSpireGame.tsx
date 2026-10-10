@@ -458,7 +458,8 @@ export function DragonSpireGame({
 function ReelBlur({ imgs, offset, small }: { imgs: string[]; offset: number; small?: boolean }) {
   return (
     <div className="relative flex-1 min-h-0 overflow-hidden rounded-md">
-      <motion.div className="absolute inset-x-0 top-0 flex flex-col" initial={{ y: 0 }} animate={{ y: ["0%", "-50%"] }} transition={{ duration: small ? 0.35 : 0.42, ease: "linear", repeat: Infinity }} style={{ filter: "blur(1.5px)" }}>
+      {/* the stack moves DOWN, like a real reel falling past the window */}
+      <motion.div className="absolute inset-x-0 top-0 flex flex-col" initial={{ y: "-50%" }} animate={{ y: ["-50%", "0%"] }} transition={{ duration: small ? 0.35 : 0.42, ease: "linear", repeat: Infinity }} style={{ filter: "blur(1.5px)" }}>
         {[...imgs, ...imgs].map((src, i) => (
           // eslint-disable-next-line @next/next/no-img-element
           <img key={i} src={imgs[(i + offset) % imgs.length] ?? src} alt="" aria-hidden className={cn("w-full object-contain opacity-80", small ? "h-full" : "h-[25%]")} style={{ aspectRatio: "1 / 1" }} />
