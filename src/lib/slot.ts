@@ -64,12 +64,15 @@ export type SlotSettings = {
   daily: DailySettings;
   pots: PotSettings;
   grand: GrandSettings;
+  /** Games Central pop-up copy (admin-edited). */
+  popupText: string;
   engine?: { bets?: number[] };
 };
+export const DEFAULT_POPUP_TEXT = "Your active placement gives you free spins in Dragon Spire every day. Spin for Game Points, Hold & Win rounds and the jackpots.";
 export const DEFAULT_DAILY: DailySettings = { baseSpins: 10, minActive: 1000, perThousand: 5, cap: 50, bandMin: 200, bandMax: 400, spinValue: 20, everydayHwOneIn: 60 };
 export const DEFAULT_POTS: PotSettings = { mini: { amount: 200, count: 2, weeks: 1 }, minor: { amount: 500, count: 1, weeks: 1 }, major: { amount: 1000, count: 1, weeks: 2 } };
 export const DEFAULT_GRAND: GrandSettings = { amount: 50000, minActive: 5000, armedUid: null, armedAt: null };
-export const DEFAULT_SLOT_SETTINGS: SlotSettings = { status: "off", testing: true, testers: [], paidSpins: false, daily: DEFAULT_DAILY, pots: DEFAULT_POTS, grand: DEFAULT_GRAND };
+export const DEFAULT_SLOT_SETTINGS: SlotSettings = { status: "off", testing: true, testers: [], paidSpins: false, daily: DEFAULT_DAILY, pots: DEFAULT_POTS, grand: DEFAULT_GRAND, popupText: DEFAULT_POPUP_TEXT };
 export const DEFAULT_BETS = [5, 10, 25, 50, 100, 250, 500];
 
 /** Same rule as the server: none below the minimum, then base + per extra ₱1,000, capped. */
@@ -99,6 +102,7 @@ export function useSlotSettings(): { slot: SlotSettings; hub: HubGames; loading:
     daily: { ...DEFAULT_DAILY, ...(raw.daily ?? {}) },
     pots: { mini: { ...DEFAULT_POTS.mini, ...(raw.pots?.mini ?? {}) }, minor: { ...DEFAULT_POTS.minor, ...(raw.pots?.minor ?? {}) }, major: { ...DEFAULT_POTS.major, ...(raw.pots?.major ?? {}) } },
     grand: { ...DEFAULT_GRAND, ...(raw.grand ?? {}) },
+    popupText: typeof raw.popupText === "string" && raw.popupText.trim() ? raw.popupText : DEFAULT_POPUP_TEXT,
     engine: raw.engine,
   };
   return { slot, hub: { ...DEFAULT_HUB_GAMES, ...(s.hub ?? {}) }, loading };

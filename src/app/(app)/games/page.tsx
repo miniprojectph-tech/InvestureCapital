@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowRight, Coins, Flame, Gift, Loader2, Lock, Fish, Spade, Dices } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card } from "@/components/Card";
@@ -18,6 +19,7 @@ import {
   effectiveDailyCredits,
 } from "@/lib/game";
 import { useUserState } from "@/lib/useUserState";
+import { DailySpinsPopup } from "@/components/games/DailySpinsPopup";
 import { useSlotSettings, useSlotPlayerState, slotOpenFor, spinsFor } from "@/lib/slot";
 import { useOpenRooms, MIN_CHALLENGE } from "@/lib/tongits";
 import { rankTier, useMyMatchHistory } from "@/lib/tongits-social";
@@ -66,9 +68,10 @@ export default function GamesHubPage() {
   const { rewards } = useRewards();
 
   // Which games the admin has switched on, and whether this member may see Dragon Spire yet.
-  const { slot, hub } = useSlotSettings();
-  const { state: slotPlayer } = useSlotPlayerState();
+  const { slot, hub, loading: slotLoading } = useSlotSettings();
+  const { state: slotPlayer, loading: slotPlayerLoading } = useSlotPlayerState();
   const slotOpen = slotOpenFor(slot, user?.uid, !!user?.isAdmin);
+  const router = useRouter();
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -90,6 +93,15 @@ export default function GamesHubPage() {
   const spinsToday = spinsFor(activeCapital, slot.daily);
   const slotDayCurrent = slotPlayer.day === today;
   const spinsLeft = slotDayCurrent ? Math.max(0, slotPlayer.spinsTotal - slotPlayer.spinsUsed) : spinsToday;
+  // The pop-up shows until today's spins are claimed (opening the game claims them too).
+  const [spinsDismissed, setSpinsDismissed] = useState(false);
+  const [claimingSpins, setClaimingSpins] = useState(false);
+  const spinsPopupOpen = slotOpen && !slotLoading && !slotPlayerLoading && !access.loading && !stateLoading && !!member && access.allowed && spinsToday > 0 && !slotDayCurrent && !spinsDismissed;
+  const untilMidnight = (() => {
+    const d = new Date(now + 8 * HOUR_MS);
+    const left = 86_400_000 - (((d.getUTCHours() * 60 + d.getUTCMinutes()) * 60 + d.getUTCSeconds()) * 1000);
+    return `${Math.floor(left / HOUR_MS)}h ${Math.floor((left % HOUR_MS) / 60_000)}m`;
+  })();
   const streak = state?.streak ?? 0;
   const streakLen = Math.max(1, config.streakBonus.length - 1);
   const nextStreakBonus = config.streakBonus[Math.min(streak + 1, config.streakBonus.length - 1)] ?? 0;
@@ -155,6 +167,48 @@ export default function GamesHubPage() {
   return (
     <div>
       <TopHeader title="Games" subtitle="Play, earn Game Points, redeem rewards." />
+
+      <DailySpinsPopup
+        spins={spinsToday}
+        capital={activeCapital}
+        text={slot.popupText}
+        open={spinsPopupOpen || claimingSpins}
+        onClose={() => setSpinsDismissed(true)}
+        onClaimed={() => { setClaimingSpins(true); router.push("/dragon-spire"); }}
+      />
+
+      {slotOpen && !locked && (
+        spinsToday === 0 ? (
+          <p className="text-[11px] text-text-subtle m-0 mb-3 px-1">Place ₱{slot.daily.minActive.toLocaleString()} or more to get {slot.daily.baseSpins} free spins a day in Dragon Spire.</p>
+        ) : !slotDayCurrent ? (
+          <button type="button" onClick={() => setSpinsDismissed(false)} className="w-full flex items-center gap-3 rounded-xl bg-card border border-gold/40 px-4 py-2.5 mb-3 text-left hover:bg-card-elev transition">
+            <Gift className="w-4 h-4 text-gold shrink-0" />
+            <span className="flex-1 min-w-0 text-[12px]">
+              <span className="font-medium text-text">Today&apos;s free spins are waiting</span>
+              <span className={cn(mono, "text-gold ml-1.5")}>{spinsToday}</span>
+              <span className="text-text-subtle"> · tap to claim · gone at midnight</span>
+            </span>
+          </button>
+        ) : spinsLeft > 0 ? (
+          <Link href="/dragon-spire" className="w-full flex items-center gap-3 rounded-xl bg-card border border-gold/40 px-4 py-2.5 mb-3 hover:bg-card-elev transition">
+            <Gift className="w-4 h-4 text-gold shrink-0" />
+            <span className="flex-1 min-w-0 text-[12px]">
+              <span className="font-medium text-text">Free spins claimed</span>
+              <span className={cn(mono, "text-gold ml-1.5")}>{spinsLeft} left</span>
+              <span className="text-text-subtle"> · tap to keep spinning</span>
+            </span>
+          </Link>
+        ) : (
+          <div className="flex items-center gap-3 rounded-xl bg-card border border-border px-4 py-2.5 mb-3">
+            <Gift className="w-4 h-4 text-gold shrink-0" />
+            <div className="flex-1 min-w-0 text-[12px]">
+              <span className="font-medium text-text">All {slotPlayer.spinsTotal} spins played</span>
+              {slotPlayer.wonToday > 0 ? <span className={cn(mono, "text-green ml-1.5")}>+{Math.round(slotPlayer.wonToday).toLocaleString()} GP</span> : null}
+              <span className="text-text-subtle"> · new spins in {untilMidnight}</span>
+            </div>
+          </div>
+        )
+      )}
 
       {/* hero banner: balance + daily bonus over the games key art */}
       <div className="relative rounded-2xl overflow-hidden border border-border mb-3 p-3 sm:p-4">

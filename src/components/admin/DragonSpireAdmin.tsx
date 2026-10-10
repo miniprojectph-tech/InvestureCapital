@@ -9,7 +9,7 @@ import { getFirebase } from "@/lib/firebase";
 import { listInvestors, type InvestorRow } from "@/lib/adminQueries";
 import {
   useSlotSettings, saveSlotSettings, saveHubGames, useSlotStatsToday, useGrandHistory, adminArmGrand, spinsFor, potPointsPerWeek,
-  POT_LABEL, type SlotStatus, type SlotSettings, type DailySettings, type HubGames,
+  POT_LABEL, DEFAULT_POPUP_TEXT, type SlotStatus, type SlotSettings, type DailySettings, type HubGames,
 } from "@/lib/slot";
 
 const input = "bg-canvas border border-border rounded-md px-3 py-2 text-[12px] text-text outline-none focus:border-gold/40 w-full";
@@ -68,7 +68,7 @@ type Draft = {
   status: SlotStatus; testing: boolean; paidSpins: boolean;
   daily: Record<keyof DailySettings, string>;
   pots: Record<SmallPot, { amount: string; count: string; weeks: string }>;
-  grandAmount: string; grandMin: string;
+  grandAmount: string; grandMin: string; popupText: string;
 };
 function draftFrom(s: SlotSettings): Draft {
   const d = {} as Record<keyof DailySettings, string>;
@@ -76,7 +76,7 @@ function draftFrom(s: SlotSettings): Draft {
   return {
     status: s.status, testing: s.testing, paidSpins: s.paidSpins, daily: d,
     pots: { mini: potText(s.pots.mini), minor: potText(s.pots.minor), major: potText(s.pots.major) },
-    grandAmount: String(s.grand.amount), grandMin: String(s.grand.minActive),
+    grandAmount: String(s.grand.amount), grandMin: String(s.grand.minActive), popupText: s.popupText,
   };
 }
 const potText = (p: { amount: number; count: number; weeks: number }) => ({ amount: String(p.amount), count: String(p.count), weeks: String(p.weeks) });
@@ -155,7 +155,7 @@ export function DragonSpireAdmin() {
     if (!Number.isFinite(grandAmount) || grandAmount < 0 || !Number.isFinite(grandMin) || grandMin < 0) return setMsg({ ok: false, text: "Grand amount and minimum placement are whole numbers." });
     setSaving(true); setMsg(null);
     try {
-      await saveSlotSettings({ status: cur.status, testing: cur.testing, paidSpins: cur.paidSpins, daily: d, pots, grand: { amount: grandAmount, minActive: grandMin } as SlotSettings["grand"] });
+      await saveSlotSettings({ status: cur.status, testing: cur.testing, paidSpins: cur.paidSpins, daily: d, pots, grand: { amount: grandAmount, minActive: grandMin } as SlotSettings["grand"], popupText: cur.popupText.trim().slice(0, 300) || DEFAULT_POPUP_TEXT });
       setDraft(null);
       setMsg({ ok: true, text: cur.status === "off" ? "Saved. Dragon Spire is hidden." : cur.status === "testers" ? "Saved. Only testers (and admins) see Dragon Spire." : "Saved. Dragon Spire is open to everyone." });
     } catch (e) { setMsg({ ok: false, text: e instanceof Error ? e.message : "Save failed" }); }
@@ -236,6 +236,11 @@ export function DragonSpireAdmin() {
             <Field label="Everyday Hold & Win · 1 in N spins" value={cur.daily.everydayHwOneIn} onChange={(v) => editDaily("everydayHwOneIn", v)} hint="Small medallions paid from the band, so members learn the round" />
             <Field label="Spin value (GP)" value={cur.daily.spinValue} onChange={(v) => editDaily("spinValue", v)} hint="Sets the Big / Mega / Epic win labels (15× / 50× / 150×)" />
           </div>
+          <div className="mt-4">
+            <label className="block text-[11px] text-text-muted mb-1">Games Central pop-up text</label>
+            <textarea value={cur.popupText} maxLength={300} rows={2} onChange={(e) => edit({ popupText: e.target.value })} className={cn(input, "resize-y")} />
+            <p className="text-[9px] text-text-subtle m-0 mt-1">Shown under the spin count every visit until the member claims the day. The pop-up adds “You have ₱X active today.”</p>
+          </div>
           {saveBar}
         </Card>
 
@@ -284,7 +289,7 @@ export function DragonSpireAdmin() {
             <div className="flex flex-col sm:flex-row gap-2 mb-3">
               <select value={pick} onChange={(e) => setPick(e.target.value)} className={cn(input, "flex-1")} aria-label="Pick the Grand winner">
                 <option value="">{candidates.length ? `Pick a member (${candidates.length} eligible)…` : investors.length ? "No member meets the minimum yet" : "Loading members…"}</option>
-                {candidates.map((c) => <option key={c.uid} value={c.uid}>{c.name} · ₱{c.deployed.toLocaleString()} active</option>)}
+                {candidates.map((c) => <option key={c.uid} value={c.uid}>{c.name} · ₱{c.deployed.toLocaleString()} in {c.activePlansCount} active placement{c.activePlansCount === 1 ? "" : "s"}</option>)}
               </select>
               <button onClick={() => pick && arm(pick)} disabled={!pick || grandBusy} className="px-4 py-2 bg-gold text-gold-dark rounded-lg text-[12px] font-medium disabled:opacity-50 flex items-center justify-center gap-1.5">{grandBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Crown className="w-3.5 h-3.5" />} Arm the Grand</button>
             </div>
