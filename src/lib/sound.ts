@@ -156,10 +156,12 @@ class Engine {
   admin = true;
   listeners = new Set<() => void>();
   duckUntil = 0;
+  /** Resolves once the manifest is known, so a sound never plays its fallback just because the list was still loading. */
+  ready: Promise<void> = Promise.resolve();
   constructor() {
     if (typeof window === "undefined") return;
     try { this.local = window.localStorage.getItem(LS_KEY) !== "off"; } catch { /* private mode */ }
-    fetch("/sounds/manifest.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : [])).then((list: string[]) => { for (const f of list) { const m = /^(.*)\.(mp3|ogg|wav|m4a)$/i.exec(f); if (m) this.manifest.set(m[1], m[2]); } }).catch(() => {});
+    this.ready = fetch("/sounds/manifest.json", { cache: "no-cache" }).then((r) => (r.ok ? r.json() : [])).then((list: string[]) => { for (const f of list) { const m = /^(.*)\.(mp3|ogg|wav|m4a)$/i.exec(f); if (m) this.manifest.set(m[1], m[2]); } }).catch(() => {});
     const wake = () => { this.ensure(); window.removeEventListener("pointerdown", wake); window.removeEventListener("keydown", wake); window.removeEventListener("touchend", wake); };
     window.addEventListener("pointerdown", wake, { passive: true });
     window.addEventListener("keydown", wake);
@@ -207,14 +209,13 @@ class Engine {
     dest.gain.value = o.volume ?? 1;
     dest.connect(big ? this.master : this.fx);
     if (big) this.duck(name.includes("grand") || name.includes("epic") ? 4500 : 2200);
-    if (this.manifest.has(name)) {
+    void this.ready.then(() => {
+      if (!this.manifest.has(name)) { R[name]?.(ctx, dest, ctx.currentTime + 0.001); return; }
       void this.sample(name).then((buf) => {
         if (!buf) { R[name]?.(ctx, dest, ctx.currentTime); return; }
         const s = ctx.createBufferSource(); s.buffer = buf; s.playbackRate.value = o.rate ?? 1; s.connect(dest); s.start();
       });
-      return;
-    }
-    R[name]?.(ctx, dest, ctx.currentTime + 0.001);
+    });
   }
   /** Start a looping sound; returns a function that stops it. */
   loop(name: SoundName, o: Opts = {}): () => void {
@@ -225,15 +226,18 @@ class Engine {
     let stopped = false;
     let src: AudioBufferSourceNode | null = null;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    if (this.manifest.has(name)) {
-      void this.sample(name).then((buf) => { if (stopped || !buf) return; src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(dest); src.start(); });
-    } else {
-      const rec = LOOPS[name];
-      if (!rec) return () => {};
-      let next = ctx.currentTime + 0.01;
-      const tick = () => { if (stopped) return; while (next < ctx.currentTime + 0.3) next += rec(ctx, dest, next); timer = setTimeout(tick, 120); };
-      tick();
-    }
+    void this.ready.then(() => {
+      if (stopped) return;
+      if (this.manifest.has(name)) {
+        void this.sample(name).then((buf) => { if (stopped || !buf) return; src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.connect(dest); src.start(); });
+      } else {
+        const rec = LOOPS[name];
+        if (!rec) return;
+        let next = ctx.currentTime + 0.01;
+        const tick = () => { if (stopped) return; while (next < ctx.currentTime + 0.3) next += rec(ctx, dest, next); timer = setTimeout(tick, 120); };
+        tick();
+      }
+    });
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
@@ -245,6 +249,12 @@ class Engine {
 }
 let engine: Engine | null = null;
 export function getSound(): Engine { if (!engine) engine = new Engine(); return engine; }
+
+/** Keep a quiet ambience loop running while a game screen is open and sound is on. */
+export function useAmbience(name: SoundName, volume = 0.3) {
+  const { on, loop } = useSound();
+  useEffect(() => { if (!on) return; return loop(name, { volume }); }, [on, loop, name, volume]);
+}
 
 /** The games' hook: play/loop plus the per-device switch; also feeds the admin switch into the engine. */
 export function useSound() {

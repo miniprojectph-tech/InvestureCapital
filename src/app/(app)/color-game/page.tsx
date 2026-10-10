@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Volume2, VolumeX } from "lucide-react";
-import { useSound } from "@/lib/sound";
+import { useSound, useAmbience } from "@/lib/sound";
 import { useAuth } from "@/lib/auth";
 import { useGameState } from "@/lib/game";
 import {
@@ -113,6 +113,7 @@ export default function ColorGamePage() {
 
   const prevDiceRef = useRef<[DieColor, DieColor, DieColor] | undefined>(undefined);
   const snd = useSound();
+  useAmbience("color/ambience", 0.25);
 
   const phase = timer.phase;
   const bettingOpen = phase === "betting";

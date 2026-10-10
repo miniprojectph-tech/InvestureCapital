@@ -5,7 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, Info, X, Zap, Repeat, Gift, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useSound } from "@/lib/sound";
+import { useSound, useAmbience } from "@/lib/sound";
 import {
   slotSpin, orbImage, potCoinImage, SYMBOL_IMAGE, SYMBOL_NAME, POT_LABEL, POT_COLOR, ART, REELS, ROWS,
   type SpinResponse, type Cell, type PotKey, type Sym, type Step, type HoldWinResult, type DayState,
@@ -72,8 +72,7 @@ export function DragonSpireGame({
 }) {
   const spinFn = useMemo(() => onSpin ?? (() => slotSpin()), [onSpin]);
   const snd = useSound();
-  // auto-spin keeps the small sounds quieter so fifty spins in a row don't grate
-  const vol = useCallback(() => (autoRef.current ? 0.6 : 1), []);
+  useAmbience("slot/ambience", 0.3);
   const [tiles, setTiles] = useState<Tile[][]>(() => Array.from({ length: REELS }, (_, r) => Array.from({ length: ROWS }, (_, y) => ({ id: `init-${r}-${y}`, sym: RANDOM_SYMS[(r * 3 + y * 5) % RANDOM_SYMS.length] }))));
   const [phase, setPhase] = useState<Phase>("idle");
   const [spinningReels, setSpinningReels] = useState<boolean[]>(Array(REELS).fill(false));
@@ -160,6 +159,8 @@ export function DragonSpireGame({
     setShownWin(0);
     setPhase("spinning");
     setSpinningReels(Array(REELS).fill(true));
+    // auto-spin keeps the small sounds quieter so fifty spins in a row don't grate
+    const vol = () => (autoRef.current ? 0.6 : 1);
     snd.play("slot/spin-press", { volume: vol() });
     const stopWhir = snd.loop("slot/reel-whir", { volume: vol() * 0.8 });
 
@@ -258,7 +259,7 @@ export function DragonSpireGame({
     } else if (autoRef.current) {
       setAuto(false);
     }
-  }, [spinFn, t, testing, playHoldWin, spinValue, snd, vol]);
+  }, [spinFn, t, testing, playHoldWin, spinValue, snd]);
   useEffect(() => { runSpinRef.current = runSpin; }, [runSpin]);
 
   /* ─────────── render ─────────── */

@@ -1,1 +1,16 @@
-[]
+[
+  "color/ambience.mp3",
+  "color/dice-rattle.mp3",
+  "color/jackpot-siren.mp3",
+  "color/win-2.mp3",
+  "color/win-3.mp3",
+  "common/coin-shower.mp3",
+  "slot/ambience.mp3",
+  "slot/jackpot-grand.mp3",
+  "slot/jackpot-major.mp3",
+  "slot/jackpot-mini.mp3",
+  "slot/jackpot-minor.mp3",
+  "slot/win-big.mp3",
+  "slot/win-epic.mp3",
+  "slot/win-mega.mp3"
+]
