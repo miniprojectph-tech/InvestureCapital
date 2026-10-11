@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, Loader2, Volume2, VolumeX } from "lucide-react";
 import { useSound, useAmbience } from "@/lib/sound";
 import { useAuth } from "@/lib/auth";
 import { useGameState } from "@/lib/game";
@@ -41,6 +41,18 @@ function useBgReady() {
     if (img.complete) setReady(true);
   }, []);
   return ready;
+}
+
+/** Timer diameter from the screen height: never tiny on a phone, never huge on a tablet. */
+function useTimerSize(): number {
+  const [size, setSize] = useState(64);
+  useEffect(() => {
+    const calc = () => setSize(Math.round(Math.min(84, Math.max(56, window.innerHeight * 0.13))));
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
+  }, []);
+  return size;
 }
 
 function useCoverStyle(): React.CSSProperties {
@@ -110,6 +122,7 @@ export default function ColorGamePage() {
 
   const bgReady = useBgReady();
   const coverStyle = useCoverStyle();
+  const timerSize = useTimerSize();
 
   const prevDiceRef = useRef<[DieColor, DieColor, DieColor] | undefined>(undefined);
   const snd = useSound();
@@ -299,13 +312,6 @@ export default function ColorGamePage() {
 
         {/* ===== OVERLAYS (% of 2880x1440 image) ===== */}
 
-        {/* Back button — over hamburger icon */}
-        <button
-          onClick={() => router.push("/dashboard")}
-          className="absolute z-20 rounded-full hover:bg-white/10 transition-colors"
-          style={{ left: "1%", top: "2%", width: "4%", height: "8%" }}
-        />
-
         {/* GP balance — pill under the coin icon */}
         <div className="absolute z-20 flex items-center justify-center"
           style={{ left: "0.5%", top: "23%", width: "8.5%", height: "5.5%" }}>
@@ -324,31 +330,6 @@ export default function ColorGamePage() {
           >
             {balance.toLocaleString()}
           </span>
-        </div>
-
-        {/* Timer — top right (enlarged for readability) */}
-        <div className="absolute z-20" style={{ right: "1.5%", top: "1.5%", width: "6.5%", height: "12%" }}>
-          <ColorRoundTimer phase={phase} remaining={timer.remaining} />
-        </div>
-
-        {/* Speaker — left of the online count */}
-        {snd.adminOn && (
-          <button
-            type="button"
-            onClick={snd.toggle}
-            aria-label={snd.local ? "Mute sounds" : "Unmute sounds"}
-            aria-pressed={snd.local}
-            className="absolute z-20 flex items-center justify-center rounded-full hover:bg-white/10 transition-colors"
-            style={{ right: "15%", top: "2.2%", width: "2.6%", height: "4.6%", color: snd.local ? "rgba(255,255,255,0.75)" : "rgba(255,255,255,0.35)" }}
-          >
-            {snd.local ? <Volume2 style={{ width: "60%", height: "60%" }} /> : <VolumeX style={{ width: "60%", height: "60%" }} />}
-          </button>
-        )}
-
-        {/* Online count — left of the bigger timer */}
-        <div className="absolute z-20 flex items-center justify-center"
-          style={{ right: "9.5%", top: "2.5%", width: "5%", height: "4%" }}>
-          <span className="text-white/60 font-semibold" style={{ fontSize: "clamp(9px, 0.75vw, 14px)" }}>{totalBettors} online</span>
         </div>
 
         {/* Jackpot digits — seated in the 6 dark tiles of the pink banner.
@@ -465,6 +446,43 @@ export default function ColorGamePage() {
           jackpotTriggered={live?.jackpotTriggered}
           jackpotPrize={myResult?.jackpot ?? 0}
         />
+      </div>
+
+      {/* Top bar: pinned to the screen (not the artwork) and inset by the phone's safe area, so the
+          back button and the timer are never cropped by a camera cutout or a rounded corner. */}
+      <div
+        className="fixed z-30 flex items-start justify-between pointer-events-none"
+        style={{ left: "max(env(safe-area-inset-left, 0px), 10px)", right: "max(env(safe-area-inset-right, 0px), 10px)", top: "max(env(safe-area-inset-top, 0px), 8px)" }}
+      >
+        <button
+          type="button"
+          onClick={() => router.push("/games")}
+          className="pointer-events-auto flex items-center gap-1.5 rounded-full bg-black/55 border border-yellow-300/50 text-yellow-200 font-bold backdrop-blur-sm active:scale-95 transition"
+          style={{ height: 40, padding: "0 14px 0 10px", fontSize: 13, boxShadow: "0 2px 8px rgba(0,0,0,0.45)" }}
+          aria-label="Back to Games"
+        >
+          <ArrowLeft style={{ width: 18, height: 18 }} /> Back
+        </button>
+        <div className="pointer-events-auto flex items-start gap-2">
+          {snd.adminOn && (
+            <button
+              type="button"
+              onClick={snd.toggle}
+              aria-label={snd.local ? "Mute sounds" : "Unmute sounds"}
+              aria-pressed={snd.local}
+              className="flex items-center justify-center rounded-full bg-black/55 border border-white/15 backdrop-blur-sm"
+              style={{ width: 40, height: 40, color: snd.local ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.4)" }}
+            >
+              {snd.local ? <Volume2 style={{ width: 18, height: 18 }} /> : <VolumeX style={{ width: 18, height: 18 }} />}
+            </button>
+          )}
+          <div className="flex items-center rounded-full bg-black/55 border border-white/15 backdrop-blur-sm text-white/80 font-semibold" style={{ height: 40, padding: "0 12px", fontSize: 12, whiteSpace: "nowrap" }}>
+            {totalBettors} online
+          </div>
+          <div className="rounded-full bg-black/35 backdrop-blur-sm" style={{ padding: 4 }}>
+            <ColorRoundTimer phase={phase} remaining={timer.remaining} size={timerSize} />
+          </div>
+        </div>
       </div>
 
       {showHistory && (

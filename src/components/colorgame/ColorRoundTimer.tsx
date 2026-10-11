@@ -5,6 +5,8 @@ import { BET_MS, ROLL_MS, RESULT_MS, type RoundPhase } from "@/lib/colorgame";
 type Props = {
   phase: RoundPhase;
   remaining: number;
+  /** Diameter of the ring in px (fonts scale with it). */
+  size?: number;
 };
 
 const PHASE_COLORS: Record<RoundPhase, string> = {
@@ -27,7 +29,7 @@ function phaseDuration(phase: RoundPhase): number {
   return RESULT_MS;
 }
 
-export function ColorRoundTimer({ phase, remaining }: Props) {
+export function ColorRoundTimer({ phase, remaining, size = 64 }: Props) {
   const total = phaseDuration(phase);
   const progress = 1 - remaining / total;
   const seconds = Math.ceil(remaining / 1000);
@@ -39,7 +41,7 @@ export function ColorRoundTimer({ phase, remaining }: Props) {
 
   return (
     <div className="flex flex-col items-center">
-      <div className="relative" style={{ width: "min(6vw, 8.5vh)", height: "min(6vw, 8.5vh)" }}>
+      <div className="relative" style={{ width: size, height: size }}>
         <svg className="w-full h-full -rotate-90" viewBox="0 0 40 40">
           <circle cx="20" cy="20" r={r} fill="rgba(0,0,0,0.45)" stroke="rgba(255,255,255,0.18)" strokeWidth="4" />
           <circle
@@ -54,12 +56,12 @@ export function ColorRoundTimer({ phase, remaining }: Props) {
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
-          <span className="font-mono font-black" style={{ fontSize: "min(2.4vw, 3.4vh)", color, textShadow: "0 2px 4px rgba(0,0,0,0.5)" }}>
+          <span className="font-mono font-black" style={{ fontSize: Math.round(size * 0.42), color, textShadow: "0 2px 4px rgba(0,0,0,0.5)" }}>
             {seconds}
           </span>
         </div>
       </div>
-      <span className="font-black tracking-wider" style={{ fontSize: "min(0.95vw, 1.35vh)", color, textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>
+      <span className="font-black tracking-wider" style={{ fontSize: Math.max(9, Math.round(size * 0.17)), color, textShadow: "0 1px 3px rgba(0,0,0,0.6)" }}>
         {PHASE_LABELS[phase]}
       </span>
     </div>
