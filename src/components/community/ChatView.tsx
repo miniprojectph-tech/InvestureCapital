@@ -23,6 +23,7 @@ import {
   ThumbsUp,
   Plus,
 } from "lucide-react";
+import { Avatar as SharedAvatar } from "@/components/Avatar";
 import { cn } from "@/lib/utils";
 import { getFirebase } from "@/lib/firebase";
 import { describeStorageError } from "@/lib/storage";
@@ -109,27 +110,8 @@ const GROUP_MS = 5 * 60_000;
 const GAP_MS = 20 * 60_000;
 const LONG_PRESS_MS = 420;
 
-const PALETTE: [string, string][] = [
-  ["#2DD4BF", "#04302B"],
-  ["#A78BFA", "#1F1447"],
-  ["#4F8EF7", "#FFFFFF"],
-  ["#F472B6", "#3B0A22"],
-  ["#FBBF24", "#3A2500"],
-  ["#34D399", "#062E1E"],
-];
 
-function initialsOf(name: string) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return "?";
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
-}
 
-function colorFor(id: string): [string, string] {
-  let h = 0;
-  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return PALETTE[h % PALETTE.length];
-}
 
 function Linkified({ text }: { text: string }) {
   const parts = text.split(URL_RE);
@@ -156,12 +138,7 @@ function Avatar({ item, size = 30 }: { item: ChatItem; size?: number }) {
       </div>
     );
   }
-  const [bg, fg] = colorFor(item.senderId);
-  return (
-    <div className="rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0" style={{ width: size, height: size, background: bg, color: fg }} aria-hidden="true">
-      {initialsOf(item.name)}
-    </div>
-  );
+  return <SharedAvatar src={item.photo} name={item.name} id={item.senderId} size={size} />;
 }
 
 function snippetOf(m: ChatItem): string {

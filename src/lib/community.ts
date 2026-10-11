@@ -56,6 +56,8 @@ export type ChatItem = {
   id: string;
   senderId: string; // uid, or "admin" for admin replies in an inbox
   name: string;
+  /** Sender's profile picture at the time of posting (members only). */
+  photo?: string;
   kind: ChatKind;
   text?: string;
   media?: ChatMedia;
@@ -97,12 +99,12 @@ export const MAX_VIDEO_SECONDS = 30;
 export const MAX_GIF_BYTES = 3 * 1024 * 1024;
 
 /** isAdmin = full app admin; isMod = chat-only moderator (see ChatMod). */
-export type Sender = { uid: string; name: string; isAdmin: boolean; isMod?: boolean };
+export type Sender = { uid: string; name: string; isAdmin: boolean; isMod?: boolean; /** profile picture URL, carried on each message */ photo?: string | null };
 /** The one name the team posts under: the admin account in the room, and admin or moderators in private chats. */
 export const STAFF_NAME = "Admin";
 export type SendPayload = { kind: ChatKind; text?: string; media?: ChatMedia; sticker?: string; replyTo?: ReplyRef };
 
-type RawCommon = { kind: ChatKind; text?: string; media?: ChatMedia; at: number; sticker?: string; replyTo?: ReplyRef; re?: Reactions };
+type RawCommon = { kind: ChatKind; text?: string; media?: ChatMedia; at: number; sticker?: string; replyTo?: ReplyRef; re?: Reactions; photo?: string };
 type RawRoom = RawCommon & { uid: string; name: string; admin?: boolean; mod?: boolean; boost?: Boost };
 type RawInbox = RawCommon & { from: string; name: string };
 
@@ -112,14 +114,14 @@ const roomToItem = (id: string, raw: unknown): ChatItem => {
   const m = raw as RawRoom;
   // The admin account never shows its own name in the room — always "Admin" (older posts included).
   const admin = !!m.admin && !m.mod;
-  return { id, senderId: m.uid, name: admin ? STAFF_NAME : m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, mod: false, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re, boost: m.boost };
+  return { id, senderId: m.uid, name: admin ? STAFF_NAME : m.name, photo: admin ? undefined : m.photo, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, mod: false, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re, boost: m.boost };
 };
 
 const inboxToItem = (id: string, raw: unknown): ChatItem => {
   const m = raw as RawInbox;
   // Every reply from the team — admin or a moderator with inbox access — reads as "Admin" (older "Moderator" replies included).
   const admin = m.from === "admin";
-  return { id, senderId: m.from, name: admin ? STAFF_NAME : m.name, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
+  return { id, senderId: m.from, name: admin ? STAFF_NAME : m.name, photo: admin ? undefined : m.photo, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
 };
 
 const byTime = (a: ChatItem, b: ChatItem) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -634,6 +636,8 @@ export async function sendRoomMessage(sender: Sender, payload: SendPayload): Pro
   // itself — so nobody in the room can tell who is moderating. Only the admin
   // account is labelled. (Older moderator messages are shown unmarked too; see rowToItem.)
   if (sender.isAdmin) msg.admin = true;
+  // members carry their picture on the message; the team posts as "Admin" without one
+  else if (sender.photo && /^https:\/\/firebasestorage\.googleapis\.com\//.test(sender.photo)) msg.photo = sender.photo.slice(0, 1000);
   await update(ref(rtdb), {
     [`community/room/${id}`]: msg,
     [`community/lastPost/${sender.uid}`]: serverTimestamp(),
@@ -835,6 +839,7 @@ export async function sendInboxMessage(
     at: serverTimestamp(),
     ...optionalFields(payload, 1000),
   };
+  if (!staff && sender.photo && /^https:\/\/firebasestorage\.googleapis\.com\//.test(sender.photo)) msg.photo = sender.photo.slice(0, 1000);
 
   const metaBase = `community/inboxMeta/${threadUid}`;
   const upd: Record<string, unknown> = {

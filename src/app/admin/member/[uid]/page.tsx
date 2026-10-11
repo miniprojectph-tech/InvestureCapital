@@ -4,9 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
-import { doc, getDoc } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 import { ArrowLeft, Eye, Loader2, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Avatar } from "@/components/Avatar";
+import { removeAvatar } from "@/lib/avatar";
 import { getFirebase } from "@/lib/firebase";
 import { useRealAuth, type AuthContextValue } from "@/lib/auth";
 import { ViewAsContext, type ViewAsValue } from "@/lib/viewAs";
@@ -40,7 +42,8 @@ const initialsOf = (name: string, email: string) =>
 export default function AdminMemberViewPage() {
   const { uid } = useParams<{ uid: string }>();
   const real = useRealAuth();
-  const [member, setMember] = useState<{ name: string; email: string; isAdmin: boolean } | null>(null);
+  const [member, setMember] = useState<{ name: string; email: string; isAdmin: boolean; photoURL?: string | null } | null>(null);
+  const [picBusy, setPicBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useHashTab<ScreenKey>(SCREEN_KEYS, "dashboard");
 
@@ -54,8 +57,8 @@ export default function AdminMemberViewPage() {
       .then((s) => {
         if (cancelled) return;
         if (!s.exists()) return setError("This member no longer exists.");
-        const d = s.data() as { profile?: { name?: string; email?: string }; isAdmin?: boolean };
-        setMember({ name: d.profile?.name || "Member", email: d.profile?.email || "", isAdmin: d.isAdmin === true });
+        const d = s.data() as { profile?: { name?: string; email?: string; photoURL?: string | null }; isAdmin?: boolean };
+        setMember({ name: d.profile?.name || "Member", email: d.profile?.email || "", isAdmin: d.isAdmin === true, photoURL: d.profile?.photoURL ?? null });
       })
       .catch(() => { if (!cancelled) setError("Could not load this member. Check your connection and try again."); });
     return () => { cancelled = true; };
@@ -95,11 +98,31 @@ export default function AdminMemberViewPage() {
           </Link>
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <Eye className="w-4 h-4 text-[#F5C66B] shrink-0" />
+            {member && <Avatar src={member.photoURL} name={member.name} email={member.email} id={uid} size={24} />}
             <p className="text-[12px] m-0 min-w-0 truncate">
               <span className="text-[#F5C66B] font-medium">View only</span>
               {member ? <> · you are seeing <span className="font-medium text-text">{member.name}</span>&apos;s account{member.email ? <span className="text-text-subtle"> · {member.email}</span> : null}</> : " · loading member…"}
             </p>
           </div>
+          {member?.photoURL && (
+            <button
+              type="button"
+              disabled={picBusy}
+              onClick={async () => {
+                if (!confirm(`Remove ${member.name}'s profile picture? They can upload another.`)) return;
+                setPicBusy(true);
+                try {
+                  await removeAvatar(uid, false);
+                  const { db } = getFirebase();
+                  if (db) await addDoc(collection(db, "admin_audit"), { type: "profile_picture_removed", uid, userName: member.name, title: `Profile picture removed for ${member.name}`, subtitle: "Removed by admin", by: real.user?.uid ?? null, at: Date.now() });
+                  setMember({ ...member, photoURL: null });
+                } finally { setPicBusy(false); }
+              }}
+              className="shrink-0 text-[10px] px-2 py-1 rounded-md border border-border-strong text-text-muted hover:text-red disabled:opacity-50"
+            >
+              {picBusy ? "Removing…" : "Remove picture"}
+            </button>
+          )}
         </div>
         <AdminTabs sticky={false} className="mb-0 pb-0" tabs={SCREENS.map((s) => ({ id: s.key, label: s.label }))} value={tab} onChange={setTab} />
       </div>

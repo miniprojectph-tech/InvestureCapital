@@ -6,6 +6,7 @@ import { TopHeader } from "@/components/TopHeader";
 import { ChatView } from "@/components/community/ChatView";
 import { InboxPanel } from "@/components/community/InboxPanel";
 import { cn } from "@/lib/utils";
+import { useUserState } from "@/lib/useUserState";
 import { useAuth } from "@/lib/auth";
 import { useSettings, uploadLimitsFor } from "@/lib/settings";
 import {
@@ -54,6 +55,7 @@ export default function CommunityPage() {
 
   const modRole = useChatModRole();
   // Staff read the full history; members only from their sign-up date.
+  const { state: me } = useUserState();
   const roomFeed = useCommunityRoom(!!user?.isAdmin || modRole.isMod);
   const { messages: room, loading: roomLoading } = roomFeed;
   const pinned = usePinnedMessage(room);
@@ -110,7 +112,7 @@ export default function CommunityPage() {
 
   if (!user) return null;
 
-  const sender = { uid: user.uid, name: user.name, isAdmin: user.isAdmin, isMod: modRole.isMod };
+  const sender = { uid: user.uid, name: user.name, isAdmin: user.isAdmin, isMod: modRole.isMod, photo: me?.profile?.photoURL ?? null };
 
   const moderation = isStaff
     ? {
@@ -312,7 +314,7 @@ export default function CommunityPage() {
               typingNames={typingNames}
               onTyping={typing.ping}
               onTypingStop={typing.stop}
-              onSend={(p) => sendInboxMessage(user.uid, { uid: user.uid, name: user.name, isAdmin: false }, p, { name: user.name, email: user.email })}
+              onSend={(p) => sendInboxMessage(user.uid, { uid: user.uid, name: user.name, isAdmin: false, photo: me?.profile?.photoURL ?? null }, p, { name: user.name, email: user.email })}
               onReact={(m, emoji) => reactToInboxMessage(user.uid, m.id, user.uid, emoji)}
             />
           )}

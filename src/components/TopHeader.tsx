@@ -7,6 +7,8 @@ import { ChevronDown, User as UserIcon, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { mockUser } from "@/lib/mock-data";
 import { NotificationBell } from "./NotificationBell";
+import { Avatar } from "./Avatar";
+import { useUserState } from "@/lib/useUserState";
 
 type TopHeaderProps = {
   title: string;
@@ -20,7 +22,8 @@ export function TopHeader({ title, subtitle }: TopHeaderProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   const displayUser = user ?? mockUser;
-  const initials = "initials" in displayUser ? displayUser.initials : "U";
+  const { state: me } = useUserState();
+  const photo = me?.profile?.photoURL ?? null;
   const name = displayUser.name;
   const email = "email" in displayUser ? displayUser.email : "";
 
@@ -73,9 +76,7 @@ export function TopHeader({ title, subtitle }: TopHeaderProps) {
             className="flex items-center gap-1.5 hover:opacity-80 transition"
             aria-label="Account menu"
           >
-            <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue/30 to-blue/10 text-blue text-[10px] font-medium flex items-center justify-center ring-1 ring-blue/20">
-              {initials}
-            </div>
+            <Avatar src={photo} name={name} email={email} id={user?.uid ?? name} size={28} ring="ring-1 ring-blue/20" />
             <ChevronDown className="w-3 h-3 text-text-subtle" />
           </button>
           {menuOpen && (

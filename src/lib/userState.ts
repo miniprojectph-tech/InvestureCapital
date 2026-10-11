@@ -68,6 +68,9 @@ export type UserState = {
     email: string;
     joinedAt: number;
     demoSeeded: boolean;
+    /** Profile picture (Storage download URL); null/absent = initials. */
+    photoURL?: string | null;
+    photoUpdatedAt?: number;
   };
   balances: {
     wallet: number;
