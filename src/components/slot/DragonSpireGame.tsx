@@ -353,7 +353,7 @@ export function DragonSpireGame({
                             initial={tile.fresh ? { y: -140, opacity: 0 } : false}
                             animate={{ y: 0, opacity: isBurst ? 0 : 1, scale: isBurst ? 1.35 : isLit ? 1.06 : 1 }}
                             transition={{ layout: { type: "spring", stiffness: 420, damping: 32 }, y: { type: "spring", stiffness: 380, damping: 26 }, opacity: { duration: 0.25 }, scale: { duration: 0.25 } }}
-                            className={cn("relative flex-1 min-h-0 rounded-md flex items-center justify-center", isLit && "ring-2 ring-[#F5C66B] shadow-[0_0_18px_rgba(245,198,107,0.7)] bg-[#F5C66B]/10", hw && !hwCoin && "opacity-25")}
+                            className={cn("relative flex-1 min-h-0 rounded-md flex items-center justify-center", isLit && "ring-2 ring-[#F5C66B] shadow-[0_0_18px_rgba(245,198,107,0.7)] bg-[#F5C66B]/10", hw && !hwCoin && !hwLanding && "opacity-25", hwLanding && "ring-1 ring-[#F5C66B]/40 bg-[#F5C66B]/5")}
                           >
                             {hw && hwCoin !== undefined ? (
                               <HwCoin value={hwCoin} />
@@ -489,17 +489,18 @@ export function DragonSpireGame({
   );
 }
 
-/** A reel in motion: a stack of symbols scrolling fast with a blur. */
+/** A reel in motion: a stack of symbols scrolling down fast with a blur. Plain CSS so it runs anywhere, even inside the tile wrappers. */
 function ReelBlur({ imgs, offset, small }: { imgs: string[]; offset: number; small?: boolean }) {
   return (
-    <div className="relative flex-1 min-h-0 overflow-hidden rounded-md">
-      {/* the stack moves DOWN, like a real reel falling past the window */}
-      <motion.div className="absolute inset-x-0 top-0 flex flex-col" initial={{ y: "-50%" }} animate={{ y: ["-50%", "0%"] }} transition={{ duration: small ? 0.35 : 0.42, ease: "linear", repeat: Infinity }} style={{ filter: "blur(1.5px)" }}>
+    // inside a single tile (small) the strip must fill the tile itself; in the reel column it takes a flex share
+    <div className={small ? "absolute inset-0 overflow-hidden rounded-md" : "relative flex-1 min-h-0 overflow-hidden rounded-md"}>
+      <style>{`@keyframes dsReelDown{from{transform:translateY(-50%)}to{transform:translateY(0)}}`}</style>
+      <div className="absolute inset-x-0 top-0 flex flex-col" style={{ filter: "blur(1.5px)", animation: `dsReelDown ${small ? 0.35 : 0.42}s linear infinite` }}>
         {[...imgs, ...imgs].map((src, i) => (
           // eslint-disable-next-line @next/next/no-img-element
           <img key={i} src={imgs[(i + offset) % imgs.length] ?? src} alt="" aria-hidden className={cn("w-full object-contain opacity-80", small ? "h-full" : "h-[25%]")} style={{ aspectRatio: "1 / 1" }} />
         ))}
-      </motion.div>
+      </div>
     </div>
   );
 }
