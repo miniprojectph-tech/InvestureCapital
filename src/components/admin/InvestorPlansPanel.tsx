@@ -25,7 +25,12 @@ import {
   type TestClockSpeed,
 } from "@/lib/compplan";
 
-const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric" });
+const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" });
+const fmtTime = (ms: number) => new Date(ms).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" });
+/** "Oct 11, 2026 · 6:34 PM" in Manila time, the time in gold so it reads at a glance. */
+const DateTime = ({ ms, muted }: { ms: number; muted?: boolean }) => (
+  <>{fmtDate(ms)} · <span className={muted ? "text-text-subtle" : "text-gold"}>{fmtTime(ms)}</span></>
+);
 
 /**
  * Admin › Investors › Plans. Per member: placements, the accelerated TEST CLOCK
@@ -189,8 +194,8 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
                                       {p.id} <span className="font-sans text-[10px] text-text-subtle">· {p.termMonths} mo · {formatPHP(p.capital, { short: true })}</span>
                                     </p>
                                     <p className="m-0 text-[9px] text-text-subtle">
-                                      Started {fmtDate(p.startedAt)}
-                                      {p.originalStartedAt && p.originalStartedAt !== p.startedAt ? ` (was ${fmtDate(p.originalStartedAt)})` : ""}
+                                      Started <DateTime ms={p.startedAt} />
+                                      {p.originalStartedAt && p.originalStartedAt !== p.startedAt ? <> (was <DateTime ms={p.originalStartedAt} muted />)</> : null}
                                     </p>
                                   </div>
                                   <div className="min-w-[130px]">
