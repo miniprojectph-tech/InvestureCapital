@@ -97,6 +97,8 @@ type Props = {
   mutedUids?: ReadonlySet<string>;
   /** Moderators (room only): set the team-added reaction counts on a message. */
   onBoost?: (item: ChatItem, boost: Boost) => Promise<void>;
+  /** Senders whose "Team Leader" chip is on (room only). */
+  tlBadges?: ReadonlySet<string>;
   className?: string;
 };
 
@@ -184,6 +186,7 @@ export function ChatView({
   onUnmute,
   mutedUids,
   onBoost,
+  tlBadges,
   className,
 }: Props) {
   const reactor = reactorUid ?? meUid;
@@ -669,6 +672,7 @@ export function ChatView({
                       {/* The team posts as "Admin": the gold pill IS the name, so a member who calls themselves "Admin" still looks different. */}
                       {!(m.admin && m.name === "Admin") && m.name}
                       {m.admin && <span className="text-[8px] font-extrabold uppercase tracking-[0.1em] text-[#F5C66B] bg-[#F5C66B]/15 px-1.5 py-px rounded-full">{m.mod ? "Mod" : "Admin"}</span>}
+                      {!m.admin && m.tl && tlBadges?.has(m.senderId) && <span className="text-[8px] font-bold tracking-[0.06em] text-[#5CE0D2] bg-[#5CE0D2]/15 border border-[#5CE0D2]/40 px-1.5 py-px rounded-full">Team Leader</span>}
                     </div>
                   )}
                   <div className={cn(first ? (own && !gap ? "mt-2" : "") : "mt-0.5")}>{renderMessage(m, first, last, false)}</div>

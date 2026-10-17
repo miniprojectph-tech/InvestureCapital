@@ -37,6 +37,8 @@ import {
   formatRelative,
   STAFF_NAME,
   setRoomBoost,
+  useTeamLeaderRole,
+  useTeamLeaderBadges,
   type Boost,
   type ChatItem,
 } from "@/lib/community";
@@ -54,6 +56,7 @@ export default function CommunityPage() {
   const [tab, setTab] = useState<Tab>("room");
 
   const modRole = useChatModRole();
+  const tlRole = useTeamLeaderRole();
   // Staff read the full history; members only from their sign-up date.
   const { state: me } = useUserState();
   const roomFeed = useCommunityRoom(!!user?.isAdmin || modRole.isMod);
@@ -87,9 +90,11 @@ export default function CommunityPage() {
   const { settings } = useSettings();
   const roomCaps = uploadLimitsFor(settings, "room");
   const inboxCaps = uploadLimitsFor(settings, "inbox");
-  const canVideo = !!user?.isAdmin || (modRole.isMod && perms.modsVideo) || perms.membersVideo;
-  const canLinks = !!user?.isAdmin || (modRole.isMod && perms.modsLinks) || perms.membersLinks;
-  const canImage = isStaff || perms.membersImages;
+  // Team Leaders may always send pictures, video and links in the room (the rules say the same)
+  const canVideo = !!user?.isAdmin || (modRole.isMod && perms.modsVideo) || perms.membersVideo || tlRole.isTL;
+  const canLinks = !!user?.isAdmin || (modRole.isMod && perms.modsLinks) || perms.membersLinks || tlRole.isTL;
+  const canImage = isStaff || perms.membersImages || tlRole.isTL;
+  const tlBadges = useTeamLeaderBadges(perms.tlBadges !== false);
   const canInbox = !!user?.isAdmin || (modRole.isMod && modRole.inbox);
   const inboxThreads = useInboxList(canInbox);
   const inboxUnread = inboxThreads.filter((t) => isInboxUnread(t, "admin") || t.newMember === true).length;
@@ -112,7 +117,7 @@ export default function CommunityPage() {
 
   if (!user) return null;
 
-  const sender = { uid: user.uid, name: user.name, isAdmin: user.isAdmin, isMod: modRole.isMod, photo: me?.profile?.photoURL ?? null };
+  const sender = { uid: user.uid, name: user.name, isAdmin: user.isAdmin, isMod: modRole.isMod, isTL: tlRole.isTL, photo: me?.profile?.photoURL ?? null };
 
   const moderation = isStaff
     ? {
@@ -289,6 +294,7 @@ export default function CommunityPage() {
               onTypingStop={typing.stop}
               onSend={(p) => sendRoomMessage(sender, p)}
               onReact={(m, emoji) => reactToRoomMessage(m.id, user.uid, emoji)}
+              tlBadges={tlBadges}
               {...moderation}
             />
           )}

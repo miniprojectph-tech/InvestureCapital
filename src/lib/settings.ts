@@ -64,6 +64,8 @@ export type CommunityConfig = {
   membersLinks: boolean;
   modsVideo: boolean;
   modsLinks: boolean;
+  /** Show the "Team Leader" chip after a Team Leader's name in the room. */
+  tlBadges: boolean;
 };
 export const DEFAULT_COMMUNITY: CommunityConfig = {
   membersImages: true,
@@ -71,6 +73,7 @@ export const DEFAULT_COMMUNITY: CommunityConfig = {
   membersLinks: false,
   modsVideo: true,
   modsLinks: true,
+  tlBadges: true,
 };
 
 /** Upload caps for one chat (admin-set). Sizes in MB, length in seconds. */

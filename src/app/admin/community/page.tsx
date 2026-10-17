@@ -7,6 +7,8 @@ import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { AdminTabs, useHashTab, type AdminTab } from "@/components/admin/AdminTabs";
 import { InboxPanel } from "@/components/community/InboxPanel";
+import { TeamLeadersCard } from "@/components/admin/TeamLeadersCard";
+import { useTeamLeaders } from "@/lib/community";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -153,6 +155,8 @@ function PostingRulesCard({ uid }: { uid: string }) {
           <p className="text-[10px] uppercase tracking-wider text-text-subtle m-0 mb-1">Moderators</p>
           <Row k="modsVideo" label="Videos" hint="Moderators can always send pictures" />
           <Row k="modsLinks" label="Links" hint="For sharing official announcements" />
+          <p className="text-[10px] uppercase tracking-wider text-text-subtle m-0 mb-1 mt-3">Team leaders</p>
+          <Row k="tlBadges" label="“Team Leader” chip in the room" hint="Off hides every chip at once; each leader also has their own switch. Leaders can always send pictures, video and links." />
         </div>
       </div>
       {err && <p className="text-[11px] text-red m-0 mt-2">{err}</p>}
@@ -400,6 +404,7 @@ export default function AdminCommunityPage() {
 
   const mutedUsers = useMutedUsers(adminReady);
   const mods = useChatMods(adminReady);
+  const tls = useTeamLeaders(adminReady);
   const threads = useInboxList(adminReady);
   const { messages: room } = useCommunityRoom(true);
   const stats = useCommunityStats(adminReady);
@@ -419,7 +424,7 @@ export default function AdminCommunityPage() {
   const tabs: AdminTab<Tab>[] = [
     { id: "inbox", label: "Inbox", icon: Inbox, count: waiting || undefined, attention: waiting > 0 },
     { id: "room", label: "Room", icon: MessageSquare, count: mutedUsers.length || undefined },
-    { id: "people", label: "Moderators", icon: ShieldCheck, count: mods.length || undefined },
+    { id: "people", label: "Moderators & leaders", icon: ShieldCheck, count: mods.length + tls.length || undefined },
     { id: "welcome", label: "Welcome", icon: PartyPopper, hint: welcomeOn ? "on" : "off", hintTone: welcomeOn ? "ok" : "muted" },
     { id: "posting", label: "Posting rules", icon: Sliders },
     { id: "active", label: "Active now", icon: Users },
@@ -515,6 +520,7 @@ export default function AdminCommunityPage() {
       {tab === "people" && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
           <ModeratorsCard enabled={adminReady} demoMode={demoMode} />
+          <TeamLeadersCard enabled={adminReady} demoMode={demoMode} adminUid={user.uid} />
         </div>
       )}
 

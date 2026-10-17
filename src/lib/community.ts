@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import {
   ref,
   onValue,
@@ -71,10 +71,14 @@ export type ChatItem = {
   reactions?: Reactions;
   /** Team-added reaction counts (room only) — see setRoomBoost. */
   boost?: Boost;
+  /** Posted by a Team Leader (the chip shows while their badge is switched on). */
+  tl?: boolean;
 };
 
 /** A member granted chat-only moderator powers by a full admin. */
 export type ChatMod = { uid: string; name: string; at: number; inbox: boolean };
+/** A member the admin named Team Leader: own name + chip in the room, media and links allowed, direct messages to members. */
+export type TeamLeader = { uid: string; name: string; at: number; badge: boolean };
 
 export type InboxMeta = {
   uid: string;
@@ -99,13 +103,13 @@ export const MAX_VIDEO_SECONDS = 30;
 export const MAX_GIF_BYTES = 3 * 1024 * 1024;
 
 /** isAdmin = full app admin; isMod = chat-only moderator (see ChatMod). */
-export type Sender = { uid: string; name: string; isAdmin: boolean; isMod?: boolean; /** profile picture URL, carried on each message */ photo?: string | null };
+export type Sender = { uid: string; name: string; isAdmin: boolean; isMod?: boolean; /** Team Leader: posts under their own name with the chip */ isTL?: boolean; /** profile picture URL, carried on each message */ photo?: string | null };
 /** The one name the team posts under: the admin account in the room, and admin or moderators in private chats. */
 export const STAFF_NAME = "Admin";
 export type SendPayload = { kind: ChatKind; text?: string; media?: ChatMedia; sticker?: string; replyTo?: ReplyRef };
 
 type RawCommon = { kind: ChatKind; text?: string; media?: ChatMedia; at: number; sticker?: string; replyTo?: ReplyRef; re?: Reactions; photo?: string };
-type RawRoom = RawCommon & { uid: string; name: string; admin?: boolean; mod?: boolean; boost?: Boost };
+type RawRoom = RawCommon & { uid: string; name: string; admin?: boolean; mod?: boolean; tl?: boolean; boost?: Boost };
 type RawInbox = RawCommon & { from: string; name: string };
 
 // ===== Hooks =====
@@ -114,7 +118,7 @@ const roomToItem = (id: string, raw: unknown): ChatItem => {
   const m = raw as RawRoom;
   // The admin account never shows its own name in the room — always "Admin" (older posts included).
   const admin = !!m.admin && !m.mod;
-  return { id, senderId: m.uid, name: admin ? STAFF_NAME : m.name, photo: admin ? undefined : m.photo, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, mod: false, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re, boost: m.boost };
+  return { id, senderId: m.uid, name: admin ? STAFF_NAME : m.name, photo: admin ? undefined : m.photo, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, mod: false, tl: !admin && m.tl === true, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re, boost: m.boost };
 };
 
 const inboxToItem = (id: string, raw: unknown): ChatItem => {
@@ -332,6 +336,67 @@ export async function removeChatMod(uid: string) {
   await remove(ref(needRtdb(), `chatMods/${uid}`));
   const { db } = getFirebase();
   if (db) await updateDoc(doc(db, "users", uid), { isChatMod: false });
+}
+
+/** The signed-in user's Team Leader grant, if any. */
+export function useTeamLeaderRole(): { isTL: boolean; badge: boolean } {
+  const { user } = useAuth();
+  const [role, setRole] = useState({ isTL: false, badge: false });
+  useEffect(() => {
+    if (!user) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, `teamLeaders/${user.uid}`), (s) => {
+      const v = s.val() as { badge?: boolean } | null;
+      setRole({ isTL: !!v, badge: !!v && v.badge !== false });
+    }, () => setRole({ isTL: false, badge: false }));
+  }, [user]);
+  return role;
+}
+
+/** Every Team Leader (the list is readable by every signed-in member so the room can draw the chips). */
+export function useTeamLeaders(enabled = true): TeamLeader[] {
+  const { user } = useAuth();
+  const [list, setList] = useState<TeamLeader[]>([]);
+  useEffect(() => {
+    if (!user || !enabled) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, "teamLeaders"), (s) => {
+      const val = (s.val() as Record<string, { name?: string; at?: number; badge?: boolean }> | null) ?? {};
+      setList(Object.entries(val).map(([uid, v]) => ({ uid, name: v.name ?? uid, at: v.at ?? 0, badge: v.badge !== false })).sort((a, b) => a.name.localeCompare(b.name)));
+    }, () => setList([]));
+  }, [user, enabled]);
+  return list;
+}
+
+/** uids whose Team Leader chip is on right now (empty when the admin hid every chip). */
+export function useTeamLeaderBadges(globalOn: boolean): ReadonlySet<string> {
+  const list = useTeamLeaders(globalOn);
+  return useMemo(() => new Set(globalOn ? list.filter((t) => t.badge).map((t) => t.uid) : []), [list, globalOn]);
+}
+
+async function auditTeamLeader(type: string, uid: string, name: string, title: string, by: string) {
+  const { db } = getFirebase();
+  if (!db) return;
+  await addDoc(collection(db, "admin_audit"), { type, uid, userName: name, title, by, at: Date.now() });
+}
+/** Admin: name a member Team Leader (RTDB grant for the chat rules + a flag on their record for the Storage rules). */
+export async function addTeamLeader(uid: string, name: string, byUid: string) {
+  await set(ref(needRtdb(), `teamLeaders/${uid}`), { name: name.slice(0, 40), at: serverTimestamp(), badge: true });
+  const { db } = getFirebase();
+  if (db) await updateDoc(doc(db, "users", uid), { isTeamLeader: true });
+  await auditTeamLeader("team_leader_added", uid, name, `${name} named Team Leader`, byUid);
+}
+export async function setTeamLeaderBadge(uid: string, name: string, badge: boolean, byUid: string) {
+  await set(ref(needRtdb(), `teamLeaders/${uid}/badge`), badge);
+  await auditTeamLeader("team_leader_badge", uid, name, `Team Leader chip ${badge ? "shown" : "hidden"} for ${name}`, byUid);
+}
+export async function removeTeamLeader(uid: string, name: string, byUid: string) {
+  await remove(ref(needRtdb(), `teamLeaders/${uid}`));
+  const { db } = getFirebase();
+  if (db) await updateDoc(doc(db, "users", uid), { isTeamLeader: false });
+  await auditTeamLeader("team_leader_removed", uid, name, `${name} removed as Team Leader`, byUid);
 }
 
 /** The admin's Community Room permissions, as mirrored for the chat rules. */
@@ -636,8 +701,10 @@ export async function sendRoomMessage(sender: Sender, payload: SendPayload): Pro
   // itself — so nobody in the room can tell who is moderating. Only the admin
   // account is labelled. (Older moderator messages are shown unmarked too; see rowToItem.)
   if (sender.isAdmin) msg.admin = true;
+  // Team Leaders post under their own name; the flag lets the room show the chip (rules check the grant)
+  if (!sender.isAdmin && sender.isTL) msg.tl = true;
   // members carry their picture on the message; the team posts as "Admin" without one
-  else if (sender.photo && /^https:\/\/firebasestorage\.googleapis\.com\//.test(sender.photo)) msg.photo = sender.photo.slice(0, 1000);
+  if (!sender.isAdmin && sender.photo && /^https:\/\/firebasestorage\.googleapis\.com\//.test(sender.photo)) msg.photo = sender.photo.slice(0, 1000);
   await update(ref(rtdb), {
     [`community/room/${id}`]: msg,
     [`community/lastPost/${sender.uid}`]: serverTimestamp(),

@@ -258,7 +258,7 @@ function cleanWindows(raw: unknown): { windows?: ActiveWindow[]; error?: string 
  * room can't read Firestore, so the five toggles are mirrored to
  * `community/settings` whenever the settings change.
  */
-const COMMUNITY_DEFAULTS = { membersImages: true, membersVideo: false, membersLinks: false, modsVideo: true, modsLinks: true };
+const COMMUNITY_DEFAULTS = { membersImages: true, membersVideo: false, membersLinks: false, modsVideo: true, modsLinks: true, tlBadges: true };
 export function communitySettingsOf(data: FirebaseFirestore.DocumentData | undefined): typeof COMMUNITY_DEFAULTS {
   const c = (data?.community ?? {}) as Partial<Record<keyof typeof COMMUNITY_DEFAULTS, unknown>>;
   const out = { ...COMMUNITY_DEFAULTS };

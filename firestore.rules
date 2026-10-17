@@ -23,6 +23,7 @@ service cloud.firestore {
       // delete their record at all.
       allow create: if isSignedIn() && request.auth.uid == userId
         && request.resource.data.get('isAdmin', false) == false
+        && !request.resource.data.get('profile', {}).get('name', '').lower().matches('.*(^|[^a-z])(team leader|teamleader|admin|moderator)([^a-z]|$).*')
         && request.resource.data.get('placements', []).size() == 0
         && request.resource.data.get('completedPlacements', []).size() == 0
         && request.resource.data.get('activePlans', []).size() == 0
@@ -44,6 +45,8 @@ service cloud.firestore {
       allow update: if isSignedIn() && request.auth.uid == userId
         && request.resource.data.diff(resource.data).affectedKeys()
             .hasOnly(['profile', 'payoutMethod', 'referralCode', 'referredByUserId', 'welcomeSeenAt'])
+        // staff titles can't be typed into a display name (the room shows real chips instead)
+        && !request.resource.data.get('profile', {}).get('name', '').lower().matches('.*(^|[^a-z])(team leader|teamleader|admin|moderator)([^a-z]|$).*')
         // the welcome pop-up: a member may only note WHEN they closed it
         && request.resource.data.get('welcomeSeenAt', 0) is number
         // sign-up date and email are fixed
