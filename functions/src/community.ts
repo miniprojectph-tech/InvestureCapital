@@ -357,3 +357,29 @@ export const refreshCommunityStats = onCall(async (request) => {
   if (caller.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Admin role required.");
   return computeCommunityStats();
 });
+
+/**
+ * Team Leaders: the member directory they may write to — name, join date,
+ * whether they've placed, picture. No amounts, no payout details. Admins may
+ * call it too (the admin card reuses it for names).
+ */
+export const tlMembers = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const uid = request.auth.uid;
+  const [grant, caller] = await Promise.all([getDatabase().ref(`teamLeaders/${uid}`).once("value"), db.collection("users").doc(uid).get()]);
+  if (!grant.exists() && caller.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Team Leader access required.");
+  const snap = await db.collection("users").orderBy("profile.joinedAt", "desc").limit(2000).get();
+  const members = snap.docs
+    .filter((d) => d.id !== uid && d.data().isAdmin !== true && !String(d.data().profile?.email ?? "").toLowerCase().endsWith("@example.com"))
+    .map((d) => {
+      const u = d.data() as { profile?: { name?: string; joinedAt?: number; photoURL?: string | null }; placements?: unknown[]; completedPlacements?: unknown[] };
+      return {
+        uid: d.id,
+        name: String(u.profile?.name ?? "Member").slice(0, 40),
+        joinedAt: Number(u.profile?.joinedAt ?? 0),
+        placed: (u.placements?.length ?? 0) > 0 || (u.completedPlacements?.length ?? 0) > 0,
+        photoURL: typeof u.profile?.photoURL === "string" ? u.profile.photoURL : null,
+      };
+    });
+  return { members };
+});

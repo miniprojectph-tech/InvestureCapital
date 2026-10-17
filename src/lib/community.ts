@@ -399,6 +399,121 @@ export async function removeTeamLeader(uid: string, name: string, byUid: string)
   await auditTeamLeader("team_leader_removed", uid, name, `${name} removed as Team Leader`, byUid);
 }
 
+// ===== Team Leader direct messages =====
+// community/dm/{tl}/{member}/{msgId}; the leader's list at community/dmIndex/{tl}/{member}
+// and the member's at community/dmMeta/{member}/{tl}. Only a leader may open a thread;
+// the member can reply once it exists. Admins can read every thread (nothing says so in the UI).
+
+export type DmThread = {
+  tlUid: string; memberUid: string;
+  /** Member's display name (leader's list) or the leader's name (member's list). */
+  name: string;
+  photo?: string | null;
+  lastAt: number; lastText: string; lastFrom: string;
+  tlReadAt?: number; memberReadAt?: number;
+};
+export type TlMember = { uid: string; name: string; joinedAt: number; placed: boolean; photoURL: string | null };
+
+const dmItemFactory = (tlUid: string) => (id: string, raw: unknown): ChatItem => {
+  const m = raw as RawInbox;
+  return { id, senderId: m.from, name: m.name, photo: m.photo, kind: m.kind, text: m.text, media: m.media, at: m.at, admin: false, tl: m.from === tlUid, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
+};
+/** One leader ↔ member conversation. */
+export function useDm(tlUid: string | null, memberUid: string | null): PagedMessages {
+  const toItem = useMemo(() => dmItemFactory(tlUid ?? ""), [tlUid]);
+  return usePagedMessages(tlUid && memberUid ? `community/dm/${tlUid}/${memberUid}` : null, null, toItem);
+}
+/** A member's Team Leader threads (only leaders can open one). */
+export function useMemberDmThreads(memberUid: string | null): DmThread[] {
+  const { user } = useAuth();
+  const [list, setList] = useState<DmThread[]>([]);
+  useEffect(() => {
+    if (!user || !memberUid) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, `community/dmMeta/${memberUid}`), (s) => {
+      const val = (s.val() as Record<string, { tlName?: string; tlPhoto?: string | null; lastAt?: number; lastText?: string; lastFrom?: string; tlReadAt?: number; memberReadAt?: number }> | null) ?? {};
+      setList(Object.entries(val).filter(([, v]) => !!v.lastAt).map(([tlUid, v]) => ({ tlUid, memberUid, name: v.tlName ?? "Team Leader", photo: v.tlPhoto ?? null, lastAt: v.lastAt ?? 0, lastText: v.lastText ?? "", lastFrom: v.lastFrom ?? "", tlReadAt: v.tlReadAt, memberReadAt: v.memberReadAt })).sort((a, b) => b.lastAt - a.lastAt));
+    }, () => setList([]));
+  }, [user, memberUid]);
+  return list;
+}
+/** A leader's conversations (admins may pass any leader's uid). */
+export function useLeaderDmThreads(tlUid: string | null): DmThread[] {
+  const { user } = useAuth();
+  const [list, setList] = useState<DmThread[]>([]);
+  useEffect(() => {
+    if (!user || !tlUid) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, `community/dmIndex/${tlUid}`), (s) => {
+      const val = (s.val() as Record<string, { name?: string; photo?: string | null; lastAt?: number; lastText?: string; lastFrom?: string; tlReadAt?: number; memberReadAt?: number }> | null) ?? {};
+      setList(Object.entries(val).filter(([, v]) => !!v.lastAt).map(([memberUid, v]) => ({ tlUid, memberUid, name: v.name ?? "Member", photo: v.photo ?? null, lastAt: v.lastAt ?? 0, lastText: v.lastText ?? "", lastFrom: v.lastFrom ?? "", tlReadAt: v.tlReadAt, memberReadAt: v.memberReadAt })).sort((a, b) => b.lastAt - a.lastAt));
+    }, () => setList([]));
+  }, [user, tlUid]);
+  return list;
+}
+export function isDmUnread(t: DmThread, who: "tl" | "member"): boolean {
+  const readAt = (who === "tl" ? t.tlReadAt : t.memberReadAt) ?? 0;
+  const fromOther = who === "tl" ? t.lastFrom === t.memberUid : t.lastFrom === t.tlUid;
+  return fromOther && t.lastAt > readAt;
+}
+/** Send inside a leader ↔ member thread. The leader's first message creates it. */
+export async function sendDm(
+  tl: { uid: string; name: string; photo?: string | null },
+  member: { uid: string; name: string; photo?: string | null },
+  asLeader: boolean,
+  payload: SendPayload,
+): Promise<void> {
+  const rtdb = needRtdb();
+  const id = push(ref(rtdb, `community/dm/${tl.uid}/${member.uid}`)).key;
+  if (!id) throw new Error("Couldn't create message");
+  const me = asLeader ? tl : member;
+  const msg: Record<string, unknown> = { from: me.uid, name: me.name.slice(0, 40), kind: payload.kind, at: serverTimestamp(), ...optionalFields(payload, 1000) };
+  if (me.photo && /^https:\/\/firebasestorage\.googleapis\.com\//.test(me.photo)) msg.photo = me.photo.slice(0, 1000);
+  const idx = `community/dmIndex/${tl.uid}/${member.uid}`;
+  const meta = `community/dmMeta/${member.uid}/${tl.uid}`;
+  const preview = previewText(payload);
+  const upd: Record<string, unknown> = {
+    [`community/dm/${tl.uid}/${member.uid}/${id}`]: msg,
+    [`community/lastDm/${me.uid}`]: serverTimestamp(),
+    [`${idx}/lastAt`]: serverTimestamp(), [`${idx}/lastText`]: preview, [`${idx}/lastFrom`]: me.uid,
+    [`${meta}/lastAt`]: serverTimestamp(), [`${meta}/lastText`]: preview, [`${meta}/lastFrom`]: me.uid,
+  };
+  if (asLeader) {
+    // the leader owns both names: the member's on their list, their own on the member's
+    upd[`${idx}/name`] = member.name.slice(0, 40);
+    upd[`${idx}/photo`] = member.photo ?? null;
+    upd[`${idx}/tlReadAt`] = serverTimestamp();
+    upd[`${meta}/tlName`] = tl.name.slice(0, 40);
+    upd[`${meta}/tlPhoto`] = tl.photo ?? null;
+  } else {
+    upd[`${idx}/memberReadAt`] = serverTimestamp();
+    upd[`${meta}/memberReadAt`] = serverTimestamp();
+  }
+  await update(ref(rtdb), upd);
+}
+export function markDmRead(tlUid: string, memberUid: string, who: "tl" | "member") {
+  const { rtdb } = getFirebase();
+  if (!rtdb) return Promise.resolve();
+  const k = who === "tl" ? "tlReadAt" : "memberReadAt";
+  return update(ref(rtdb), { [`community/dmIndex/${tlUid}/${memberUid}/${k}`]: serverTimestamp(), [`community/dmMeta/${memberUid}/${tlUid}/${k}`]: serverTimestamp() });
+}
+export function deleteDmMessage(tlUid: string, memberUid: string, id: string) {
+  return remove(ref(needRtdb(), `community/dm/${tlUid}/${memberUid}/${id}`));
+}
+export function reactToDm(tlUid: string, memberUid: string, msgId: string, uid: string, emoji: string | null) {
+  const r = ref(needRtdb(), `community/dm/${tlUid}/${memberUid}/${msgId}/re/${uid}`);
+  return emoji ? set(r, emoji) : remove(r);
+}
+/** The directory a leader may message (server-filtered: no admins, no test accounts). */
+export async function tlMembers(): Promise<TlMember[]> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Not connected");
+  const r = await httpsCallable<unknown, { members: TlMember[] }>(functions, "tlMembers")({});
+  return r.data.members;
+}
+
 /** The admin's Community Room permissions, as mirrored for the chat rules. */
 export function useCommunityPermissions(): CommunityConfig {
   const { user } = useAuth();

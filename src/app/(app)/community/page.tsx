@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ShieldCheck, Inbox, Pin } from "lucide-react";
+import { ShieldCheck, Inbox, Pin, Crown } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { ChatView } from "@/components/community/ChatView";
 import { InboxPanel } from "@/components/community/InboxPanel";
 import { cn } from "@/lib/utils";
 import { useUserState } from "@/lib/useUserState";
+import { Avatar } from "@/components/Avatar";
+import { TeamLeaderPanel } from "@/components/community/TeamLeaderPanel";
 import { useAuth } from "@/lib/auth";
 import { useSettings, uploadLimitsFor } from "@/lib/settings";
 import {
@@ -39,11 +41,18 @@ import {
   setRoomBoost,
   useTeamLeaderRole,
   useTeamLeaderBadges,
+  useMemberDmThreads,
+  useDm,
+  isDmUnread,
+  markDmRead,
+  sendDm,
+  reactToDm,
+  deleteDmMessage,
   type Boost,
   type ChatItem,
 } from "@/lib/community";
 
-type Tab = "room" | "admin" | "inbox";
+type Tab = "room" | "admin" | "inbox" | "team" | `dm:${string}`;
 
 function previewOf(m: ChatItem | undefined): string {
   if (!m) return "No messages yet";
@@ -97,6 +106,12 @@ export default function CommunityPage() {
   const tlBadges = useTeamLeaderBadges(perms.tlBadges !== false);
   const canInbox = !!user?.isAdmin || (modRole.isMod && modRole.inbox);
   const inboxThreads = useInboxList(canInbox);
+  // Team Leader threads: a leader wrote to this member
+  const dmThreads = useMemberDmThreads(uid);
+  const dmTl = tab.startsWith("dm:") ? tab.slice(3) : null;
+  const dmThread = dmThreads.find((t) => t.tlUid === dmTl) ?? null;
+  const dmFeed = useDm(dmTl, dmTl ? uid : null);
+  const dmBadge = useMemo(() => new Set(dmTl ? [dmTl] : []), [dmTl]);
   const inboxUnread = inboxThreads.filter((t) => isInboxUnread(t, "admin") || t.newMember === true).length;
 
   // Deep link from Support: /community#admin
@@ -108,6 +123,11 @@ export default function CommunityPage() {
   useEffect(() => {
     if (user?.isAdmin) ensureCommunityAdmin();
   }, [user?.isAdmin]);
+
+  useEffect(() => {
+    if (!dmTl || !uid || !dmThread || !isDmUnread(dmThread, "member")) return;
+    markDmRead(dmTl, uid, "member");
+  }, [dmTl, uid, dmThread, dmFeed.messages.length]);
 
   // Mark the admin thread read whenever it's open and new messages arrive.
   useEffect(() => {
@@ -183,6 +203,30 @@ export default function CommunityPage() {
         </div>
       ),
     },
+    ...(tlRole.isTL
+      ? [
+          {
+            key: "team" as Tab,
+            label: "My team chats",
+            sub: "Message members directly as a Team Leader",
+            at: undefined,
+            unread: 0,
+            icon: (
+              <div className="w-11 h-11 rounded-full bg-[#5CE0D2]/15 border border-[#5CE0D2]/40 flex items-center justify-center shrink-0">
+                <Crown className="w-5 h-5 text-[#5CE0D2]" />
+              </div>
+            ),
+          },
+        ]
+      : []),
+    ...dmThreads.map((t) => ({
+      key: `dm:${t.tlUid}` as Tab,
+      label: t.name,
+      sub: t.lastText ? `${t.lastFrom === t.tlUid ? t.name.split(" ")[0] : "You"}: ${t.lastText}` : "Team Leader",
+      at: t.lastAt,
+      unread: isDmUnread(t, "member") ? 1 : 0,
+      icon: <Avatar src={t.photo} name={t.name} id={t.tlUid} size={44} ring="ring-1 ring-[#5CE0D2]/40" />,
+    })),
     ...(canInbox
       ? [
           {
@@ -232,6 +276,11 @@ export default function CommunityPage() {
         <>
           <button onClick={() => setTab("room")} className="hidden lg:inline-flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text mb-2">← Back to chats</button>
           <InboxPanel staff={{ uid: user.uid, name: STAFF_NAME, isAdmin: user.isAdmin, isMod: modRole.isMod }} canSend={!demoMode} />
+        </>
+      ) : tab === "team" && tlRole.isTL ? (
+        <>
+          <button onClick={() => setTab("room")} className="hidden lg:inline-flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text mb-2">← Back to chats</button>
+          <TeamLeaderPanel me={{ uid: user.uid, name: user.name, photo: me?.profile?.photoURL ?? null }} canSend={!demoMode} />
         </>
       ) : (
         <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-3">
@@ -296,6 +345,39 @@ export default function CommunityPage() {
               onReact={(m, emoji) => reactToRoomMessage(m.id, user.uid, emoji)}
               tlBadges={tlBadges}
               {...moderation}
+            />
+          )}
+
+          {dmTl && (
+            <ChatView
+              key={tab}
+              header={
+                <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border shrink-0">
+                  <Avatar src={dmThread?.photo} name={dmThread?.name ?? "Team Leader"} id={dmTl} size={36} ring="ring-1 ring-[#5CE0D2]/40" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14px] font-bold m-0 truncate flex items-center gap-1.5">{dmThread?.name ?? "Team Leader"} <span className="text-[8px] font-bold tracking-[0.06em] text-[#5CE0D2] bg-[#5CE0D2]/15 border border-[#5CE0D2]/40 px-1.5 py-px rounded-full">Team Leader</span></p>
+                    <p className="text-[11px] text-text-muted m-0">Private conversation</p>
+                  </div>
+                </div>
+              }
+              messages={dmFeed.messages}
+              loading={dmFeed.loading}
+              meUid={user.uid}
+              uploaderUid={user.uid}
+              uploadFolder={`inbox/${user.uid}`}
+              maxImageBytes={inboxCaps.imageMB * 1024 * 1024}
+              maxVideoBytes={inboxCaps.videoMB * 1024 * 1024}
+              maxVideoSeconds={inboxCaps.videoSeconds}
+              emptyText="Your Team Leader will write here."
+              canSend={!demoMode && !!dmThread}
+              maxText={1000}
+              hasMore={dmFeed.hasMore}
+              loadingOlder={dmFeed.loadingOlder}
+              onLoadOlder={dmFeed.loadOlder}
+              tlBadges={dmBadge}
+              onSend={(p) => sendDm({ uid: dmTl, name: dmThread?.name ?? "Team Leader", photo: dmThread?.photo ?? null }, { uid: user.uid, name: user.name, photo: me?.profile?.photoURL ?? null }, false, p)}
+              onReact={(m, emoji) => reactToDm(dmTl, user.uid, m.id, user.uid, emoji)}
+              onDelete={(m) => (m.senderId === user.uid ? deleteDmMessage(dmTl, user.uid, m.id) : Promise.resolve())}
             />
           )}
 
