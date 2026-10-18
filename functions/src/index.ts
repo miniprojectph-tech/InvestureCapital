@@ -24,7 +24,7 @@ export { faqVote } from "./faq";
 export { masterlistSync, adminMasterlistSave, adminMasterlistDelete, adminMasterlistRebuild } from "./masterlist";
 
 // Admin only: delete a member's account (members can't delete their own).
-export { adminDeleteMember, adminResetMemberPassword } from "./account";
+export { adminDeleteMember, adminResetMemberPassword, adminSetJoinedAt } from "./account";
 
 // Admin: member directory export (Excel / CSV), audited.
 export { adminExportMembers } from "./members-export";

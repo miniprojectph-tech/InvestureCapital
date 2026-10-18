@@ -12,6 +12,8 @@ import {
   type Firestore,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
+import { httpsCallable } from "firebase/functions";
+import { getFirebase } from "./firebase";
 import type { UserState } from "./userState";
 import type { Placement, CompletedPlacement } from "./compplan";
 
@@ -202,4 +204,12 @@ export async function fetchActivityPage(
     lastDoc: snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null,
     hasMore: snap.docs.length === pageSize,
   };
+}
+
+/** Admin: change a member's join date (profile + community copies, audited). */
+export async function adminSetJoinedAt(uid: string, joinedAt: number): Promise<{ before: number; after: number }> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Not connected");
+  const r = await httpsCallable<{ uid: string; joinedAt: number }, { before: number; after: number }>(functions, "adminSetJoinedAt")({ uid, joinedAt });
+  return r.data;
 }

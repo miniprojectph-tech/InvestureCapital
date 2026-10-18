@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye, Users, Gift, Wallet, Layers, Gamepad2, type LucideIcon } from "lucide-react";
+import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye, Users, Pencil, Gift, Wallet, Layers, Gamepad2, type LucideIcon } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
@@ -14,7 +14,8 @@ import { ResetPasswordModal } from "@/components/admin/ResetPasswordModal";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
-import { listInvestors, type InvestorRow } from "@/lib/adminQueries";
+import { listInvestors, adminSetJoinedAt, type InvestorRow } from "@/lib/adminQueries";
+import { manilaDateTime, toManilaInput } from "@/lib/withdrawals";
 import {
   useGameConfig,
   useGamesSettings,
@@ -215,6 +216,22 @@ export default function AdminInvestorsPage() {
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
   const [resetting, setResetting] = useState<{ uid: string; name: string; email: string } | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
+  // Joined tab: the member whose join date is being edited, and the typed Manila date-time
+  const [joinEdit, setJoinEdit] = useState<{ uid: string; value: string } | null>(null);
+  const [joinBusy, setJoinBusy] = useState(false);
+  async function saveJoined(u: InvestorRow) {
+    if (!joinEdit) return;
+    const ms = manilaDateTime(joinEdit.value);
+    if (ms == null) return setAccountMsg("Pick a date and time first.");
+    setJoinBusy(true); setAccountMsg(null);
+    try {
+      const r = await adminSetJoinedAt(u.uid, ms);
+      setRows((rs) => rs.map((x) => (x.uid === u.uid ? { ...x, joinedAt: r.after } : x)));
+      setJoinEdit(null);
+      setAccountMsg(`${u.name}'s join date is now ${new Date(r.after).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}. Their community history and the inbox follow it.`);
+    } catch (e) { setAccountMsg(e instanceof Error ? e.message.replace(/^.*?:\s*/, "") : "Could not change the join date"); }
+    finally { setJoinBusy(false); }
+  }
   const reloadInvestors = useCallback(() => setReloadTick((t) => t + 1), []);
 
   useEffect(() => {
@@ -600,7 +617,24 @@ export default function AdminInvestorsPage() {
                   <tr key={u.uid} className="border-t border-border hover:bg-card-elev/50 transition">
                     <td className="py-2 px-1"><p className="m-0 text-[11px] truncate font-medium">{u.name}</p></td>
                     <td className="py-2 px-1"><p className="m-0 text-[10px] text-text-muted truncate">{u.email}</p></td>
-                    <td className="py-2 px-1 text-text-muted text-[10px]">{fmtDateShort(u.joinedAt)}</td>
+                    <td className="py-2 px-1 text-text-muted text-[10px]">
+                      {joinEdit?.uid === u.uid ? (
+                        <span className="inline-flex flex-wrap items-center gap-1">
+                          <input type="datetime-local" value={joinEdit.value} onChange={(e) => setJoinEdit({ uid: u.uid, value: e.target.value })} className="bg-canvas border border-gold/40 rounded-md px-1.5 py-0.5 text-[10px] text-text font-mono outline-none" />
+                          <button onClick={() => saveJoined(u)} disabled={joinBusy} className="text-[10px] px-2 py-0.5 rounded-md bg-gold text-gold-dark font-medium disabled:opacity-60">{joinBusy ? "…" : "Save"}</button>
+                          <button onClick={() => setJoinEdit(null)} className="text-[10px] text-text-muted hover:text-text">Cancel</button>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1">
+                          {fmtDateShort(u.joinedAt)}
+                          {!u.isAdmin && (
+                            <button onClick={() => { setAccountMsg(null); setJoinEdit({ uid: u.uid, value: toManilaInput(u.joinedAt || Date.now(), true) }); }} className="p-0.5 text-text-subtle hover:text-gold" aria-label={`Edit ${u.name}'s join date`} title="Edit join date">
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          )}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2 px-1 text-right font-mono">{u.activePlansCount}</td>
                     <td className="py-2 px-1 text-right font-mono">{formatPHP(u.wallet, { short: true })}</td>
                     <td className="py-2 px-1 text-right font-mono text-vault">{u.bonusesDue > 0 ? formatPHP(u.bonusesDue, { short: true }) : "—"}</td>

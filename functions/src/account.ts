@@ -200,3 +200,41 @@ export const adminResetMemberPassword = onCall(async (request) => {
   logger.info("member password reset by admin", { uid, by: adminUid, mode });
   return { ok: true, mode, email, name, hasPassword, usesGoogle, ...(link ? { link } : {}), ...(password ? { tempPassword: password } : {}) };
 });
+
+/**
+ * Admin: change a member's join date. Updates the profile, the community room's
+ * copy (members/{uid}/joinedAt — what decides how far back they can read the
+ * room) and the inbox thread's "new member" date. Bounded to the platform's
+ * life and never in the future. Audited; the member is not notified.
+ */
+const JOINED_FLOOR = Date.UTC(2025, 0, 1);
+export const adminSetJoinedAt = onCall(async (request) => {
+  const adminUid = request.auth?.uid;
+  if (!adminUid) throw new HttpsError("unauthenticated", "Sign in required.");
+  const caller = await db.collection("users").doc(adminUid).get();
+  if (caller.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Admin role required.");
+  const d = (request.data ?? {}) as { uid?: unknown; joinedAt?: unknown };
+  const uid = typeof d.uid === "string" ? d.uid : "";
+  const joinedAt = Math.round(Number(d.joinedAt));
+  if (!uid) throw new HttpsError("invalid-argument", "Pick a member.");
+  if (!Number.isFinite(joinedAt) || joinedAt < JOINED_FLOOR) throw new HttpsError("invalid-argument", "The join date must be on or after Jan 1, 2025.");
+  if (joinedAt > Date.now() + 60_000) throw new HttpsError("invalid-argument", "The join date can't be in the future.");
+  const ref = db.collection("users").doc(uid);
+  const snap = await ref.get();
+  if (!snap.exists) throw new HttpsError("not-found", "That member no longer exists.");
+  const u = snap.data() as { profile?: { name?: string; joinedAt?: number } };
+  const before = Number(u.profile?.joinedAt ?? 0);
+  await ref.update({ "profile.joinedAt": joinedAt });
+  const rtdb = getDatabase();
+  const upd: Record<string, unknown> = { [`members/${uid}/joinedAt`]: joinedAt };
+  const meta = await rtdb.ref(`community/inboxMeta/${uid}/joinedAt`).once("value");
+  if (meta.exists()) upd[`community/inboxMeta/${uid}/joinedAt`] = joinedAt;
+  await rtdb.ref().update(upd);
+  await db.collection("admin_audit").add({
+    type: "joined_date_changed", uid, userName: u.profile?.name ?? "",
+    title: `Join date changed for ${u.profile?.name ?? uid}`,
+    subtitle: `${new Date(before).toLocaleDateString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" })} → ${new Date(joinedAt).toLocaleDateString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium" })}`,
+    before, after: joinedAt, by: adminUid, at: Date.now(),
+  });
+  return { before, after: joinedAt };
+});
