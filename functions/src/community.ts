@@ -2,6 +2,7 @@ import { randomInt } from "node:crypto";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onDocumentWritten, onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onValueCreated } from "firebase-functions/v2/database";
 import { getDatabase } from "firebase-admin/database";
 import { getStorage } from "firebase-admin/storage";
 import { FieldValue } from "firebase-admin/firestore";
@@ -382,4 +383,47 @@ export const tlMembers = onCall(async (request) => {
       };
     });
   return { members };
+});
+
+// ===== Bell notifications for chat =====
+// A member writing to the admin inbox → every admin's bell. A Team Leader chat → the
+// other person's bell, and a member's reply also goes to the admins (nothing on either
+// side says so). One notice per thread while it is unread, so a burst of messages
+// doesn't become a burst of notifications. Triggers live where the database does.
+const RTDB_INSTANCE = "investurecapital-37731-default-rtdb";
+const RTDB_REGION = "asia-southeast1";
+type ChatNotice = { type: "inbox" | "dm"; title: string; body: string; href: string; threadKey: string };
+const previewOf = (m: { kind?: string; text?: string }) => (m.text ? String(m.text).replace(/\s+/g, " ").slice(0, 120) : m.kind === "image" ? "📷 Photo" : m.kind === "video" ? "🎬 Video" : m.kind === "sticker" ? "Sticker" : "");
+async function notifyOnce(uid: string, n: ChatNotice): Promise<void> {
+  const col = db.collection("users").doc(uid).collection("notifications");
+  const waiting = await col.where("threadKey", "==", n.threadKey).where("read", "==", false).limit(1).get();
+  if (!waiting.empty) return;
+  await col.add({ ...n, at: Date.now(), read: false });
+}
+async function adminUids(): Promise<string[]> {
+  const snap = await db.collection("users").where("isAdmin", "==", true).get();
+  return snap.docs.map((d) => d.id);
+}
+export const onInboxMemberMessage = onValueCreated({ ref: "/community/inbox/{uid}/{msgId}", instance: RTDB_INSTANCE, region: RTDB_REGION }, async (event) => {
+  const m = event.data.val() as { from?: string; name?: string; kind?: string; text?: string } | null;
+  if (!m || !m.from || m.from === "admin") return;
+  const uid = event.params.uid;
+  const name = String(m.name ?? "A member").slice(0, 40);
+  const notice: ChatNotice = { type: "inbox", title: `${name} sent you a message`, body: previewOf(m), href: `/admin/community?thread=${uid}#inbox`, threadKey: `inbox:${uid}` };
+  for (const admin of await adminUids()) await notifyOnce(admin, notice);
+});
+export const onDmMessage = onValueCreated({ ref: "/community/dm/{tl}/{member}/{msgId}", instance: RTDB_INSTANCE, region: RTDB_REGION }, async (event) => {
+  const m = event.data.val() as { from?: string; name?: string; kind?: string; text?: string } | null;
+  const { tl, member } = event.params;
+  if (!m || !m.from) return;
+  const fromLeader = m.from === tl;
+  const name = String(m.name ?? "Someone").slice(0, 40);
+  const body = previewOf(m);
+  if (fromLeader) {
+    await notifyOnce(member, { type: "dm", title: `${name} (Team Leader) sent you a message`, body, href: `/community#dm:${tl}`, threadKey: `dm:${tl}:${member}` });
+  } else {
+    await notifyOnce(tl, { type: "dm", title: `${name} replied`, body, href: "/community#team", threadKey: `dm:${tl}:${member}` });
+    const tlName = String((await getDatabase().ref(`teamLeaders/${tl}/name`).once("value")).val() ?? "a Team Leader");
+    for (const admin of await adminUids()) await notifyOnce(admin, { type: "dm", title: `${name} replied to ${tlName}`, body, href: "/admin/community#people", threadKey: `dmadmin:${tl}:${member}` });
+  }
 });

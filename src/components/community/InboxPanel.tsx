@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Inbox, Search, MessageCircle } from "lucide-react";
+import { ArrowLeft, Inbox, Search, MessageCircle, MailWarning } from "lucide-react";
 import { Card } from "@/components/Card";
 import { ChatView } from "@/components/community/ChatView";
 import { cn } from "@/lib/utils";
@@ -10,6 +10,11 @@ import {
   useInboxList,
   useInbox,
   isInboxUnread,
+  needsReply,
+  isNewMember,
+  sortInboxThreads,
+  markInboxUnread,
+  NEW_MEMBER_DAYS,
   sendInboxMessage,
   deleteInboxMessage,
   reactToInboxMessage,
@@ -40,6 +45,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [show, setShow] = useState<"all" | "unread" | "new">("all");
+  const [now] = useState(() => Date.now());
 
   const threads = useInboxList(true);
   const feed = useInbox(selected);
@@ -55,18 +61,25 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
     if (selected && current && currentUnread) markInboxRead(selected, "admin");
   }, [selected, current, currentUnread, messages.length]);
 
+  // Deep link from a bell notification: /admin/community?thread=<uid>#inbox
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const t = new URLSearchParams(window.location.search).get("thread");
+    if (t) setSelected(t);
+  }, []);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = threads;
-    if (show === "unread") list = list.filter((t) => isInboxUnread(t, "admin") || t.newMember === true);
-    if (show === "new") list = list.filter((t) => t.newMember === true);
+    let list = sortInboxThreads(threads, now);
+    if (show === "unread") list = list.filter(needsReply);
+    if (show === "new") list = list.filter((t) => isNewMember(t, now));
     if (!q) return list;
     return list.filter((t) => t.name.toLowerCase().includes(q) || (t.email ?? "").toLowerCase().includes(q));
-  }, [threads, search, show]);
+  }, [threads, search, show, now]);
 
-  // A new member counts as unread until someone on the team has replied to them.
-  const unreadCount = threads.filter((t) => isInboxUnread(t, "admin") || t.newMember === true).length;
-  const newCount = threads.filter((t) => t.newMember === true).length;
+  // "Needs reply" = the member wrote last and nobody opened it. New members are counted separately, never as unread.
+  const unreadCount = threads.filter(needsReply).length;
+  const newCount = threads.filter((t) => isNewMember(t, now)).length;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-3">
@@ -82,12 +95,12 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                 <span className="text-[9px] font-semibold bg-green/15 text-green px-1.5 py-0.5 rounded-full">{newCount} new member{newCount === 1 ? "" : "s"}</span>
               )}
               {unreadCount > 0 && (
-                <span className="text-[9px] font-semibold bg-red/15 text-red px-1.5 py-0.5 rounded-full">{unreadCount} unread</span>
+                <span className="text-[9px] font-semibold bg-red/15 text-red px-1.5 py-0.5 rounded-full">{unreadCount} need{unreadCount === 1 ? "s" : ""} reply</span>
               )}
             </span>
           </div>
           <div className="flex gap-1 mb-2">
-            {([["all", "All"], ["unread", "Unread"], ["new", "New members"]] as const).map(([k, label]) => (
+            {([["all", "All"], ["unread", "Needs reply"], ["new", "New members"]] as const).map(([k, label]) => (
               <button key={k} type="button" onClick={() => setShow(k)} aria-pressed={show === k} className={cn("px-2.5 py-1 rounded-full text-[10px] font-medium border transition", show === k ? "bg-gold/15 border-gold/40 text-gold" : "bg-canvas border-border text-text-muted hover:text-text")}>
                 {label}
               </button>
@@ -105,10 +118,11 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
         </div>
         <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100dvh - 330px)", minHeight: 240 }}>
           {filtered.length === 0 ? (
-            <p className="text-[11px] text-text-subtle text-center py-8 m-0">{show === "new" ? "No new members waiting." : show === "unread" ? "Nothing unread." : "No conversations yet."}</p>
+            <p className="text-[11px] text-text-subtle text-center py-8 m-0">{show === "new" ? `Nobody joined in the last ${NEW_MEMBER_DAYS} days.` : show === "unread" ? "Nothing waiting for a reply." : "No conversations yet."}</p>
           ) : (
             filtered.map((t) => {
-              const unread = isInboxUnread(t, "admin") || t.newMember === true;
+              const unread = needsReply(t);
+              const fresh = isNewMember(t, now);
               const active = t.uid === selected;
               return (
                 <button
@@ -126,9 +140,9 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                     <div className="flex items-center justify-between gap-2">
                       <p className={cn("text-[12px] m-0 truncate text-text flex items-center gap-1.5 min-w-0", unread && "font-semibold")}>
                         <span className="truncate">{t.name}</span>
-                        {t.newMember && <span className="text-[8px] font-semibold uppercase tracking-wide bg-green/15 text-green px-1.5 py-px rounded-full shrink-0">New member</span>}
+                        {fresh && <span className="text-[8px] font-semibold uppercase tracking-wide bg-green/15 text-green px-1.5 py-px rounded-full shrink-0">New member</span>}
                       </p>
-                      <span className="text-[9px] text-text-subtle shrink-0">{t.newMember && t.joinedAt ? `Joined ${formatRelative(t.joinedAt)} ago` : formatRelative(t.lastAt)}</span>
+                      <span className="text-[9px] text-text-subtle shrink-0">{fresh && t.joinedAt ? `Joined ${formatRelative(t.joinedAt)} ago` : formatRelative(t.lastAt)}</span>
                     </div>
                     <p className={cn("text-[10px] m-0 truncate mt-0.5", unread ? "text-text-muted" : "text-text-subtle")}>
                       {t.lastFrom === "admin" ? "You: " : ""}
@@ -158,6 +172,15 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                   <p className="text-[13px] font-semibold m-0 truncate">{current.name}</p>
                   {current.email && <p className="text-[10px] text-text-subtle m-0 truncate">{current.email}</p>}
                 </div>
+                {current.lastFrom !== "admin" && (
+                  <button
+                    onClick={() => { markInboxUnread(selected); setSelected(null); }}
+                    title="Put this conversation back in Needs reply"
+                    className="text-[10px] text-text-subtle hover:text-text flex items-center gap-1 shrink-0"
+                  >
+                    <MailWarning className="w-3 h-3" /> Mark unread
+                  </button>
+                )}
                 {threadAside}
               </div>
             }

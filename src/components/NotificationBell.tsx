@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { Bell, ArrowDownRight, TrendingUp, Users, Zap, Award, Coins, CheckCheck, type LucideIcon } from "lucide-react";
-import { cn, formatPHP } from "@/lib/utils";
+import { Bell, ArrowDownRight, TrendingUp, Users, Zap, Award, Coins, CheckCheck, MessageCircle, Crown, type LucideIcon } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useNotifications, markNotificationsRead, formatRelativeShort, type AppNotification } from "@/lib/compplan";
 
@@ -14,14 +14,17 @@ export const NOTIF_META: Record<string, { icon: LucideIcon; color: string; bg: s
   fastStart: { icon: Zap, color: "text-vault", bg: "bg-vault/15" },
   leadership: { icon: Award, color: "text-gold", bg: "bg-gold/15" },
   placement: { icon: Coins, color: "text-text-muted", bg: "bg-white/5" },
+  inbox: { icon: MessageCircle, color: "text-red", bg: "bg-red/15" },
+  dm: { icon: Crown, color: "text-[#5CE0D2]", bg: "bg-[#5CE0D2]/15" },
 };
 const DEFAULT_META = { icon: Bell, color: "text-text-muted", bg: "bg-white/5" };
 
-export function NotificationRow({ n, compact }: { n: AppNotification; compact?: boolean }) {
+export function NotificationRow({ n, compact, onOpen }: { n: AppNotification; compact?: boolean; onOpen?: () => void }) {
   const meta = NOTIF_META[n.type] ?? DEFAULT_META;
   const Icon = meta.icon;
-  return (
-    <div className={cn("flex items-start gap-2.5", compact ? "px-3 py-2.5" : "px-4 py-3", !n.read && "bg-gold/[0.04]")}>
+  const cls = cn("flex items-start gap-2.5", compact ? "px-3 py-2.5" : "px-4 py-3", !n.read && "bg-gold/[0.04]", n.href && "hover:bg-card-elev transition");
+  const body = (
+    <>
       <div className={cn("w-7 h-7 rounded-full flex items-center justify-center shrink-0 mt-0.5", meta.bg)}>
         <Icon className={cn("w-3.5 h-3.5", meta.color)} />
       </div>
@@ -31,8 +34,11 @@ export function NotificationRow({ n, compact }: { n: AppNotification; compact?: 
         <p className="text-[9px] text-text-subtle m-0 mt-0.5">{formatRelativeShort(n.at)}</p>
       </div>
       {!n.read && <span className="w-1.5 h-1.5 rounded-full bg-gold shrink-0 mt-2" />}
-    </div>
+    </>
   );
+  // chat notices open the conversation they came from
+  if (n.href) return <Link href={n.href} onClick={onOpen} className={cls}>{body}</Link>;
+  return <div className={cls}>{body}</div>;
 }
 
 /** Header bell: unread badge + dropdown of the latest notifications. */
@@ -85,7 +91,7 @@ export function NotificationBell() {
             {items.length === 0 ? (
               <p className="text-[11px] text-text-subtle text-center py-8 m-0 px-4">No notifications yet. Payouts, commissions and bonuses will show up here.</p>
             ) : (
-              items.map((n) => <NotificationRow key={n.id} n={n} compact />)
+              items.map((n) => <NotificationRow key={n.id} n={n} compact onOpen={() => setOpen(false)} />)
             )}
           </div>
           <Link href="/notifications" onClick={() => setOpen(false)} className="block text-center text-[11px] text-gold py-2.5 border-t border-border hover:bg-card-elev transition">

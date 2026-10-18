@@ -765,6 +765,26 @@ export function useInboxList(enabled: boolean): InboxMeta[] {
   return list;
 }
 
+/** The member wrote last and nobody on the team has opened it since. */
+export const needsReply = (meta: InboxMeta): boolean => isInboxUnread(meta, "admin");
+/** The welcome opened the thread, nobody has replied yet, and they joined within the last week. */
+export const NEW_MEMBER_DAYS = 7;
+export const isNewMember = (meta: InboxMeta, now = Date.now()): boolean => meta.newMember === true && (meta.joinedAt ?? meta.lastAt) > now - NEW_MEMBER_DAYS * 86_400_000;
+/** Needs-reply first, then new members, then everything else — each newest first. */
+export function sortInboxThreads(list: InboxMeta[], now = Date.now()): InboxMeta[] {
+  const rank = (t: InboxMeta) => (needsReply(t) ? 0 : isNewMember(t, now) ? 1 : 2);
+  return list.slice().sort((a, b) => rank(a) - rank(b) || b.lastAt - a.lastAt);
+}
+/** Put a thread back in "Needs reply" (admin side). */
+export function markInboxUnread(threadUid: string) {
+  return set(ref(needRtdb(), `community/inboxMeta/${threadUid}/adminReadAt`), 0);
+}
+/** Live count of member threads waiting for a reply (admins and inbox moderators only). */
+export function useInboxNeedsReply(enabled: boolean): number {
+  const list = useInboxList(enabled);
+  return useMemo(() => list.filter(needsReply).length, [list]);
+}
+
 export function isInboxUnread(meta: InboxMeta | null, who: "user" | "admin"): boolean {
   if (!meta) return false;
   const readAt = (who === "user" ? meta.userReadAt : meta.adminReadAt) ?? 0;

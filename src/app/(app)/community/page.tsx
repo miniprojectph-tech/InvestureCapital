@@ -24,6 +24,7 @@ import {
   useTypingSignal,
   useTypingNames,
   isInboxUnread,
+  needsReply,
   sendRoomMessage,
   sendInboxMessage,
   reactToRoomMessage,
@@ -112,11 +113,15 @@ export default function CommunityPage() {
   const dmThread = dmThreads.find((t) => t.tlUid === dmTl) ?? null;
   const dmFeed = useDm(dmTl, dmTl ? uid : null);
   const dmBadge = useMemo(() => new Set(dmTl ? [dmTl] : []), [dmTl]);
-  const inboxUnread = inboxThreads.filter((t) => isInboxUnread(t, "admin") || t.newMember === true).length;
+  const inboxUnread = inboxThreads.filter(needsReply).length;
 
   // Deep link from Support: /community#admin
   useEffect(() => {
-    if (typeof window !== "undefined" && window.location.hash === "#admin") setTab("admin");
+    if (typeof window === "undefined") return;
+    const h = window.location.hash;
+    if (h === "#admin") setTab("admin");
+    else if (h === "#team") setTab("team");
+    else if (h.startsWith("#dm:")) setTab(h.slice(1) as Tab);
   }, []);
 
   // Admins need their RTDB moderator flag before posting as admin.

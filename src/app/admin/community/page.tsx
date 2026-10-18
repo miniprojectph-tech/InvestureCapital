@@ -21,6 +21,8 @@ import {
   useChatMods,
   useInboxList,
   isInboxUnread,
+  needsReply,
+  isNewMember,
   useCommunityStats,
   refreshCommunityStats,
   useCommunityActiveSettings,
@@ -417,12 +419,13 @@ export default function AdminCommunityPage() {
 
   if (!user) return null;
   const staff = { uid: user.uid, name: "Admin", isAdmin: true };
-  // A new member counts as waiting until someone on the team has replied.
-  const waiting = threads.filter((t) => isInboxUnread(t, "admin") || t.newMember === true).length;
+  // "Waiting" = members who wrote last; fresh sign-ups are shown as a hint, not as waiting.
+  const waiting = threads.filter(needsReply).length;
+  const fresh = threads.filter((t) => isNewMember(t)).length;
   const welcomeOn = (settings.welcome?.enabled ?? DEFAULT_WELCOME.enabled) !== false;
 
   const tabs: AdminTab<Tab>[] = [
-    { id: "inbox", label: "Inbox", icon: Inbox, count: waiting || undefined, attention: waiting > 0 },
+    { id: "inbox", label: "Inbox", icon: Inbox, count: waiting || undefined, attention: waiting > 0, hint: fresh ? `${fresh} new` : undefined, hintTone: fresh ? "ok" : "muted" },
     { id: "room", label: "Room", icon: MessageSquare, count: mutedUsers.length || undefined },
     { id: "people", label: "Moderators & leaders", icon: ShieldCheck, count: mods.length + tls.length || undefined },
     { id: "welcome", label: "Welcome", icon: PartyPopper, hint: welcomeOn ? "on" : "off", hintTone: welcomeOn ? "ok" : "muted" },

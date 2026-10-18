@@ -82,6 +82,9 @@ export type AppNotification = {
   body?: string;
   amount?: number;
   planId?: string;
+  /** Where the notice leads when tapped (chat notices). */
+  href?: string;
+  threadKey?: string;
   at: number;
   read: boolean;
 };
