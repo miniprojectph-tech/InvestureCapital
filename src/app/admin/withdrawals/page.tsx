@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, X, Clock, AlertCircle, Loader2, Send, CalendarClock } from "lucide-react";
+import { Check, X, Clock, AlertCircle, Loader2, Send, CalendarClock, CalendarCog } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { Card, CardHeader } from "@/components/Card";
@@ -15,7 +15,13 @@ import {
   useWithdrawals,
   approveWithdrawal,
   rejectWithdrawal,
+  setWithdrawalReleaseDate,
+  setWithdrawalProcessedAt,
+  manilaDayStart,
+  manilaDateTime,
+  toManilaInput,
   type WithdrawalStatus,
+  type WithdrawalRequest,
 } from "@/lib/withdrawals";
 
 const statusMeta = {
@@ -31,6 +37,24 @@ export default function AdminWithdrawalsPage() {
   const [tab, setTab] = useHashTab<WithdrawalStatus>(STATUS_TABS, "pending");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // the row whose release / released date is being edited, and the typed value
+  const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  async function saveDate(r: WithdrawalRequest) {
+    const { db } = getFirebase();
+    if (!db || !user?.isAdmin || !editing) return;
+    const ms = r.status === "pending" ? manilaDayStart(editing.value) : manilaDateTime(editing.value);
+    if (ms == null) return setError("Pick a date first.");
+    if (r.status === "approved" && ms > Date.now() + 60_000) return setError("A released date can't be in the future.");
+    setBusyId(r.id); setError(null); setNotice(null);
+    try {
+      if (r.status === "pending") { await setWithdrawalReleaseDate(db, r, user.uid, ms); setNotice(`${r.userName}'s release date is now ${formatReleaseDate(ms, { withYear: true })}. They've been told.`); }
+      else { await setWithdrawalProcessedAt(db, r, user.uid, ms); setNotice(`${r.userName}'s released date now reads ${new Date(ms).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}.`); }
+      setEditing(null);
+    } catch (e) { setError(e instanceof Error ? e.message : "Could not change the date"); }
+    finally { setBusyId(null); }
+  }
 
   const counts = useMemo(
     () => ({
@@ -93,6 +117,12 @@ export default function AdminWithdrawalsPage() {
         <div className="mb-3 flex items-start gap-2 px-3 py-2 bg-red/10 border border-red/30 rounded-lg text-[11px] text-red">
           <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
           <span>{error}</span>
+        </div>
+      )}
+      {notice && (
+        <div className="mb-3 flex items-start gap-2 px-3 py-2 bg-green/10 border border-green/30 rounded-lg text-[11px] text-green">
+          <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+          <span>{notice}</span>
         </div>
       )}
 
@@ -177,6 +207,11 @@ export default function AdminWithdrawalsPage() {
                     {due ? "Due" : "Releases"} {formatReleaseDate(releaseAt)} · {relativeReleaseLabel(releaseAt)}
                   </p>
                 )}
+                {r.status === "approved" && r.processedAt && (
+                  <p className="text-[9px] m-0 mt-0.5 font-medium text-green">
+                    Released {formatReleaseDate(r.processedAt)} · {new Date(r.processedAt).toLocaleTimeString("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit" })}
+                  </p>
+                )}
               </div>
               {tab === "pending" ? (
                 <div className="flex gap-1.5 ml-auto sm:ml-0">
@@ -195,17 +230,50 @@ export default function AdminWithdrawalsPage() {
                   >
                     <X className="w-3 h-3" /> Reject
                   </button>
+                  <button
+                    onClick={() => { setError(null); setEditing(editing?.id === r.id ? null : { id: r.id, value: releaseAt != null ? toManilaInput(releaseAt) : toManilaInput(Date.now()) }); }}
+                    disabled={isBusy}
+                    className={cn("text-[11px] px-3 py-1.5 rounded-md border transition flex items-center gap-1.5 disabled:opacity-60", editing?.id === r.id ? "bg-gold/15 border-gold/40 text-gold" : "bg-card-elev border-gold/30 text-gold hover:bg-gold/10")}
+                  >
+                    <CalendarCog className="w-3 h-3" /> Change date
+                  </button>
                 </div>
               ) : (
-                <span
-                  className={cn(
-                    "text-[10px] px-2 py-0.5 rounded-md font-medium",
-                    statusMeta[r.status].bg,
-                    statusMeta[r.status].color
+                <div className="flex items-center gap-1.5 ml-auto sm:ml-0">
+                  <span
+                    className={cn(
+                      "text-[10px] px-2 py-0.5 rounded-md font-medium",
+                      statusMeta[r.status].bg,
+                      statusMeta[r.status].color
+                    )}
+                  >
+                    {statusMeta[r.status].label}
+                  </span>
+                  {r.status === "approved" && (
+                    <button
+                      onClick={() => { setError(null); setEditing(editing?.id === r.id ? null : { id: r.id, value: toManilaInput(r.processedAt ?? Date.now(), true) }); }}
+                      disabled={isBusy}
+                      className={cn("text-[10px] px-2 py-1 rounded-md border transition flex items-center gap-1 disabled:opacity-60", editing?.id === r.id ? "bg-gold/15 border-gold/40 text-gold" : "bg-card-elev border-border-strong text-text-muted hover:text-text")}
+                    >
+                      <CalendarCog className="w-3 h-3" /> Edit date
+                    </button>
                   )}
-                >
-                  {statusMeta[r.status].label}
-                </span>
+                </div>
+              )}
+              {editing?.id === r.id && (
+                <div className="basis-full flex flex-wrap items-center gap-2 bg-canvas border border-gold/30 rounded-lg px-3 py-2">
+                  <span className="text-[11px] text-text-muted">{r.status === "pending" ? "New release date" : "Released on"}</span>
+                  <input
+                    type={r.status === "pending" ? "date" : "datetime-local"}
+                    value={editing.value}
+                    onChange={(e) => setEditing({ id: r.id, value: e.target.value })}
+                    className="bg-card border border-border rounded-md px-2 py-1 text-[12px] text-text font-mono outline-none focus:border-gold/40"
+                  />
+                  {(() => { const ms = r.status === "pending" ? manilaDayStart(editing.value) : manilaDateTime(editing.value); return ms != null ? <span className="text-[11px] text-text-subtle">{formatReleaseDate(ms, { withYear: true })}{r.status === "pending" ? ` · ${relativeReleaseLabel(ms)}` : ""}</span> : null; })()}
+                  <button onClick={() => saveDate(r)} disabled={isBusy} className="text-[11px] px-3 py-1 rounded-md bg-gold text-gold-dark font-medium disabled:opacity-60 flex items-center gap-1">{isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null} Save</button>
+                  <button onClick={() => setEditing(null)} className="text-[11px] text-text-muted hover:text-text">Cancel</button>
+                  <span className="basis-full text-[9px] text-text-subtle">{r.status === "pending" ? "Manila time. The member gets a notification with the new date." : "Manila time. Changes the “Released …” date the member sees; no notification."}</span>
+                </div>
               )}
             </div>
           );

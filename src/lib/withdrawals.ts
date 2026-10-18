@@ -101,6 +101,38 @@ export async function rejectWithdrawal(
   });
 }
 
+const HOUR_MS = 3_600_000;
+/** Midnight Manila for a yyyy-mm-dd string (the same instant the schedule stamps). */
+export function manilaDayStart(ymd: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return null;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - 8 * HOUR_MS;
+}
+/** A yyyy-mm-ddThh:mm string typed as Manila time → epoch ms. */
+export function manilaDateTime(local: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(local);
+  if (!m) return null;
+  return Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])) - 8 * HOUR_MS;
+}
+/** Epoch ms → the yyyy-mm-dd / yyyy-mm-ddThh:mm a Manila admin expects in a date input. */
+export const toManilaInput = (ms: number, withTime = false) => {
+  const iso = new Date(ms + 8 * HOUR_MS).toISOString();
+  return withTime ? iso.slice(0, 16) : iso.slice(0, 10);
+};
+async function audit(db: Firestore, entry: Record<string, unknown>) {
+  await addDoc(collection(db, "admin_audit"), { ...entry, at: Date.now() });
+}
+/** Admin: move a pending withdrawal's release date (the member is told by the server trigger). */
+export async function setWithdrawalReleaseDate(db: Firestore, w: WithdrawalRequest, adminUid: string, releaseAt: number): Promise<void> {
+  await updateDoc(doc(db, "withdrawals", w.id), { scheduledReleaseAt: releaseAt, releaseDateChangedAt: Date.now(), releaseDateChangedBy: adminUid });
+  await audit(db, { type: "withdrawal_release_date", uid: w.userId, userName: w.userName ?? "", withdrawalId: w.id, title: `Release date changed for ${w.userName ?? "a member"}'s ₱${w.amount.toLocaleString()} withdrawal`, before: w.scheduledReleaseAt ?? null, after: releaseAt, by: adminUid });
+}
+/** Admin: correct the "Released …" stamp of an approved withdrawal. */
+export async function setWithdrawalProcessedAt(db: Firestore, w: WithdrawalRequest, adminUid: string, processedAt: number): Promise<void> {
+  await updateDoc(doc(db, "withdrawals", w.id), { processedAt, processedAtEditedBy: adminUid });
+  await audit(db, { type: "withdrawal_released_date", uid: w.userId, userName: w.userName ?? "", withdrawalId: w.id, title: `Released date corrected for ${w.userName ?? "a member"}'s ₱${w.amount.toLocaleString()} withdrawal`, before: w.processedAt ?? null, after: processedAt, by: adminUid });
+}
+
 type Scope = "me" | "all";
 
 /** Hook — live withdrawals for current user, or all (admin). */

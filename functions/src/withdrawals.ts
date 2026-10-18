@@ -119,7 +119,19 @@ export const onWithdrawalWritten = onDocumentWritten("withdrawals/{id}", async (
     return;
   }
 
-  if (before.status === after.status) return;
+  if (before.status === after.status) {
+    // An admin moved a pending withdrawal's release date.
+    const was = before.scheduledReleaseAt ?? null, is = after.scheduledReleaseAt ?? null;
+    if (after.status === "pending" && is != null && is !== was) {
+      await write({
+        type: "withdrawal",
+        title: `Withdrawal release date moved — ${peso(after.amount)}`,
+        body: `Now scheduled for ${formatReleaseDate(is, { withYear: true })}${was != null ? ` (was ${formatReleaseDate(was)})` : ""}. Funds are held until then.`,
+        amount: after.amount,
+      });
+    }
+    return;
+  }
   if (after.status === "approved") {
     grantBonusSpins(after.userId, "withdrawal").catch(() => {});
     await write({
