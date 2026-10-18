@@ -246,9 +246,15 @@ service cloud.firestore {
     }
 
     // === Audit trail written by admin Functions ===
+    // Admin audit: Functions write most entries; an admin may append one for an action
+    // done from the admin pages (it must name them and carry a time). Never edited or deleted.
     match /admin_audit/{doc} {
       allow read: if isAdmin();
-      allow write: if false;
+      allow create: if isAdmin()
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.type is string
+        && request.resource.data.at is number;
+      allow update, delete: if false;
     }
 
     // === Editable content (Help & FAQ) ===
