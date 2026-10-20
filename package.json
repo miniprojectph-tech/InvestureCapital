@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "prebuild": "node scripts/sounds-manifest.mjs",
+    "prebuild": "node --check public/sw.js && node scripts/sounds-manifest.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

@@ -1,5 +1,5 @@
 // Investure service worker — offline shell + cache-first for static + game asset pre-cache
-const CACHE = "investure-v10";
+const CACHE = "investure-v11";
 const APP_SHELL = ["/", "/login", "/dashboard"];
 
 // Game assets pre-cached at install so Reef and Tongits load instantly on
@@ -177,7 +177,6 @@ self.addEventListener("fetch", (event) => {
 
   // Data is never cached: API routes (live prices) and framework data fetches
   // always go to the network, otherwise "live" values freeze at the first reply.
-  const url = new URL(request.url);
   const isAsset = request.destination === "image" || request.destination === "font" || request.destination === "audio" || request.destination === "video";
   if (url.pathname.startsWith("/api/") || !isAsset) {
     return; // let the browser handle it normally
