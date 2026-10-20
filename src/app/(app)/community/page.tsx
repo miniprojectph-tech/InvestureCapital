@@ -49,6 +49,9 @@ import {
   sendDm,
   reactToDm,
   deleteDmMessage,
+  setRoomRead,
+  useRoomReadAt,
+  useRoomUnread,
   type Boost,
   type ChatItem,
 } from "@/lib/community";
@@ -140,6 +143,16 @@ export default function CommunityPage() {
     markInboxRead(uid, "user");
   }, [tab, uid, inboxMeta, adminUnread, inbox.length]);
 
+  // The room counts as read up to the newest message while its tab is open
+  // (that is what clears the badges on the menu and the app icon).
+  const newestRoomAt = room.length ? room[room.length - 1].at : 0;
+  const roomReadAt = useRoomReadAt(uid);
+  const roomUnread = useRoomUnread(!!uid && !demoMode);
+  useEffect(() => {
+    if (tab !== "room" || !uid || demoMode || !newestRoomAt || newestRoomAt <= roomReadAt) return;
+    setRoomRead(uid, newestRoomAt);
+  }, [tab, uid, demoMode, newestRoomAt, roomReadAt]);
+
   if (!user) return null;
 
   const sender = { uid: user.uid, name: user.name, isAdmin: user.isAdmin, isMod: modRole.isMod, isTL: tlRole.isTL, photo: me?.profile?.photoURL ?? null };
@@ -188,7 +201,7 @@ export default function CommunityPage() {
       label: "Community Room",
       sub: previewOf(lastRoom),
       at: lastRoom?.at,
-      unread: 0,
+      unread: tab === "room" ? 0 : roomUnread,
       icon: (
         <div className="relative shrink-0">
           <div className="w-11 h-11 rounded-full bg-[#F5C66B] text-[#2A1D05] text-[13px] font-extrabold flex items-center justify-center">IC</div>

@@ -118,6 +118,13 @@
           ".validate": "newData.isNumber() && newData.val() === now"
         }
       },
+      "roomRead": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        }
+      },
       "inboxMeta": {
         ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('chatMods').child(auth.uid).child('inbox').val() === true)",
         ".indexOn": [

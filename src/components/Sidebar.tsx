@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import type { NavGroup, IconName } from "@/lib/nav";
 import { useAuth } from "@/lib/auth";
 import { useInboxNeedsReply } from "@/lib/community";
+import { useUnread, badgeLabel } from "./UnreadProvider";
 
 const iconMap: Record<IconName, LucideIcon> = {
   dashboard: LayoutDashboard,
@@ -70,16 +71,21 @@ type SidebarProps = {
   onClose: () => void;
 };
 
-/** Admins: how many member conversations wait for a reply — shown on "Community chat" and in the tab title. */
-function useWaitingBadge(): number {
+/**
+ * Admins: how many member conversations wait for a reply — shown on "Community
+ * chat" and, on the admin pages, in the tab title. (Member pages get their
+ * title from UnreadProvider.)
+ */
+function useWaitingBadge(pathname: string): number {
   const { user } = useAuth();
   const n = useInboxNeedsReply(!!user?.isAdmin);
+  const onAdmin = pathname.startsWith("/admin");
   useEffect(() => {
-    if (typeof document === "undefined" || !user?.isAdmin) return;
-    const base = document.title.replace(/^\(\d+\)\s*/, "");
+    if (typeof document === "undefined" || !user?.isAdmin || !onAdmin) return;
+    const base = document.title.replace(/^\(\d+\+?\)\s*/, "");
     document.title = n > 0 ? `(${n}) ${base}` : base;
     return () => { document.title = base; };
-  }, [n, user?.isAdmin]);
+  }, [n, user?.isAdmin, onAdmin]);
   return n;
 }
 
@@ -94,7 +100,8 @@ function NavContent({
   pathname: string;
   onItemClick?: () => void;
 }) {
-  const waiting = useWaitingBadge();
+  const waiting = useWaitingBadge(pathname);
+  const unread = useUnread();
   return (
     <>
       <div className="flex items-center gap-2.5 px-2.5 pb-4 mb-3 border-b border-border">
@@ -138,6 +145,12 @@ function NavContent({
                   <span className="flex-1">{item.label}</span>
                   {item.href === "/admin/community" && waiting > 0 && (
                     <span className="text-[10px] font-semibold bg-red text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center">{waiting > 99 ? "99+" : waiting}</span>
+                  )}
+                  {item.href === "/community" && unread.community > 0 && (
+                    <span className="text-[10px] font-semibold bg-red text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center" aria-label={`${unread.community} unread`}>{badgeLabel(unread.community)}</span>
+                  )}
+                  {item.href === "/notifications" && unread.system > 0 && (
+                    <span className="text-[10px] font-semibold bg-red text-white px-1.5 py-0.5 rounded-full min-w-[18px] text-center" aria-label={`${unread.system} unread`}>{badgeLabel(unread.system)}</span>
                   )}
                   {item.badge && (
                     <span className="text-[10px] font-medium bg-red/15 text-red px-2 py-0.5 rounded-full">

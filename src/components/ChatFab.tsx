@@ -5,14 +5,14 @@ import { usePathname, useRouter } from "next/navigation";
 import { MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-import { useInboxMeta, isInboxUnread, useRoomLatest, readRoomSeenAt, markRoomSeen } from "@/lib/community";
+import { useInboxMeta, isInboxUnread } from "@/lib/community";
+import { useUnread, badgeLabel } from "./UnreadProvider";
 
 /**
  * Floating chat button on every member page — a shortcut to the Community
- * page with a badge when there is something new.
- *
- *   red "1"  the admin replied in the member's private chat (opens that chat)
- *   dot      new messages in the Community Room since they last looked
+ * page with a red count of everything unread there (room messages, direct
+ * messages, the admin's replies). When the admin replied, a tap opens that
+ * chat first.
  *
  * So it never sits on top of something the member needs: it can be dragged to
  * any spot along either edge (remembered on this device), and it slides away
@@ -47,14 +47,7 @@ export function ChatFab() {
   // ── what's new ──
   const inboxMeta = useInboxMeta(user && !demoMode ? user.uid : null);
   const adminUnread = isInboxUnread(inboxMeta, "user");
-  const latest = useRoomLatest(!!user && !demoMode);
-  const [seenAt, setSeenAt] = useState(0);
-  // Being on the Community page counts as having seen the room.
-  useEffect(() => {
-    if (onCommunity) markRoomSeen();
-    setSeenAt(readRoomSeenAt());
-  }, [onCommunity, pathname, latest?.at]);
-  const roomNew = !!latest && !!user && latest.uid !== user.uid && latest.at > seenAt;
+  const { community: unread } = useUnread();
 
   // ── position (draggable, remembered) ──
   const [pos, setPos] = useState<Pos>({ side: "right", bottom: 88 });
@@ -127,7 +120,7 @@ export function ChatFab() {
   const style: React.CSSProperties = drag
     ? { left: drag.x, top: drag.y }
     : { [pos.side]: MARGIN + 4, bottom: `calc(env(safe-area-inset-bottom, 0px) + ${pos.bottom}px)` };
-  const label = adminUnread ? "Open chat — the admin replied" : roomNew ? "Open chat — new messages" : "Open chat";
+  const label = adminUnread ? "Open chat — the admin replied" : unread > 0 ? `Open chat — ${unread} unread` : "Open chat";
 
   return (
     <button
@@ -149,11 +142,9 @@ export function ChatFab() {
       style={{ width: SIZE, height: SIZE, ...style }}
     >
       <MessageCircle className="w-6 h-6" aria-hidden="true" />
-      {adminUnread ? (
-        <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-red text-white text-[11px] font-bold flex items-center justify-center ring-2 ring-canvas">1</span>
-      ) : roomNew ? (
-        <span className="absolute top-0 right-0 w-3.5 h-3.5 rounded-full bg-red ring-2 ring-canvas" />
-      ) : null}
+      {unread > 0 && (
+        <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-red text-white text-[11px] font-bold flex items-center justify-center ring-2 ring-canvas">{badgeLabel(unread)}</span>
+      )}
     </button>
   );
 }

@@ -1278,17 +1278,56 @@ export function formatRelative(at: number): string {
   return `${Math.floor(diff / 86_400_000)}d`;
 }
 
-// ===== Floating chat button: "is there something new?" =====
+const ROOM_SEEN_KEY = "investure.roomSeenAt";
+/** When this device last had the Community page open (fallback while the account stamp loads). */
+export function readRoomSeenAt(): number {
+  try { return Number(localStorage.getItem(ROOM_SEEN_KEY)) || 0; } catch { return 0; }
+}
+export function markRoomSeen(at = Date.now()) {
+  try { localStorage.setItem(ROOM_SEEN_KEY, String(at)); } catch { /* private mode */ }
+}
+
+// ===== Unread counts (menu badges, tab title, app icon) =====
 
 /**
- * The newest Community Room message (time + sender), for the floating chat
- * button's "new" dot. One tiny listener: only the last message is ever
- * downloaded, using the same join-date-bounded query the room itself uses.
+ * The member read the Community Room up to this message time. Kept on the
+ * account (`community/roomRead/{uid}`) so every device agrees, mirrored on
+ * this device for a quick first paint.
  */
-export function useRoomLatest(enabled: boolean): { at: number; uid: string } | null {
+export function setRoomRead(uid: string, at: number) {
+  markRoomSeen(at);
+  const { rtdb } = getFirebase();
+  if (!rtdb) return Promise.resolve();
+  return set(ref(rtdb, `community/roomRead/${uid}`), at).catch(() => {});
+}
+
+export function useRoomReadAt(uid: string | null): number {
+  const [at, setAt] = useState<number>(() => readRoomSeenAt());
+  useEffect(() => {
+    if (!uid) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, `community/roomRead/${uid}`), (s) => {
+      const v = s.val();
+      setAt(typeof v === "number" ? Math.max(v, readRoomSeenAt()) : readRoomSeenAt());
+    }, () => {});
+  }, [uid]);
+  return at;
+}
+
+export const UNREAD_CAP = 99;
+
+/**
+ * How many Community Room messages from other people arrived after the
+ * member last read the room. One bounded listener on the newest UNREAD_CAP
+ * messages (the rules only allow a query that starts exactly at the join
+ * date, so the "newer than my read stamp" part is counted on the device).
+ */
+export function useRoomUnread(enabled: boolean): number {
   const { user } = useAuth();
   const [joined, setJoined] = useState<number | null>(null);
-  const [latest, setLatest] = useState<{ at: number; uid: string } | null>(null);
+  const readAt = useRoomReadAt(enabled && user ? user.uid : null);
+  const [count, setCount] = useState(0);
 
   useEffect(() => {
     if (!user || !enabled) return;
@@ -1301,29 +1340,21 @@ export function useRoomLatest(enabled: boolean): { at: number; uid: string } | n
     }, () => {});
   }, [user, enabled]);
 
+  const live = !!user && enabled && joined !== null;
   useEffect(() => {
     if (!user || !enabled || joined === null) return;
     const { rtdb } = getFirebase();
     if (!rtdb) return;
-    const q = rtdbQuery(ref(rtdb, "community/room"), orderByChild("at"), startAt(joined), limitToLast(1));
+    const q = rtdbQuery(ref(rtdb, "community/room"), orderByChild("at"), startAt(joined), limitToLast(UNREAD_CAP));
     return onValue(q, (s) => {
-      let found: { at: number; uid: string } | null = null;
+      let n = 0;
       s.forEach((c) => {
-        const m = c.val() as { at?: number; uid?: string } | null;
-        if (m && typeof m.at === "number") found = { at: m.at, uid: String(m.uid ?? "") };
+        const m = c.val() as { uid?: string; at?: number } | null;
+        if (m && m.uid !== user.uid && typeof m.at === "number" && m.at > readAt) n++;
       });
-      setLatest(found);
-    }, () => setLatest(null));
-  }, [user, enabled, joined]);
+      setCount(n);
+    }, () => setCount(0));
+  }, [user, enabled, joined, readAt]);
 
-  return latest;
-}
-
-const ROOM_SEEN_KEY = "investure.roomSeenAt";
-/** When this device last had the Community page open. */
-export function readRoomSeenAt(): number {
-  try { return Number(localStorage.getItem(ROOM_SEEN_KEY)) || 0; } catch { return 0; }
-}
-export function markRoomSeen(at = Date.now()) {
-  try { localStorage.setItem(ROOM_SEEN_KEY, String(at)); } catch { /* private mode */ }
+  return live ? count : 0;
 }

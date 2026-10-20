@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import type { NavGroup, IconName } from "@/lib/nav";
 import { cn } from "@/lib/utils";
-import { useNotifications } from "@/lib/compplan";
+import { useUnread, badgeLabel } from "./UnreadProvider";
 
 const iconMap: Record<IconName, LucideIcon> = {
   dashboard: LayoutDashboard,
@@ -71,7 +71,12 @@ function sectionTitle(group: NavGroup, index: number): string {
 export function MobileLauncher({ nav, badge }: { nav: NavGroup[]; badge?: string }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
-  const { unread } = useNotifications(15);
+  const unread = useUnread();
+  // Red number on a tile: Community carries chats, Notifications carries the bell.
+  const tileBadge = (href: string, fixed?: number): string | null => {
+    const n = href === "/community" ? unread.community : href === "/notifications" ? unread.system : fixed ?? 0;
+    return n > 0 ? badgeLabel(n) : null;
+  };
 
   // Close whenever the route changes (tile tapped).
   useEffect(() => {
@@ -163,9 +168,9 @@ export function MobileLauncher({ nav, badge }: { nav: NavGroup[]; badge?: string
                               className={cn("w-6 h-6", active ? "text-gold" : "text-text")}
                               strokeWidth={1.9}
                             />
-                            {item.badge ? (
+                            {tileBadge(item.href, item.badge) ? (
                               <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-red text-white text-[9px] font-semibold flex items-center justify-center">
-                                {item.badge}
+                                {tileBadge(item.href, item.badge)}
                               </span>
                             ) : null}
                           </span>
@@ -246,9 +251,9 @@ export function MobileLauncher({ nav, badge }: { nav: NavGroup[]; badge?: string
               "0 6px 20px rgba(0,0,0,.5), 0 0 0 4px rgba(10,12,18,.6), 0 0 16px rgba(230,180,74,.35)",
           }}
         >
-          {!open && unread > 0 && (
+          {!open && unread.total > 0 && (
             <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-red text-white text-[9px] font-semibold flex items-center justify-center ring-2 ring-[#12141c]">
-              {unread > 9 ? "9+" : unread}
+              {badgeLabel(unread.total)}
             </span>
           )}
           <span
