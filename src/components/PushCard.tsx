@@ -8,8 +8,8 @@ import { usePushStatus, isPushCardDismissed, dismissPushCard } from "@/lib/push"
 
 /**
  * "Turn on notifications" — shown at the top of the Community and
- * Notifications pages until the member turns them on. "Not now" hides it for a
- * week. The phone's own permission prompt only opens from the tap on "Turn on".
+ * Notifications pages for members whose device is not registered yet (most
+ * register automatically, see PushAutoRegister). "Not now" hides it for a week.
  */
 export function PushCard() {
   const { user, demoMode } = useAuth();

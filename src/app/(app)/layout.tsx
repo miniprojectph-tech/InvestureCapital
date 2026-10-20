@@ -5,6 +5,7 @@ import { PromoPopup } from "@/components/promos/PromoPopup";
 import { ChatFab } from "@/components/ChatFab";
 import { WelcomePopup } from "@/components/WelcomePopup";
 import { UnreadProvider } from "@/components/UnreadProvider";
+import { PushAutoRegister } from "@/components/PushAutoRegister";
 
 export default function InvestorAppLayout({
   children,
@@ -24,6 +25,8 @@ export default function InvestorAppLayout({
         <PromoPopup />
         {/* Floating chat shortcut with an unread badge (draggable; hides while scrolling). */}
         <ChatFab />
+        {/* Push: registers an allowed device by itself; otherwise asks on the first tap. */}
+        <PushAutoRegister />
       </UnreadProvider>
     </AuthGate>
   );
