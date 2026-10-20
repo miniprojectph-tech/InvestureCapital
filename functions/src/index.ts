@@ -18,6 +18,9 @@ export { placeColorBet, resolveColorRound, adminAdjustColorJackpot, adminSetColo
 // (History is kept forever — there is no pruning job.)
 export { ensureCommunityAdmin, ensureCommunityMember, updateCommunityStats, refreshCommunityStats, updateOnlineCount, adminSetCommunityActive, onPlatformSettingsWritten, onUserCreatedWelcome, tlMembers, onInboxMemberMessage, onDmMessage } from "./community";
 
+// Web Push: bell notices as pushes, the community digest, admin "run now", member test.
+export { onNotificationPush, pushDigest, adminPushDigestNow, pushTestSelf } from "./push";
+
 // Help & FAQ: one-vote-per-member "was this helpful" counters.
 export { faqVote } from "./faq";
 // Masterlist: prepared monthly lists (masked for members), admin entries and import.

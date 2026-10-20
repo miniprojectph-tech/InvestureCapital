@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { VolumeX, Pin, ExternalLink, ShieldCheck, Search, Plus, X, Loader2, RefreshCw, Inbox, MessageSquare, PartyPopper, Sliders, Users, Database } from "lucide-react";
+import { VolumeX, Pin, ExternalLink, ShieldCheck, Search, Plus, X, Loader2, RefreshCw, Inbox, MessageSquare, PartyPopper, Sliders, Users, Database, BellRing } from "lucide-react";
+import { PushSettingsCard } from "@/components/admin/PushSettingsCard";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { AdminTabs, useHashTab, type AdminTab } from "@/components/admin/AdminTabs";
@@ -395,8 +396,8 @@ function ActiveNowCard({ enabled }: { enabled: boolean }) {
   );
 }
 
-type Tab = "inbox" | "room" | "people" | "welcome" | "posting" | "active" | "storage";
-const TAB_IDS: Tab[] = ["inbox", "room", "people", "welcome", "posting", "active", "storage"];
+type Tab = "inbox" | "room" | "people" | "welcome" | "push" | "posting" | "active" | "storage";
+const TAB_IDS: Tab[] = ["inbox", "room", "people", "welcome", "push", "posting", "active", "storage"];
 
 export default function AdminCommunityPage() {
   const { user, demoMode } = useAuth();
@@ -429,6 +430,7 @@ export default function AdminCommunityPage() {
     { id: "room", label: "Room", icon: MessageSquare, count: mutedUsers.length || undefined },
     { id: "people", label: "Moderators & leaders", icon: ShieldCheck, count: mods.length + tls.length || undefined },
     { id: "welcome", label: "Welcome", icon: PartyPopper, hint: welcomeOn ? "on" : "off", hintTone: welcomeOn ? "ok" : "muted" },
+    { id: "push", label: "Push", icon: BellRing, hint: (settings.push?.digest ?? true) ? "on" : "off", hintTone: (settings.push?.digest ?? true) ? "ok" : "muted" },
     { id: "posting", label: "Posting rules", icon: Sliders },
     { id: "active", label: "Active now", icon: Users },
     { id: "storage", label: "Storage", icon: Database },
@@ -528,6 +530,7 @@ export default function AdminCommunityPage() {
       )}
 
       {tab === "welcome" && <WelcomeCard uid={user.uid} />}
+      {tab === "push" && <PushSettingsCard uid={user.uid} />}
 
       {tab === "posting" && (
         <>

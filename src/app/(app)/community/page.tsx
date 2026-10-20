@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ShieldCheck, Inbox, Pin, Crown } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
+import { PushCard } from "@/components/PushCard";
 import { ChatView } from "@/components/community/ChatView";
 import { InboxPanel } from "@/components/community/InboxPanel";
 import { cn } from "@/lib/utils";
@@ -272,6 +273,8 @@ export default function CommunityPage() {
           Chat needs Firebase — it&apos;s unavailable in demo mode.
         </p>
       )}
+
+      <PushCard />
 
       {/* Phone: Messenger-style pills */}
       <div className="flex items-center gap-1.5 mb-3 lg:hidden overflow-x-auto">

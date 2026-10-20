@@ -18,6 +18,7 @@ import { uploadAvatar, removeAvatar } from "@/lib/avatar";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { InstallAppCard } from "@/components/InstallAppCard";
+import { NotificationPrefs } from "@/components/NotificationPrefs";
 import Link from "next/link";
 import { ChangePasswordModal } from "@/components/AccountSecurityModals";
 import { useAuth } from "@/lib/auth";
@@ -151,6 +152,8 @@ export default function ProfilePage() {
               </button>
             </div>
           </Card>
+
+          <NotificationPrefs />
 
           <InstallAppCard />
 

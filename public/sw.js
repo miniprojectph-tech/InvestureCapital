@@ -1,5 +1,5 @@
 // Investure service worker — offline shell + cache-first for static + game asset pre-cache
-const CACHE = "investure-v9";
+const CACHE = "investure-v10";
 const APP_SHELL = ["/", "/login", "/dashboard"];
 
 // Game assets pre-cached at install so Reef and Tongits load instantly on
@@ -198,5 +198,44 @@ self.addEventListener("fetch", (event) => {
           })
           .catch(() => cached)
     )
+  );
+});
+
+// ===== Push notifications =====
+// Payload: { title, body, href, tag?, badge? } sent by the server (functions/src/push.ts).
+self.addEventListener("push", (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch { data = { body: event.data ? event.data.text() : "" }; }
+  const title = data.title || "Investure Capital";
+  const options = {
+    body: data.body || "",
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    tag: data.tag || undefined,
+    renotify: !!data.tag,
+    data: { href: data.href || "/dashboard" },
+  };
+  const work = [self.registration.showNotification(title, options)];
+  // iPhone home-screen app + desktop: the number on the icon
+  if (typeof data.badge === "number" && self.navigator && self.navigator.setAppBadge) {
+    work.push(self.navigator.setAppBadge(data.badge).catch(() => {}));
+  }
+  event.waitUntil(Promise.all(work));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const href = (event.notification.data && event.notification.data.href) || "/dashboard";
+  const url = new URL(href, self.location.origin).href;
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((list) => {
+      for (const client of list) {
+        if ("focus" in client) {
+          if ("navigate" in client) client.navigate(url).catch(() => {});
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(url);
+    })
   );
 });

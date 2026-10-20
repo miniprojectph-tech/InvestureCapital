@@ -104,6 +104,24 @@ export function fillWelcome(text: string, firstName: string): string {
   return text.replace(/\{\{\s*name\s*\}\}/gi, firstName || "there");
 }
 
+/** Push notifications (Admin › Community › Push). Hours are Manila time, 0–23. */
+export type PushConfig = {
+  /** The community room digest ("N new messages in the community"). */
+  digest: boolean;
+  /** How often the digest checks the room, minutes (floor 5). */
+  intervalMin: number;
+  /** A member is not pushed about the room again within this many minutes unless they opened the app. */
+  cooldownMin: number;
+  quietFrom: number;
+  quietTo: number;
+  /** One push per direct message / admin reply. */
+  dm: boolean;
+  /** One push per account update (payouts, withdrawals, events). */
+  account: boolean;
+};
+export const DEFAULT_PUSH: PushConfig = { digest: true, intervalMin: 15, cooldownMin: 30, quietFrom: 22, quietTo: 7, dm: true, account: true };
+export const MIN_PUSH_INTERVAL_MIN = 5;
+
 export type PlatformSettings = {
   vaultDailyRate: number; // percent, e.g. 1.0
   vaultLockDays: number;
@@ -127,6 +145,8 @@ export type PlatformSettings = {
   welcome?: Partial<WelcomeConfig>;
   /** Admin-arranged member menu: page order per group, and hidden pages (see lib/nav). */
   menu?: { groups?: { items?: string[] }[]; hidden?: string[] };
+  /** Push notifications: community digest timing, quiet hours, per-kind switches. */
+  push?: Partial<PushConfig>;
   updatedAt?: number;
   updatedBy?: string;
 };

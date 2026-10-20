@@ -5,6 +5,7 @@ import { CheckCheck, Loader2, Bell } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card } from "@/components/Card";
 import { NotificationRow } from "@/components/NotificationBell";
+import { PushCard } from "@/components/PushCard";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { useNotifications, markNotificationsRead } from "@/lib/compplan";
@@ -30,6 +31,8 @@ export default function NotificationsPage() {
   return (
     <div>
       <TopHeader title="Notifications" subtitle={unread > 0 ? `${unread} unread` : "You're all caught up"} />
+
+      <PushCard />
 
       <div className="flex flex-wrap items-center gap-2 mb-3">
         {FILTERS.filter((f) => f.key === "all" || present.has(f.key)).map((f) => (
