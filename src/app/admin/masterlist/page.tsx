@@ -7,6 +7,7 @@ import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
+import { MasterlistBatchModal } from "@/components/admin/MasterlistBatchModal";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { cn, formatPHP } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -56,6 +57,7 @@ export default function AdminMasterlistPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<Note | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
+  const [batchOpen, setBatchOpen] = useState(false); // "Several" mode of Add entry
   const [formError, setFormError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<AdminRow | null>(null);
   // list view: 25 a page by default, filter by where a row came from, tick rows to remove several at once
@@ -462,7 +464,15 @@ export default function AdminMasterlistPage() {
       <Modal open={!!editing} onClose={() => setEditing(null)} title={editing?.id ? "Edit entry" : "Add an entry"}>
         {editing && (
           <div className="flex flex-col gap-3">
-            <p className="text-[11px] text-text-muted m-0 leading-relaxed">For an offline investor or an old record. It is a record only: it earns no payouts and has no wallet.</p>
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-[11px] text-text-muted m-0 leading-relaxed">For an offline investor or an old record. It is a record only: it earns no payouts and has no wallet.</p>
+              {!editing.id && (
+                <div className="flex gap-1 p-1 rounded-lg bg-canvas border border-border shrink-0">
+                  <button type="button" className="px-3 py-1 rounded-md text-[11px] font-medium bg-gold/15 text-gold">One</button>
+                  <button type="button" onClick={() => { setEditing(null); setBatchOpen(true); }} className="px-3 py-1 rounded-md text-[11px] text-text-muted hover:text-text">Several</button>
+                </div>
+              )}
+            </div>
             <label className="flex flex-col gap-1"><span className="text-[11px] font-medium">Full name</span>
               <input autoFocus value={editing.name} maxLength={80} onChange={(e) => setEditing({ ...editing, name: e.target.value })} placeholder="Maria Clara Santos" className={input} />
               {editing.name.trim().length >= 2 && <span className="text-[10px] text-text-subtle">Members will see: <span className="font-mono text-text">{maskName(editing.name)}</span></span>}
@@ -497,6 +507,18 @@ export default function AdminMasterlistPage() {
           </div>
         )}
       </Modal>
+
+      {/* add several entries at once */}
+      <MasterlistBatchModal
+        open={batchOpen}
+        onClose={() => setBatchOpen(false)}
+        onSwitchToOne={() => { setBatchOpen(false); setFormError(null); setEditing(blankEntry()); }}
+        onSaved={(count, total, latestPlacedAt) => {
+          setBatchOpen(false);
+          setMonth(new Date(latestPlacedAt + 8 * 3_600_000).toISOString().slice(0, 7));
+          setNote({ ok: true, text: `Added ${count} ${count === 1 ? "entry" : "entries"} (${formatPHP(total, { short: true })}) to the Masterlist.` });
+        }}
+      />
 
       {/* review an upload before anything is saved */}
       <Modal open={!!parsed} onClose={() => busy !== "import" && setParsed(null)} title="Check the upload" maxWidth="max-w-lg">
