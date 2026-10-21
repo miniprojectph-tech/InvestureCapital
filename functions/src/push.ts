@@ -29,8 +29,8 @@ type Prefs = { community?: boolean; dm?: boolean; account?: boolean };
 export type PushKind = "community" | "dm" | "account";
 type Payload = { title: string; body: string; href: string; tag?: string; badge?: number };
 
-export type PushConfig = { digest: boolean; intervalMin: number; cooldownMin: number; quietFrom: number; quietTo: number; dm: boolean; account: boolean };
-export const DEFAULT_PUSH: PushConfig = { digest: true, intervalMin: 15, cooldownMin: 30, quietFrom: 22, quietTo: 7, dm: true, account: true };
+export type PushConfig = { digest: boolean; intervalMin: number; cooldownMin: number; quietFrom: number; quietTo: number; dm: boolean; account: boolean; testersOnly: boolean };
+export const DEFAULT_PUSH: PushConfig = { digest: true, intervalMin: 15, cooldownMin: 30, quietFrom: 22, quietTo: 7, dm: true, account: true, testersOnly: false };
 export const MIN_INTERVAL_MIN = 5;
 
 async function loadPushConfig(): Promise<PushConfig> {
@@ -46,7 +46,16 @@ async function loadPushConfig(): Promise<PushConfig> {
     quietTo: num(p.quietTo, DEFAULT_PUSH.quietTo, 0, 23),
     dm: bool(p.dm, DEFAULT_PUSH.dm),
     account: bool(p.account, DEFAULT_PUSH.account),
+    testersOnly: bool(p.testersOnly, DEFAULT_PUSH.testersOnly),
   };
+}
+
+/** "Testers only": while on, pushes go only to members listed at push/testers. */
+type Gate = { testersOnly: boolean; testers: Set<string> };
+async function loadGate(cfg: PushConfig): Promise<Gate> {
+  if (!cfg.testersOnly) return { testersOnly: false, testers: new Set() };
+  const v = ((await getDatabase().ref("push/testers").once("value")).val() ?? {}) as Record<string, boolean>;
+  return { testersOnly: true, testers: new Set(Object.keys(v).filter((k) => v[k] === true)) };
 }
 
 const manilaHour = (ms: number) => new Date(ms + 8 * 3_600_000).getUTCHours();
@@ -63,9 +72,10 @@ export async function pushToMember(
   uid: string,
   kind: PushKind,
   payload: Payload,
-  pre?: { subs?: Record<string, Sub> | null; prefs?: Prefs | null },
+  pre?: { subs?: Record<string, Sub> | null; prefs?: Prefs | null; gate?: Gate | null },
 ): Promise<{ sent: number; removed: number; skipped: boolean }> {
   const rtdb = getDatabase();
+  if (pre?.gate?.testersOnly && !pre.gate.testers.has(uid)) return { sent: 0, removed: 0, skipped: true };
   const prefs = pre && "prefs" in pre ? pre.prefs : ((await rtdb.ref(`push/prefs/${uid}`).once("value")).val() as Prefs | null);
   if (prefs && prefs[kind] === false) return { sent: 0, removed: 0, skipped: true };
   const subs = pre && "subs" in pre ? pre.subs : ((await rtdb.ref(`push/subs/${uid}`).once("value")).val() as Record<string, Sub> | null);
@@ -99,7 +109,7 @@ export const onNotificationPush = onDocumentCreated({ document: "users/{uid}/not
     body: String(n.body ?? "").replace(/\s+/g, " ").slice(0, 160),
     href: n.href ?? "/notifications",
     tag: n.threadKey ? `t:${n.threadKey}` : `n:${event.params.id}`,
-  });
+  }, { gate: await loadGate(cfg) });
   if (r.sent || r.removed) logger.info("push", { uid: event.params.uid, kind, ...r });
 });
 
@@ -143,6 +153,7 @@ async function runDigest(force: boolean): Promise<DigestResult> {
 
   const result: DigestResult = { ...base, ran: true, members: Object.keys(subs).length };
   const stamps: Record<string, number> = {};
+  const gate = await loadGate(cfg);
   if (msgs.length) {
     for (const [uid, devices] of Object.entries(subs)) {
       const n = Object.keys(devices ?? {}).length;
@@ -166,7 +177,7 @@ async function runDigest(force: boolean): Promise<DigestResult> {
         href: "/community",
         tag: "community",
         badge: unread,
-      }, { subs: devices, prefs: prefs[uid] ?? null });
+      }, { subs: devices, prefs: prefs[uid] ?? null, gate });
       result.sent += r.sent;
       result.removed += r.removed;
       if (r.sent) { result.pushed++; stamps[`push/last/${uid}`] = now; }
@@ -198,6 +209,43 @@ async function requireAdmin(request: CallableRequest): Promise<string> {
 export const adminPushDigestNow = onCall({ secrets: [VAPID_PRIVATE_KEY] }, async (request) => {
   await requireAdmin(request);
   return runDigest(true);
+});
+
+function describeUa(ua: string): { platform: string; browser: string } {
+  const platform = /iPhone|iPad|iPod/.test(ua) ? "iPhone" : /Android/.test(ua) ? "Android" : /Windows/.test(ua) ? "Windows" : /Macintosh/.test(ua) ? "Mac" : "Other";
+  const browser = /Edg\//.test(ua) ? "Edge" : /SamsungBrowser/.test(ua) ? "Samsung Internet" : /Firefox/.test(ua) ? "Firefox" : /Chrome|CriOS/.test(ua) ? "Chrome" : /Safari/.test(ua) ? "Safari" : "Browser";
+  return { platform, browser };
+}
+
+/** Admin › Community › Push › Test with members: a member's registered devices and switches. */
+export const adminPushDevices = onCall(async (request) => {
+  await requireAdmin(request);
+  const uid = typeof request.data?.uid === "string" ? request.data.uid : "";
+  if (!uid) throw new HttpsError("invalid-argument", "Pick a member.");
+  const rtdb = getDatabase();
+  const [subsSnap, prefsSnap, lastSnap] = await Promise.all([rtdb.ref(`push/subs/${uid}`).once("value"), rtdb.ref(`push/prefs/${uid}`).once("value"), rtdb.ref(`push/last/${uid}`).once("value")]);
+  const subs = (subsSnap.val() ?? {}) as Record<string, Sub>;
+  const prefs = (prefsSnap.val() ?? {}) as Prefs;
+  return {
+    devices: Object.entries(subs).map(([id, s]) => ({ id, at: s.at ?? 0, ...describeUa(String(s.ua ?? "")) })).sort((a, b) => b.at - a.at),
+    prefs: { community: prefs.community !== false, dm: prefs.dm !== false, account: prefs.account !== false },
+    lastDigestPush: (lastSnap.val() as number | null) ?? null,
+  };
+});
+
+/** Admin: one test push to a chosen member's devices (ignores "testers only" and the member's switches). */
+export const adminPushTest = onCall({ secrets: [VAPID_PRIVATE_KEY] }, async (request) => {
+  await requireAdmin(request);
+  const uid = typeof request.data?.uid === "string" ? request.data.uid : "";
+  if (!uid) throw new HttpsError("invalid-argument", "Pick a member.");
+  const r = await pushToMember(uid, "account", {
+    title: "Test from the Investure team",
+    body: "Notifications are working on this device.",
+    href: "/notifications",
+    tag: "admin-test",
+  }, { prefs: null, gate: null });
+  await db.collection("admin_audit").add({ type: "push_test_sent", uid, title: "Push test sent", subtitle: `${r.sent} device${r.sent === 1 ? "" : "s"}`, by: request.auth!.uid, at: Date.now() });
+  return r;
 });
 
 /** Profile › Notifications › "Send a test": one push to the caller's own devices. */

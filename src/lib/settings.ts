@@ -118,8 +118,10 @@ export type PushConfig = {
   dm: boolean;
   /** One push per account update (payouts, withdrawals, events). */
   account: boolean;
+  /** While on, every push goes only to the members listed at RTDB push/testers. */
+  testersOnly: boolean;
 };
-export const DEFAULT_PUSH: PushConfig = { digest: true, intervalMin: 15, cooldownMin: 30, quietFrom: 22, quietTo: 7, dm: true, account: true };
+export const DEFAULT_PUSH: PushConfig = { digest: true, intervalMin: 15, cooldownMin: 30, quietFrom: 22, quietTo: 7, dm: true, account: true, testersOnly: false };
 export const MIN_PUSH_INTERVAL_MIN = 5;
 
 export type PlatformSettings = {

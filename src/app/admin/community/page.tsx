@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { VolumeX, Pin, ExternalLink, ShieldCheck, Search, Plus, X, Loader2, RefreshCw, Inbox, MessageSquare, PartyPopper, Sliders, Users, Database, BellRing } from "lucide-react";
 import { PushSettingsCard } from "@/components/admin/PushSettingsCard";
+import { PushTestersCard } from "@/components/admin/PushTestersCard";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { AdminTabs, useHashTab, type AdminTab } from "@/components/admin/AdminTabs";
@@ -530,7 +531,12 @@ export default function AdminCommunityPage() {
       )}
 
       {tab === "welcome" && <WelcomeCard uid={user.uid} />}
-      {tab === "push" && <PushSettingsCard uid={user.uid} />}
+      {tab === "push" && (
+        <div className="flex flex-col gap-3">
+          <PushSettingsCard uid={user.uid} />
+          <PushTestersCard uid={user.uid} />
+        </div>
+      )}
 
       {tab === "posting" && (
         <>
