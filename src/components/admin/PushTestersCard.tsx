@@ -89,17 +89,19 @@ export function PushTestersCard({ uid: adminUid }: { uid: string }) {
       <div className="relative mt-3">
         <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-subtle" />
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search a member by name or email…" className="w-full bg-canvas border border-border rounded-lg pl-8 pr-3 py-2 text-[12px] text-text outline-none focus:border-gold/40" />
-        {matches.length > 0 && (
-          <div className="absolute left-0 right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-xl shadow-black/40 z-20 overflow-hidden">
-            {matches.map((m) => (
-              <button key={m.uid} type="button" onClick={() => pick(m)} className="w-full text-left px-3 py-2 text-[12px] hover:bg-card-elev flex items-center justify-between gap-2">
-                <span className="truncate">{m.name} <span className="text-text-subtle">{m.email}</span></span>
-                {testers.includes(m.uid) ? <span className="text-[10px] text-gold shrink-0">tester</span> : null}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
+      {/* results sit in the flow (a floating list would be clipped at the card's edge) */}
+      {q.trim().length >= 2 && (
+        <div className="mt-1.5 bg-canvas border border-border rounded-lg overflow-hidden">
+          {matches.length === 0 && <p className="text-[11px] text-text-subtle m-0 px-3 py-2">{members.length === 0 ? "Loading members…" : "No member matches that."}</p>}
+          {matches.map((m) => (
+            <button key={m.uid} type="button" onClick={() => pick(m)} className="w-full text-left px-3 py-2 text-[12px] hover:bg-card-elev flex items-center justify-between gap-2 border-b border-border last:border-b-0">
+              <span className="truncate">{m.name} <span className="text-text-subtle">{m.email}</span></span>
+              {testers.includes(m.uid) ? <span className="text-[10px] text-gold shrink-0">tester</span> : null}
+            </button>
+          ))}
+        </div>
+      )}
 
       {picked && (
         <div className="mt-3 bg-canvas rounded-lg p-3">
