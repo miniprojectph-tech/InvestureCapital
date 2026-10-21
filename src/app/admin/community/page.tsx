@@ -5,6 +5,8 @@ import Link from "next/link";
 import { VolumeX, Pin, ExternalLink, ShieldCheck, Search, Plus, X, Loader2, RefreshCw, Inbox, MessageSquare, PartyPopper, Sliders, Users, Database, BellRing } from "lucide-react";
 import { PushSettingsCard } from "@/components/admin/PushSettingsCard";
 import { PushTestersCard } from "@/components/admin/PushTestersCard";
+import { RoomsCard } from "@/components/admin/RoomsCard";
+import { DoorOpen } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { AdminTabs, useHashTab, type AdminTab } from "@/components/admin/AdminTabs";
@@ -397,8 +399,8 @@ function ActiveNowCard({ enabled }: { enabled: boolean }) {
   );
 }
 
-type Tab = "inbox" | "room" | "people" | "welcome" | "push" | "posting" | "active" | "storage";
-const TAB_IDS: Tab[] = ["inbox", "room", "people", "welcome", "push", "posting", "active", "storage"];
+type Tab = "inbox" | "room" | "rooms" | "people" | "welcome" | "push" | "posting" | "active" | "storage";
+const TAB_IDS: Tab[] = ["inbox", "room", "rooms", "people", "welcome", "push", "posting", "active", "storage"];
 
 export default function AdminCommunityPage() {
   const { user, demoMode } = useAuth();
@@ -429,6 +431,7 @@ export default function AdminCommunityPage() {
   const tabs: AdminTab<Tab>[] = [
     { id: "inbox", label: "Inbox", icon: Inbox, count: waiting || undefined, attention: waiting > 0, hint: fresh ? `${fresh} new` : undefined, hintTone: fresh ? "ok" : "muted" },
     { id: "room", label: "Room", icon: MessageSquare, count: mutedUsers.length || undefined },
+    { id: "rooms", label: "Rooms", icon: DoorOpen },
     { id: "people", label: "Moderators & leaders", icon: ShieldCheck, count: mods.length + tls.length || undefined },
     { id: "welcome", label: "Welcome", icon: PartyPopper, hint: welcomeOn ? "on" : "off", hintTone: welcomeOn ? "ok" : "muted" },
     { id: "push", label: "Push", icon: BellRing, hint: (settings.push?.digest ?? true) ? "on" : "off", hintTone: (settings.push?.digest ?? true) ? "ok" : "muted" },
@@ -530,6 +533,7 @@ export default function AdminCommunityPage() {
         </div>
       )}
 
+      {tab === "rooms" && <RoomsCard uid={user.uid} />}
       {tab === "welcome" && <WelcomeCard uid={user.uid} />}
       {tab === "push" && (
         <div className="flex flex-col gap-3">

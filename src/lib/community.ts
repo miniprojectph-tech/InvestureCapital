@@ -527,8 +527,12 @@ export function useCommunityPermissions(): CommunityConfig {
   return v;
 }
 
+/** Where a room's messages live: the main Community Room, or an admin-created room. */
+export const roomMsgPath = (roomId?: string | null) => (roomId ? `community/roomMsgs/${roomId}` : "community/room");
+const roomPinnedPath = (roomId?: string | null) => (roomId ? `community/roomPinned/${roomId}` : "community/pinned");
+
 /** The admin-pinned room message (fetched directly if it scrolled out of the window). */
-export function usePinnedMessage(messages: ChatItem[]): ChatItem | null {
+export function usePinnedMessage(messages: ChatItem[], roomId?: string | null): ChatItem | null {
   const { user } = useAuth();
   const [pinnedId, setPinnedId] = useState<string | null>(null);
   const [fetched, setFetched] = useState<ChatItem | null>(null);
@@ -537,8 +541,8 @@ export function usePinnedMessage(messages: ChatItem[]): ChatItem | null {
     if (!user) return;
     const { rtdb } = getFirebase();
     if (!rtdb) return;
-    return onValue(ref(rtdb, "community/pinned"), (s) => setPinnedId((s.val() as string | null) ?? null));
-  }, [user]);
+    return onValue(ref(rtdb, roomPinnedPath(roomId)), (s) => setPinnedId((s.val() as string | null) ?? null), () => setPinnedId(null));
+  }, [user, roomId]);
 
   const inList = pinnedId ? messages.find((m) => m.id === pinnedId) ?? null : null;
 
@@ -547,7 +551,7 @@ export function usePinnedMessage(messages: ChatItem[]): ChatItem | null {
     const { rtdb } = getFirebase();
     if (!rtdb) return;
     let cancelled = false;
-    get(ref(rtdb, `community/room/${pinnedId}`)).then((s) => {
+    get(ref(rtdb, `${roomMsgPath(roomId)}/${pinnedId}`)).then((s) => {
       if (cancelled) return;
       const m = s.val() as RawRoom | null;
       setFetched(
@@ -557,7 +561,7 @@ export function usePinnedMessage(messages: ChatItem[]): ChatItem | null {
       );
     });
     return () => { cancelled = true; };
-  }, [pinnedId, inList]);
+  }, [pinnedId, inList, roomId]);
 
   return inList ?? fetched;
 }
@@ -820,16 +824,21 @@ function optionalFields(payload: SendPayload, maxText: number): Record<string, u
   return out;
 }
 
-export async function sendRoomMessage(sender: Sender, payload: SendPayload): Promise<void> {
+/**
+ * Post in the Community Room, or in an admin-created room (`roomId`). `at` is
+ * only for admins in rooms with post dates switched on (the rules check that).
+ */
+export async function sendRoomMessage(sender: Sender, payload: SendPayload, roomId?: string | null, at?: number): Promise<void> {
   const rtdb = needRtdb();
-  const id = push(ref(rtdb, "community/room")).key;
+  const base = roomMsgPath(roomId);
+  const id = push(ref(rtdb, base)).key;
   if (!id) throw new Error("Couldn't create message");
   const msg: Record<string, unknown> = {
     uid: sender.uid,
     // The admin account posts as "Admin", never under its own profile name.
     name: (sender.isAdmin ? STAFF_NAME : sender.name).slice(0, 40),
     kind: payload.kind,
-    at: serverTimestamp(),
+    at: at && sender.isAdmin ? at : serverTimestamp(),
     ...optionalFields(payload, MAX_TEXT),
   };
   // Moderators post as ordinary members — no badge, no marker in the message
@@ -841,15 +850,15 @@ export async function sendRoomMessage(sender: Sender, payload: SendPayload): Pro
   // members carry their picture on the message; the team posts as "Admin" without one
   if (!sender.isAdmin && sender.photo && /^https:\/\/firebasestorage\.googleapis\.com\//.test(sender.photo)) msg.photo = sender.photo.slice(0, 1000);
   await update(ref(rtdb), {
-    [`community/room/${id}`]: msg,
+    [`${base}/${id}`]: msg,
     [`community/lastPost/${sender.uid}`]: serverTimestamp(),
-    [`community/typing/${sender.uid}`]: null,
+    ...(roomId ? {} : { [`community/typing/${sender.uid}`]: null }),
   });
 }
 
 /** Add, change, or clear (emoji = null) the caller's reaction on a room message. */
-export function reactToRoomMessage(msgId: string, uid: string, emoji: string | null) {
-  const r = ref(needRtdb(), `community/room/${msgId}/re/${uid}`);
+export function reactToRoomMessage(msgId: string, uid: string, emoji: string | null, roomId?: string | null) {
+  const r = ref(needRtdb(), `${roomMsgPath(roomId)}/${msgId}/re/${uid}`);
   return emoji ? set(r, emoji) : remove(r);
 }
 
@@ -870,13 +879,13 @@ export type Boost = Partial<Record<BoostKey, number>>;
 export const BOOST_EMOJI: Record<BoostKey, string> = { heart: "❤️", haha: "😆", wow: "😮", fire: "🔥", money: "💰", like: "👍" };
 export const MAX_BOOST = 10_000;
 
-export function setRoomBoost(msgId: string, boost: Boost) {
+export function setRoomBoost(msgId: string, boost: Boost, roomId?: string | null) {
   const clean: Record<string, number> = {};
   for (const k of BOOST_KEYS) {
     const n = Math.floor(Number(boost[k] ?? 0));
     if (Number.isFinite(n) && n > 0) clean[k] = Math.min(MAX_BOOST, n);
   }
-  const r = ref(needRtdb(), `community/room/${msgId}/boost`);
+  const r = ref(needRtdb(), `${roomMsgPath(roomId)}/${msgId}/boost`);
   return Object.keys(clean).length ? set(r, clean) : remove(r);
 }
 
@@ -1005,13 +1014,13 @@ export function useOnlineCount(): number | null {
   return n;
 }
 
-export function deleteRoomMessage(id: string) {
-  return remove(ref(needRtdb(), `community/room/${id}`));
+export function deleteRoomMessage(id: string, roomId?: string | null) {
+  return remove(ref(needRtdb(), `${roomMsgPath(roomId)}/${id}`));
 }
 
-export function setPinnedMessage(id: string | null) {
-  const rtdb = needRtdb();
-  return id ? set(ref(rtdb, "community/pinned"), id) : remove(ref(rtdb, "community/pinned"));
+export function setPinnedMessage(id: string | null, roomId?: string | null) {
+  const r = ref(needRtdb(), roomPinnedPath(roomId));
+  return id ? set(r, id) : remove(r);
 }
 
 export function muteUser(uid: string, name: string) {
@@ -1357,4 +1366,191 @@ export function useRoomUnread(enabled: boolean): number {
   }, [user, enabled, joined, readAt]);
 
   return live ? count : 0;
+}
+
+// ===== Admin-created rooms =====
+//
+// Extra chats beside the Community Room, each with its own audience, posting
+// mode and history rule. Settings at `community/rooms/{id}` (admin-written,
+// enforced by the rules), messages at `community/roomMsgs/{id}` in the same
+// shape as the room, pinned post at `community/roomPinned/{id}`, and each
+// member's read stamps at `community/roomsRead/{uid}/{id}`.
+
+export type RoomAudience = "all" | "tl" | "mods" | "admins";
+export type RoomPosting = "members" | "react" | "read";
+export type RoomHistory = "join" | "all";
+export type RoomConfig = {
+  id: string;
+  name: string;
+  blurb: string;
+  audience: RoomAudience;
+  posting: RoomPosting;
+  /** Members may post pictures and video (admins and moderators always may). */
+  media: boolean;
+  history: RoomHistory;
+  /** Admins may set or change a post's date. */
+  dateEdit: boolean;
+  hidden: boolean;
+  order: number;
+  createdAt?: number;
+  createdBy?: string;
+};
+export const ROOM_AUDIENCE_LABEL: Record<RoomAudience, string> = { all: "Everyone", tl: "Team Leaders", mods: "Moderators", admins: "Admins" };
+export const ROOM_POSTING_LABEL: Record<RoomPosting, string> = { members: "Members post", react: "React only", read: "Read only" };
+export const ROOM_HISTORY_LABEL: Record<RoomHistory, string> = { join: "From join date", all: "Everything" };
+
+function toRoom(id: string, raw: unknown): RoomConfig {
+  const r = (raw ?? {}) as Partial<RoomConfig>;
+  return {
+    id,
+    name: String(r.name ?? "Room"),
+    blurb: String(r.blurb ?? ""),
+    audience: (["all", "tl", "mods", "admins"] as const).includes(r.audience as RoomAudience) ? (r.audience as RoomAudience) : "all",
+    posting: (["members", "react", "read"] as const).includes(r.posting as RoomPosting) ? (r.posting as RoomPosting) : "members",
+    media: r.media === true,
+    history: r.history === "all" ? "all" : "join",
+    dateEdit: r.dateEdit === true,
+    hidden: r.hidden === true,
+    order: typeof r.order === "number" ? r.order : 0,
+    createdAt: r.createdAt,
+    createdBy: r.createdBy,
+  };
+}
+
+/** Every room (hidden ones included; callers filter with visibleRooms). */
+export function useRooms(): RoomConfig[] {
+  const { user } = useAuth();
+  const [rooms, setRooms] = useState<RoomConfig[]>([]);
+  useEffect(() => {
+    if (!user) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, "community/rooms"), (s) => {
+      const v = (s.val() as Record<string, unknown> | null) ?? {};
+      setRooms(Object.entries(v).map(([id, raw]) => toRoom(id, raw)).sort((a, b) => a.order - b.order || (a.createdAt ?? 0) - (b.createdAt ?? 0)));
+    }, () => setRooms([]));
+  }, [user]);
+  return rooms;
+}
+
+export type RoomViewer = { isAdmin: boolean; isMod: boolean; isTL: boolean };
+/** Admins are inside every room; otherwise the room's audience decides. Hidden rooms are admin-only. */
+export function canSeeRoom(r: RoomConfig, v: RoomViewer): boolean {
+  if (v.isAdmin) return true;
+  if (r.hidden) return false;
+  return r.audience === "all" || (r.audience === "tl" && v.isTL) || (r.audience === "mods" && v.isMod);
+}
+export function visibleRooms(rooms: RoomConfig[], v: RoomViewer): RoomConfig[] {
+  return rooms.filter((r) => !r.hidden && canSeeRoom(r, v));
+}
+
+/** Admin: create (no id) or update a room's settings. */
+export async function saveRoom(cfg: Omit<RoomConfig, "id" | "createdAt" | "createdBy"> & { id?: string }, adminUid: string): Promise<string> {
+  const rtdb = needRtdb();
+  const id = cfg.id ?? push(ref(rtdb, "community/rooms")).key;
+  if (!id) throw new Error("Could not create the room");
+  const body: Record<string, unknown> = {
+    name: cfg.name.trim().slice(0, 40), blurb: cfg.blurb.trim().slice(0, 80), audience: cfg.audience, posting: cfg.posting,
+    media: cfg.media, history: cfg.history, dateEdit: cfg.dateEdit, hidden: cfg.hidden, order: cfg.order,
+  };
+  if (cfg.id) await update(ref(rtdb, `community/rooms/${id}`), body);
+  else await set(ref(rtdb, `community/rooms/${id}`), { ...body, createdAt: Date.now(), createdBy: adminUid });
+  return id;
+}
+export function setRoomHidden(id: string, hidden: boolean) {
+  return update(ref(needRtdb(), `community/rooms/${id}`), { hidden });
+}
+/** Admin: the room, its messages and its pinned post are gone for good (media files stay in Storage). */
+export function deleteRoom(id: string) {
+  return update(ref(needRtdb()), { [`community/rooms/${id}`]: null, [`community/roomMsgs/${id}`]: null, [`community/roomPinned/${id}`]: null });
+}
+
+/** The messages of an admin-created room, paged like the Community Room. */
+export function useRoomFeed(roomId: string | null, history: RoomHistory, staff: boolean): PagedMessages {
+  const { user } = useAuth();
+  const [joined, setJoined] = useState<number | null>(null);
+  const needJoin = !!user && !!roomId && !staff && history === "join";
+  useEffect(() => {
+    if (!needJoin || !user) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, `members/${user.uid}/joinedAt`), (s) => {
+      const v = s.val();
+      if (typeof v === "number") setJoined(v);
+      else ensureCommunityMember();
+    }, () => {});
+  }, [needJoin, user]);
+  const since = !user || !roomId ? undefined : needJoin ? joined ?? undefined : null;
+  return usePagedMessages(roomId ? roomMsgPath(roomId) : null, since, roomToItem);
+}
+
+/** Admin: move a post to another date (rooms with post dates on). */
+export function setMessageDate(roomId: string, msgId: string, at: number) {
+  return update(ref(needRtdb(), `${roomMsgPath(roomId)}/${msgId}`), { at });
+}
+
+export function setRoomsRead(uid: string, roomId: string, at: number) {
+  const { rtdb } = getFirebase();
+  if (!rtdb) return Promise.resolve();
+  return set(ref(rtdb, `community/roomsRead/${uid}/${roomId}`), at).catch(() => {});
+}
+export function useRoomsReadAt(uid: string | null): Record<string, number> {
+  const [map, setMap] = useState<Record<string, number>>({});
+  useEffect(() => {
+    if (!uid) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, `community/roomsRead/${uid}`), (s) => setMap((s.val() as Record<string, number> | null) ?? {}), () => {});
+  }, [uid]);
+  return map;
+}
+
+/**
+ * Unread counts for the admin-created rooms a member can see: messages from
+ * other people newer than the member's read stamp (and their join date, so a
+ * full-history room does not greet a new member with 99+). One bounded
+ * listener per room.
+ */
+export function useRoomsUnread(rooms: RoomConfig[], enabled: boolean): { total: number; byRoom: Record<string, number> } {
+  const { user } = useAuth();
+  const uid = enabled && user ? user.uid : null;
+  const readMap = useRoomsReadAt(uid);
+  const [joined, setJoined] = useState<number | null>(null);
+  const [byRoom, setByRoom] = useState<Record<string, number>>({});
+  const key = rooms.map((r) => `${r.id}:${r.history}`).join(",");
+  const readKey = rooms.map((r) => readMap[r.id] ?? 0).join(",");
+
+  useEffect(() => {
+    if (!uid) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, `members/${uid}/joinedAt`), (s) => { const v = s.val(); if (typeof v === "number") setJoined(v); }, () => {});
+  }, [uid]);
+
+  useEffect(() => {
+    if (!uid || joined === null || rooms.length === 0) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    const unsubs = rooms.map((r) => {
+      const readAt = Math.max(readMap[r.id] ?? 0, joined);
+      // "join" rooms only allow a query starting exactly at the join date; "all" rooms allow any start
+      const start = r.history === "all" ? readAt + 1 : joined;
+      const q = rtdbQuery(ref(rtdb, roomMsgPath(r.id)), orderByChild("at"), startAt(start), limitToLast(UNREAD_CAP));
+      return onValue(q, (s) => {
+        let n = 0;
+        s.forEach((c) => {
+          const m = c.val() as { uid?: string; at?: number } | null;
+          if (m && m.uid !== uid && typeof m.at === "number" && m.at > readAt) n++;
+        });
+        setByRoom((prev) => (prev[r.id] === n ? prev : { ...prev, [r.id]: n }));
+      }, () => setByRoom((prev) => (prev[r.id] ? { ...prev, [r.id]: 0 } : prev)));
+    });
+    return () => { for (const u of unsubs) u(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, joined, key, readKey]);
+
+  const ids = new Set(rooms.map((r) => r.id));
+  let total = 0;
+  for (const [id, n] of Object.entries(byRoom)) if (ids.has(id)) total += n;
+  return { total: uid ? total : 0, byRoom };
 }

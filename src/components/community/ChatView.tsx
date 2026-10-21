@@ -9,6 +9,7 @@ import {
   Loader2,
   X,
   Pin,
+  CalendarClock,
   Trash2,
   Heart,
   VolumeX,
@@ -97,6 +98,8 @@ type Props = {
   mutedUids?: ReadonlySet<string>;
   /** Moderators (room only): set the team-added reaction counts on a message. */
   onBoost?: (item: ChatItem, boost: Boost) => Promise<void>;
+  /** Admins (rooms with post dates on): move a post to another date. */
+  onChangeDate?: (item: ChatItem) => Promise<void>;
   /** Senders whose "Team Leader" chip is on (room only). */
   tlBadges?: ReadonlySet<string>;
   className?: string;
@@ -186,6 +189,7 @@ export function ChatView({
   onUnmute,
   mutedUids,
   onBoost,
+  onChangeDate,
   tlBadges,
   className,
 }: Props) {
@@ -595,6 +599,7 @@ export function ChatView({
                   <div className={cn("absolute bottom-full mb-1 z-30 bg-card border border-border-strong rounded-lg p-1 min-w-[150px] shadow-xl shadow-black/50", own ? "right-0" : "left-0")} onClick={(e) => e.stopPropagation()}>
                     {m.text && <MenuItem icon={Copy} label="Copy" onClick={() => copyText(m)} />}
                     {onPin && <MenuItem icon={Pin} label={pinned?.id === m.id ? "Unpin" : "Pin message"} onClick={() => { setHoverMenu(null); onPin(m); }} />}
+                    {onChangeDate && <MenuItem icon={CalendarClock} label="Change date" onClick={() => { setHoverMenu(null); onChangeDate(m); }} />}
                     {(() => { const a = muteAction(m); return a && <MenuItem icon={a.label.startsWith("Unmute") ? Volume2 : VolumeX} label={a.label} onClick={() => { setHoverMenu(null); a.run(); }} />; })()}
                     {canRemove && <MenuItem icon={Trash2} label="Remove" danger onClick={() => { setHoverMenu(null); onDelete!(m); }} />}
                   </div>
@@ -841,6 +846,7 @@ export function ChatView({
             {canSend && <SheetItem icon={Reply} label="Reply" onClick={() => startReply(sheet.item)} />}
             {sheet.item.text && <SheetItem icon={Copy} label="Copy" onClick={() => copyText(sheet.item)} />}
             {onPin && <SheetItem icon={Pin} label={pinned?.id === sheet.item.id ? "Unpin" : "Pin message"} tag="Mods" onClick={() => { setSheet(null); onPin(sheet.item); }} />}
+            {onChangeDate && <SheetItem icon={CalendarClock} label="Change date" tag="Admin" onClick={() => { setSheet(null); onChangeDate(sheet.item); }} />}
             {(() => { const a = muteAction(sheet.item); return a && <SheetItem icon={a.label.startsWith("Unmute") ? Volume2 : VolumeX} label={a.label} tag="Mods" onClick={() => { setSheet(null); a.run(); }} />; })()}
             {onBoost && (
               <SheetItem

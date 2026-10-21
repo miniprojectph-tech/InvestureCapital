@@ -14,6 +14,9 @@ import {
   useChatModRole,
   useInboxNeedsReply,
   isDmUnread,
+  useRooms,
+  visibleRooms,
+  useRoomsUnread,
   UNREAD_CAP,
 } from "@/lib/community";
 
@@ -58,11 +61,15 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
   const mod = useChatModRole();
   const waiting = useInboxNeedsReply(!!uid && (!!user?.isAdmin || (mod.isMod && mod.inbox)));
   const { unread: system } = useNotifications(50);
+  // admin-created rooms this person can enter
+  const allRooms = useRooms();
+  const rooms = useMemo(() => visibleRooms(allRooms, { isAdmin: !!user?.isAdmin, isMod: mod.isMod, isTL: tl.isTL }), [allRooms, user?.isAdmin, mod.isMod, tl.isTL]);
+  const { total: extraRooms } = useRoomsUnread(rooms, !!uid);
 
   const value = useMemo<Unread>(() => {
-    const community = room + adminThread + dms + teamDms + waiting;
+    const community = room + extraRooms + adminThread + dms + teamDms + waiting;
     return { community, system, total: community + system };
-  }, [room, adminThread, dms, teamDms, waiting, system]);
+  }, [room, extraRooms, adminThread, dms, teamDms, waiting, system]);
 
   // Tab title: "(3) Investure Capital"
   useEffect(() => {

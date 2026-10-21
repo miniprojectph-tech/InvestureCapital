@@ -5,6 +5,7 @@ import { ShieldCheck, Inbox, Pin, Crown } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { PushCard } from "@/components/PushCard";
 import { ChatView } from "@/components/community/ChatView";
+import { RoomChat } from "@/components/community/RoomChat";
 import { InboxPanel } from "@/components/community/InboxPanel";
 import { cn } from "@/lib/utils";
 import { useUserState } from "@/lib/useUserState";
@@ -53,11 +54,16 @@ import {
   setRoomRead,
   useRoomReadAt,
   useRoomUnread,
+  useRooms,
+  visibleRooms,
+  useRoomsUnread,
+  ROOM_AUDIENCE_LABEL,
+  ROOM_POSTING_LABEL,
   type Boost,
   type ChatItem,
 } from "@/lib/community";
 
-type Tab = "room" | "admin" | "inbox" | "team" | `dm:${string}`;
+type Tab = "room" | "admin" | "inbox" | "team" | `dm:${string}` | `room:${string}`;
 
 function previewOf(m: ChatItem | undefined): string {
   if (!m) return "No messages yet";
@@ -125,7 +131,7 @@ export default function CommunityPage() {
     const h = window.location.hash;
     if (h === "#admin") setTab("admin");
     else if (h === "#team") setTab("team");
-    else if (h.startsWith("#dm:")) setTab(h.slice(1) as Tab);
+    else if (h.startsWith("#dm:") || h.startsWith("#room:")) setTab(h.slice(1) as Tab);
   }, []);
 
   // Admins need their RTDB moderator flag before posting as admin.
@@ -153,6 +159,12 @@ export default function CommunityPage() {
     if (tab !== "room" || !uid || demoMode || !newestRoomAt || newestRoomAt <= roomReadAt) return;
     setRoomRead(uid, newestRoomAt);
   }, [tab, uid, demoMode, newestRoomAt, roomReadAt]);
+
+  // Admin-created rooms this person may enter (admins: all that are not hidden… and hidden ones too)
+  const allRooms = useRooms();
+  const rooms = useMemo(() => visibleRooms(allRooms, { isAdmin: !!user?.isAdmin, isMod: modRole.isMod, isTL: tlRole.isTL }), [allRooms, user?.isAdmin, modRole.isMod, tlRole.isTL]);
+  const roomsUnread = useRoomsUnread(rooms, !!uid && !demoMode);
+  const openRoom = tab.startsWith("room:") ? rooms.find((r) => `room:${r.id}` === tab) ?? null : null;
 
   if (!user) return null;
 
@@ -210,6 +222,16 @@ export default function CommunityPage() {
         </div>
       ),
     },
+    ...rooms.map((r) => ({
+      key: `room:${r.id}` as Tab,
+      label: r.name,
+      sub: r.blurb || `${ROOM_AUDIENCE_LABEL[r.audience]} · ${ROOM_POSTING_LABEL[r.posting]}`,
+      at: undefined,
+      unread: tab === `room:${r.id}` ? 0 : roomsUnread.byRoom[r.id] ?? 0,
+      icon: (
+        <div className="w-11 h-11 rounded-full bg-card-elev border border-border flex items-center justify-center shrink-0 text-gold text-[14px] font-extrabold">{r.name.slice(0, 1).toUpperCase()}</div>
+      ),
+    })),
     {
       key: "admin",
       label: "Message Admin",
@@ -366,6 +388,21 @@ export default function CommunityPage() {
               onReact={(m, emoji) => reactToRoomMessage(m.id, user.uid, emoji)}
               tlBadges={tlBadges}
               {...moderation}
+            />
+          )}
+
+          {openRoom && (
+            <RoomChat
+              key={openRoom.id}
+              room={openRoom}
+              sender={sender}
+              isStaff={isStaff}
+              isMod={modRole.isMod}
+              muted={muted}
+              mutedUids={mutedUids}
+              tlBadges={tlBadges}
+              caps={roomCaps}
+              demoMode={demoMode}
             />
           )}
 

@@ -3,7 +3,7 @@ import { onCall, HttpsError, type CallableRequest } from "firebase-functions/v2/
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import { defineSecret } from "firebase-functions/params";
-import { getDatabase } from "firebase-admin/database";
+import { getDatabase, type DataSnapshot } from "firebase-admin/database";
 import { logger } from "firebase-functions";
 import { db } from "./init";
 
@@ -134,27 +134,49 @@ async function runDigest(force: boolean): Promise<DigestResult> {
     if (inQuietHours(manilaHour(now), cfg.quietFrom, cfg.quietTo)) return { ...base, reason: "quiet" };
   }
 
-  const [subsSnap, prefsSnap, lastSnap, readSnap, roomSnap] = await Promise.all([
+  const dayAgo = now - 24 * 3_600_000;
+  const [subsSnap, prefsSnap, lastSnap, readSnap, roomSnap, roomsSnap, roomsReadSnap, tlSnap, modSnap] = await Promise.all([
     rtdb.ref("push/subs").once("value"),
     rtdb.ref("push/prefs").once("value"),
     rtdb.ref("push/last").once("value"),
     rtdb.ref("community/roomRead").once("value"),
-    rtdb.ref("community/room").orderByChild("at").startAt(now - 24 * 3_600_000).limitToLast(300).once("value"),
+    rtdb.ref("community/room").orderByChild("at").startAt(dayAgo).limitToLast(300).once("value"),
+    rtdb.ref("community/rooms").once("value"),
+    rtdb.ref("community/roomsRead").once("value"),
+    rtdb.ref("teamLeaders").once("value"),
+    rtdb.ref("chatMods").once("value"),
   ]);
   const subs = (subsSnap.val() ?? {}) as Record<string, Record<string, Sub>>;
   const prefs = (prefsSnap.val() ?? {}) as Record<string, Prefs>;
   const last = (lastSnap.val() ?? {}) as Record<string, number>;
   const read = (readSnap.val() ?? {}) as Record<string, number>;
-  const msgs: { at: number; uid: string }[] = [];
-  roomSnap.forEach((c) => {
-    const m = c.val() as { at?: number; uid?: string } | null;
-    if (m && typeof m.at === "number") msgs.push({ at: m.at, uid: String(m.uid ?? "") });
-  });
+  const roomsRead = (roomsReadSnap.val() ?? {}) as Record<string, Record<string, number>>;
+  const tls = (tlSnap.val() ?? {}) as Record<string, unknown>;
+  const mods = (modSnap.val() ?? {}) as Record<string, unknown>;
+  type Msg = { at: number; uid: string };
+  const collect = (snap: DataSnapshot): Msg[] => {
+    const out: Msg[] = [];
+    snap.forEach((c) => {
+      const m = c.val() as { at?: number; uid?: string } | null;
+      if (m && typeof m.at === "number") out.push({ at: m.at, uid: String(m.uid ?? "") });
+    });
+    return out;
+  };
+  const msgs = collect(roomSnap);
+  // admin-created rooms: who may see each, and its last day of messages
+  type Room = { id: string; audience: string; hidden: boolean };
+  const rooms: Room[] = Object.entries((roomsSnap.val() ?? {}) as Record<string, { audience?: string; hidden?: boolean }>)
+    .map(([id, r]) => ({ id, audience: String(r.audience ?? "all"), hidden: r.hidden === true }))
+    .filter((r) => !r.hidden && r.audience !== "admins");
+  const roomMsgs = new Map<string, Msg[]>();
+  for (const r of rooms) roomMsgs.set(r.id, collect(await rtdb.ref(`community/roomMsgs/${r.id}`).orderByChild("at").startAt(dayAgo).limitToLast(300).once("value")));
+  const canSee = (r: Room, uid: string) => r.audience === "all" || (r.audience === "tl" && uid in tls) || (r.audience === "mods" && uid in mods);
 
   const result: DigestResult = { ...base, ran: true, members: Object.keys(subs).length };
   const stamps: Record<string, number> = {};
   const gate = await loadGate(cfg);
-  if (msgs.length) {
+  const anyMsgs = msgs.length > 0 || [...roomMsgs.values()].some((l) => l.length > 0);
+  if (anyMsgs) {
     for (const [uid, devices] of Object.entries(subs)) {
       const n = Object.keys(devices ?? {}).length;
       if (!n) continue;
@@ -162,14 +184,19 @@ async function runDigest(force: boolean): Promise<DigestResult> {
       if (prefs[uid]?.community === false) continue;
       // members only see the room from their join date
       const joined = Number((await rtdb.ref(`members/${uid}/joinedAt`).once("value")).val() ?? 0);
-      const readAt = Math.max(read[uid] ?? 0, joined);
       const lastPush = last[uid] ?? 0;
-      const since = Math.max(readAt, lastPush);
-      const fresh = msgs.filter((m) => m.uid !== uid && m.at > since).length;
+      const readAt = Math.max(read[uid] ?? 0, joined);
+      let fresh = 0, unread = 0, opened = readAt > lastPush;
+      const count = (list: Msg[], readStamp: number) => {
+        const since = Math.max(readStamp, lastPush);
+        fresh += list.filter((m) => m.uid !== uid && m.at > since).length;
+        unread += list.filter((m) => m.uid !== uid && m.at > readStamp).length;
+        if (readStamp > lastPush) opened = true;
+      };
+      count(msgs, readAt);
+      for (const r of rooms) if (canSee(r, uid)) count(roomMsgs.get(r.id) ?? [], Math.max(roomsRead[uid]?.[r.id] ?? 0, joined));
       if (!fresh) continue;
-      const opened = readAt > lastPush;
       if (!opened && now - lastPush < cfg.cooldownMin * 60_000) continue;
-      const unread = msgs.filter((m) => m.uid !== uid && m.at > readAt).length;
       const shown = unread > 99 ? "99+" : String(unread);
       const r = await pushToMember(uid, "community", {
         title: "Investure Community",
