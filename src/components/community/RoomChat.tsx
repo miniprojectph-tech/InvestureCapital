@@ -104,19 +104,20 @@ export function RoomChat({ room, sender, isStaff, isMod, muted, mutedUids, tlBad
         <p className="text-[11px] text-text-muted m-0 truncate">{room.blurb || `${ROOM_AUDIENCE_LABEL[room.audience]} · ${ROOM_POSTING_LABEL[room.posting]}`}</p>
       </div>
       {room.posting !== "members" && <span className="text-[9px] font-bold tracking-[0.06em] uppercase text-text-subtle bg-canvas border border-border px-1.5 py-0.5 rounded-full shrink-0">{room.posting === "react" ? "React only" : "Read only"}</span>}
+      {canDate && (
+        // the chat card has a fixed height, so the date control lives in the header rather than above the card
+        <label className="flex items-center gap-1.5 text-[10px] text-text-muted shrink-0" title="Date for your next post (blank = now)">
+          <CalendarClock className="w-3.5 h-3.5 text-gold" />
+          <span className="hidden sm:inline">Next post</span>
+          <input type="datetime-local" value={postAt} onChange={(e) => setPostAt(e.target.value)} className={cn(input, "py-0.5 px-1.5 text-[10px] max-w-[170px]")} />
+          {postAt && <button type="button" onClick={() => setPostAt("")} className="text-text-subtle hover:text-text">now</button>}
+        </label>
+      )}
     </div>
   );
 
   return (
     <div className="flex flex-col gap-2">
-      {canDate && (
-        <div className="flex flex-wrap items-center gap-2 text-[11px] text-text-muted bg-card border border-border rounded-lg px-3 py-2">
-          <CalendarClock className="w-3.5 h-3.5 text-gold" />
-          <span>Post date for your next post</span>
-          <input type="datetime-local" value={postAt} onChange={(e) => setPostAt(e.target.value)} className={cn(input, "py-1 text-[11px]")} />
-          {postAt ? <button type="button" onClick={() => setPostAt("")} className="text-text-subtle hover:text-text">Use now</button> : <span className="text-text-subtle">blank = now</span>}
-        </div>
-      )}
       <ChatView
         key={room.id}
         header={header}
