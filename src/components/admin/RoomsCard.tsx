@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { addDoc, collection } from "firebase/firestore";
-import { Plus, Pencil, Eye, EyeOff, Trash2, Loader2, AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { Plus, Pencil, Eye, EyeOff, Trash2, Loader2, AlertCircle, ExternalLink } from "lucide-react";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
 import { Switch } from "@/components/Switch";
@@ -106,6 +107,7 @@ export function RoomsCard({ uid }: { uid: string }) {
               <p className="text-[11px] text-text-subtle m-0 truncate">{ROOM_AUDIENCE_LABEL[r.audience]} · {ROOM_POSTING_LABEL[r.posting].toLowerCase()} · {r.history === "all" ? "full history" : "from join date"}{r.media ? " · media" : ""}{r.dateEdit ? " · post dates" : ""}{r.blurb ? ` · “${r.blurb}”` : ""}</p>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              <Link href={`/community#room:${r.id}`} className="h-7 px-2 rounded-md border border-border text-[10px] text-gold hover:underline inline-flex items-center gap-1" aria-label={`Open ${r.name}`}>Open <ExternalLink className="w-3 h-3" /></Link>
               <button type="button" onClick={() => edit(r)} className="w-7 h-7 rounded-md border border-border text-text-muted hover:text-text inline-flex items-center justify-center" aria-label={`Edit ${r.name}`}><Pencil className="w-3 h-3" /></button>
               <button type="button" onClick={() => toggleHidden(r)} className="w-7 h-7 rounded-md border border-border text-text-muted hover:text-text inline-flex items-center justify-center" aria-label={r.hidden ? `Show ${r.name}` : `Hide ${r.name}`} title={r.hidden ? "Show" : "Hide"}>{r.hidden ? <Eye className="w-3 h-3" /> : <EyeOff className="w-3 h-3" />}</button>
               <button type="button" onClick={() => setConfirm(r)} className="w-7 h-7 rounded-md border border-border text-text-muted hover:text-red inline-flex items-center justify-center" aria-label={`Delete ${r.name}`}><Trash2 className="w-3 h-3" /></button>
