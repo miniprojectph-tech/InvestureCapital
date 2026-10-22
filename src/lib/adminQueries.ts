@@ -114,6 +114,7 @@ export type AdminActivityRow = {
   subtitle: string;
   amount?: number;
   amountKind?: "in" | "out" | "neutral";
+  points?: number;
   at: number;
 };
 
@@ -136,6 +137,7 @@ function rowFromActivityDoc(d: QueryDocumentSnapshot): AdminActivityRow {
     subtitle: data.subtitle ?? "",
     amount: typeof data.amount === "number" ? data.amount : undefined,
     amountKind: data.amountKind,
+    points: typeof data.points === "number" ? data.points : undefined,
     at,
   };
 }

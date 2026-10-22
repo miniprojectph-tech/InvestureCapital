@@ -4,6 +4,27 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
+import { formatPHP } from "./utils";
+
+/** Activity types that are game points, never pesos (older wins were stored as "reinvest" and are migrated). */
+export const GAME_POINT_TYPES = new Set(["game-points"]);
+export const isGamePoints = (r: { type: string; points?: number }) => GAME_POINT_TYPES.has(r.type) || typeof r.points === "number";
+
+/**
+ * What the right-hand column of an activity row shows: "+₱100" for money,
+ * "+211 GP" for game points. Empty when the row carries neither.
+ */
+export function activityValue(r: { type: string; amount?: number; amountKind?: string; points?: number }, opts?: { short?: boolean }): { text: string; tone: "in" | "out" | "neutral" | "points" } {
+  if (isGamePoints(r)) {
+    const n = r.points ?? r.amount ?? 0;
+    return { text: `+${Math.round(n).toLocaleString("en-PH")} GP`, tone: "points" };
+  }
+  if (r.amount === undefined) return { text: "", tone: "neutral" };
+  const sign = r.amountKind === "in" ? "+" : r.amountKind === "out" ? "−" : "";
+  const tone = r.amountKind === "in" ? "in" : r.amountKind === "out" ? "out" : "neutral";
+  return { text: `${sign}${formatPHP(r.amount, { short: opts?.short ?? false })}`, tone };
+}
+export const ACTIVITY_TONE: Record<"in" | "out" | "neutral" | "points", string> = { in: "text-green", out: "text-text-muted", neutral: "text-text", points: "text-gold" };
 
 export type UserActivityRow = {
   id: string;
@@ -12,6 +33,8 @@ export type UserActivityRow = {
   subtitle: string;
   amount?: number;
   amountKind?: "in" | "out" | "neutral";
+  /** Game points won (type "game-points") — never money. */
+  points?: number;
   /** History date. For placement records this is the SCHEDULED date (follows the start date). */
   at: number;
   /** When it was really credited — set on placement records; equals `at` otherwise. */
@@ -64,6 +87,7 @@ export function useUserActivity(typeFilter?: string) {
             subtitle: data.subtitle ?? "",
             amount: typeof data.amount === "number" ? data.amount : undefined,
             amountKind: data.amountKind,
+            points: typeof data.points === "number" ? data.points : undefined,
             at: toMs(data.at),
             creditedAt: data.creditedAt ? toMs(data.creditedAt) : toMs(data.at),
             planId: typeof data.planId === "string" ? data.planId : undefined,

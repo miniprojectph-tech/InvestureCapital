@@ -176,10 +176,11 @@ export const slotSpin = onCall(async (request) => {
       tx.set(statsRef, { days: { [today]: { spins: FieldValue.increment(1), paid: FieldValue.increment(payout), holdWins: FieldValue.increment(result.holdWin ? 1 : 0), pots: FieldValue.increment(drop ? 1 : 0), potPoints: FieldValue.increment(drop?.amount ?? 0) } }, updatedAt: now }, { merge: true });
       if (drop || payout >= (st.plan.spinValue ?? effectiveSpinValue(cfg, settings.daily)) * 50) {
         tx.set(db.collection("users").doc(uid).collection("activity").doc(), {
-          type: "reinvest",
+          // game points, not pesos: no `amount`, so no screen can show it as money
+          type: "game-points",
           title: drop ? `Dragon Spire ${drop.pot === "grand" ? "GRAND" : drop.pot.toUpperCase()} jackpot` : "Dragon Spire big win",
-          subtitle: drop ? `${drop.amount.toLocaleString()} points${win - drop.amount > 0 ? ` + ${(win - drop.amount).toLocaleString()} from the spin` : ""}` : `${payout.toLocaleString()} points on a free spin`,
-          amount: payout, amountKind: "in", at: FieldValue.serverTimestamp(),
+          subtitle: drop ? `${drop.amount.toLocaleString()} game points${win - drop.amount > 0 ? ` + ${(win - drop.amount).toLocaleString()} from the spin` : ""}` : `${payout.toLocaleString()} game points on a free spin`,
+          points: payout, game: "dragon-spire", at: FieldValue.serverTimestamp(),
         });
       }
     } else {

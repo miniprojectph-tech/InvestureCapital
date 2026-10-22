@@ -22,7 +22,8 @@ import { TopHeader } from "@/components/TopHeader";
 import { Card } from "@/components/Card";
 import { cn, formatPHP } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
-import { useUserActivity } from "@/lib/userActivity";
+import { useUserActivity, activityValue, ACTIVITY_TONE, isGamePoints } from "@/lib/userActivity";
+import { Gamepad2 } from "lucide-react";
 import { mockActivity } from "@/lib/mock-data";
 
 type TxRow = {
@@ -32,6 +33,7 @@ type TxRow = {
   subtitle: string;
   amount?: number;
   amountKind?: "in" | "out" | "neutral";
+  points?: number;
   at: number;
   /** Real credited time; differs from `at` when a placement record is dated by its schedule. */
   creditedAt?: number;
@@ -50,6 +52,7 @@ const typeMeta: Record<string, Meta> = {
   reinvest: { label: "Reinvest", icon: RefreshCw, color: "text-gold", bg: "bg-gold/15" },
   withdrawal: { label: "Withdrawal", icon: ArrowUpRight, color: "text-text-muted", bg: "bg-white/5" },
   deposit: { label: "Top up", icon: ArrowDownToLine, color: "text-green", bg: "bg-green/15" },
+  "game-points": { label: "Game points", icon: Gamepad2, color: "text-gold", bg: "bg-gold/15" },
   // Legacy (old plan system)
   "plan-earning": { label: "Daily income", icon: ArrowDownRight, color: "text-green", bg: "bg-green/15" },
   "vault-growth": { label: "Vault growth", icon: TrendingUp, color: "text-vault", bg: "bg-vault/15" },
@@ -120,7 +123,7 @@ export default function TransactionsPage() {
     try {
       const { default: writeExcelFile } = await import("write-excel-file/browser");
       const bold = (value: string) => ({ value, fontWeight: "bold" as const, backgroundColor: "#E8F5EE" });
-      const header = ["Date", "Time", "Type", "Description", "Details", "Money in (PHP)", "Money out (PHP)"].map(bold);
+      const header = ["Date", "Time", "Type", "Description", "Details", "Money in (PHP)", "Money out (PHP)", "Game points"].map(bold);
       const manila = (ms: number) => new Date(ms + 8 * 3_600_000).toISOString();
       const body = rows.map((r) => {
         const iso = manila(r.at);
@@ -131,13 +134,14 @@ export default function TransactionsPage() {
           { value: (typeMeta[r.type] ?? DEFAULT_META).label, type: String },
           { value: r.title, type: String },
           { value: r.subtitle, type: String },
-          r.amountKind === "in" ? { value: amount, type: Number, format: "#,##0.00" } : null,
-          r.amountKind === "out" ? { value: amount, type: Number, format: "#,##0.00" } : null,
+          !isGamePoints(r) && r.amountKind === "in" ? { value: amount, type: Number, format: "#,##0.00" } : null,
+          !isGamePoints(r) && r.amountKind === "out" ? { value: amount, type: Number, format: "#,##0.00" } : null,
+          isGamePoints(r) ? { value: r.points ?? r.amount ?? 0, type: Number, format: "#,##0" } : null,
         ];
       });
       const blob = await writeExcelFile([header, ...body], {
         sheet: "Transactions",
-        columns: [{ width: 12 }, { width: 8 }, { width: 22 }, { width: 44 }, { width: 50 }, { width: 16 }, { width: 16 }],
+        columns: [{ width: 12 }, { width: 8 }, { width: 22 }, { width: 44 }, { width: 50 }, { width: 16 }, { width: 16 }, { width: 14 }],
         stickyRowsCount: 1,
       }).toBlob();
       const url = URL.createObjectURL(blob);
@@ -277,7 +281,6 @@ export default function TransactionsPage() {
             {rows.map((row) => {
               const meta = typeMeta[row.type] ?? DEFAULT_META;
               const Icon = meta.icon;
-              const sign = row.amountKind === "in" ? "+" : row.amountKind === "out" ? "−" : "";
               return (
                 <tr key={row.id} className="border-t border-border">
                   <td className="py-2">
@@ -305,14 +308,10 @@ export default function TransactionsPage() {
                       minute: "2-digit",
                     })}
                   </td>
-                  <td
-                    className={cn(
-                      "py-2 text-right font-mono",
-                      row.amountKind === "in" ? "text-green" : "text-text-muted"
-                    )}
-                  >
-                    {row.amount !== undefined ? `${sign}${formatPHP(row.amount)}` : "—"}
-                  </td>
+                  {(() => {
+                    const v = activityValue(row);
+                    return <td className={cn("py-2 text-right font-mono", ACTIVITY_TONE[v.tone === "neutral" ? "out" : v.tone])}>{v.text || "—"}</td>;
+                  })()}
                 </tr>
               );
             })}

@@ -13,8 +13,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Card, CardHeader } from "./Card";
-import { formatPHP } from "@/lib/utils";
-import { useUserActivity, type UserActivityRow } from "@/lib/userActivity";
+import { Gamepad2 } from "lucide-react";
+import { useUserActivity, activityValue, ACTIVITY_TONE } from "@/lib/userActivity";
 
 const typeIcon: Record<string, { icon: LucideIcon; bg: string; color: string }> = {
   payout: { icon: ArrowDownRight, bg: "bg-green/15", color: "text-green" },
@@ -25,21 +25,11 @@ const typeIcon: Record<string, { icon: LucideIcon; bg: string; color: string }> 
   withdrawal: { icon: ArrowUpRight, bg: "bg-white/5", color: "text-text-muted" },
   reinvest: { icon: RefreshCw, bg: "bg-gold/15", color: "text-gold" },
   deposit: { icon: ArrowDownToLine, bg: "bg-green/15", color: "text-green" },
+  "game-points": { icon: Gamepad2, bg: "bg-gold/15", color: "text-gold" },
 };
 
 const DEFAULT_ICON = { icon: RefreshCw, bg: "bg-white/5", color: "text-text-muted" };
 
-function amountStr(ev: UserActivityRow) {
-  if (ev.amount === undefined) return "";
-  const sign = ev.amountKind === "in" ? "+" : ev.amountKind === "out" ? "−" : "";
-  return `${sign}${formatPHP(ev.amount, { short: ev.amount % 1 === 0 })}`;
-}
-
-function amountColor(ev: UserActivityRow) {
-  if (ev.amountKind === "in") return "text-green";
-  if (ev.amountKind === "out") return "text-text-muted";
-  return "text-text";
-}
 
 export function ActivityFeed() {
   const { rows, loading } = useUserActivity();
@@ -83,11 +73,10 @@ export function ActivityFeed() {
                 <p className="text-[11px] text-text m-0 truncate">{ev.title}</p>
                 <p className="text-[10px] text-text-subtle mt-0.5 m-0 truncate">{ev.subtitle}</p>
               </div>
-              {ev.amount !== undefined && (
-                <span className={`text-[11px] font-mono ${amountColor(ev)}`}>
-                  {amountStr(ev)}
-                </span>
-              )}
+              {(() => {
+                const v = activityValue(ev, { short: ev.amount !== undefined && ev.amount % 1 === 0 });
+                return v.text ? <span className={`text-[11px] font-mono ${ACTIVITY_TONE[v.tone]}`}>{v.text}</span> : null;
+              })()}
             </div>
           );
         })}

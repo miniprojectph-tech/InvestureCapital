@@ -18,7 +18,9 @@ import {
 import { TopHeader } from "@/components/TopHeader";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
-import { cn, formatPHP } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { activityValue, ACTIVITY_TONE } from "@/lib/userActivity";
+import { Gamepad2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import {
@@ -43,6 +45,7 @@ const typeMeta: Record<
   "plan-complete": { label: "Plan complete", icon: CheckCircle2, color: "text-blue", bg: "bg-blue/15" },
   withdrawal: { label: "Withdrawal", icon: ArrowUpRight, color: "text-text-muted", bg: "bg-white/5" },
   reinvest: { label: "Reinvest", icon: RefreshCw, color: "text-gold", bg: "bg-gold/15" },
+  "game-points": { label: "Game points", icon: Gamepad2, color: "text-gold", bg: "bg-gold/15" },
   deposit: { label: "Top up", icon: ChevronRight, color: "text-green", bg: "bg-green/15" },
 };
 
@@ -289,8 +292,6 @@ export default function AdminTransactionsPage() {
                   const meta = metaFor(row.type);
                   const Icon = meta.icon;
                   const u = userNameById.get(row.userId);
-                  const sign =
-                    row.amountKind === "in" ? "+" : row.amountKind === "out" ? "−" : "";
                   return (
                     <tr key={row.path} className="border-t border-border">
                       <td className="py-2">
@@ -324,18 +325,10 @@ export default function AdminTransactionsPage() {
                           minute: "2-digit",
                         })}
                       </td>
-                      <td
-                        className={cn(
-                          "py-2 text-right font-mono",
-                          row.amountKind === "in"
-                            ? "text-green"
-                            : row.amountKind === "out"
-                            ? "text-text-muted"
-                            : "text-text"
-                        )}
-                      >
-                        {row.amount !== undefined ? `${sign}${formatPHP(row.amount)}` : "—"}
-                      </td>
+                      {(() => {
+                        const v = activityValue(row);
+                        return <td className={cn("py-2 text-right font-mono", ACTIVITY_TONE[v.tone])}>{v.text || "—"}</td>;
+                      })()}
                     </tr>
                   );
                 })}

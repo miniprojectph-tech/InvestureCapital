@@ -562,11 +562,11 @@ export const weeklyReef = onSchedule(
         ops += 3;
         const actRef = db.collection("users").doc(data.uid).collection("activity").doc();
         batch.set(actRef, {
-          type: "reinvest",
+          type: "game-points",
           title: `Weekly Reef prize — rank #${rank + 1}`,
-          subtitle: `${prize} points awarded`,
-          amount: prize,
-          amountKind: "in",
+          subtitle: `${prize.toLocaleString()} game points awarded`,
+          points: prize,
+          game: "reef",
           at: FieldValue.serverTimestamp(),
         });
         batch.set(stateRef, { points: FieldValue.increment(prize), weeklyScore: 0 }, { merge: true });
@@ -635,11 +635,11 @@ export const claimDailyGameBonus = onCall(async (request) => {
 
     tx.set(stateRef, { points: FieldValue.increment(points), bonusClaimedDay: today, lastBonusPoints: points, lastBonusCapital: capital }, { merge: true });
     tx.set(userRef.collection("activity").doc(), {
-      type: "reinvest",
+      type: "game-points",
       title: "Daily game bonus",
-      subtitle: `${points.toLocaleString()} points for ₱${capital.toLocaleString()} active`,
-      amount: points,
-      amountKind: "in",
+      subtitle: `${points.toLocaleString()} game points for ₱${capital.toLocaleString()} active`,
+      points,
+      game: "daily-bonus",
       at: FieldValue.serverTimestamp(),
     });
     tx.set(statsRef, { days: { [today]: { claims: FieldValue.increment(1), points: FieldValue.increment(points) } }, updatedAt: now }, { merge: true });
