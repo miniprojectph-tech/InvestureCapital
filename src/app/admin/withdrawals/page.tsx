@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, X, Clock, AlertCircle, Loader2, CalendarClock, CalendarCog, Pencil } from "lucide-react";
+import { Check, X, Clock, AlertCircle, Loader2, CalendarClock, CalendarCog, Pencil, Search } from "lucide-react";
 import { PayoutDetails } from "@/components/admin/PayoutDetails";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
@@ -86,8 +86,21 @@ export default function AdminWithdrawalsPage() {
   const todayStart = (() => { const d = new Date(Date.now() + 8 * 3_600_000); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - 8 * 3_600_000; })();
   const releaseOf = (r: { createdAt: number; scheduledReleaseAt?: number | null }) => r.scheduledReleaseAt ?? releaseDateFor(r.createdAt, schedule);
 
+  // Search: name, email, payout account name or number, amount
+  const [q, setQ] = useState("");
+  const needle = q.trim().toLowerCase();
+  const digits = needle.replace(/[^0-9]/g, "");
+  const matches = (r: WithdrawalRequest) => {
+    if (!needle) return true;
+    const text = [r.userName, r.userEmail, r.payout?.accountName, r.payout?.provider, r.destination].filter(Boolean).join(" ").toLowerCase();
+    if (text.includes(needle)) return true;
+    if (digits.length >= 3 && (r.payout?.accountNumber ?? "").includes(digits)) return true;
+    return digits.length > 0 && digits === needle.replace(/[₱,.\s]/g, "") && String(Math.round(r.amount)).startsWith(digits);
+  };
+  const found = needle ? rows.filter(matches) : rows;
+
   // Pending: due-first, so today's releases sit at the top of the queue.
-  const filtered = rows
+  const filtered = found
     .filter((r) => r.status === tab)
     .sort((a, b) => (tab === "pending" ? (releaseOf(a) ?? a.createdAt) - (releaseOf(b) ?? b.createdAt) : 0));
   const dueNow = rows.filter((r) => r.status === "pending" && (releaseOf(r) ?? 0) <= todayStart);
@@ -173,6 +186,30 @@ export default function AdminWithdrawalsPage() {
             ) : undefined
           }
         />
+        <div className="flex flex-wrap items-center gap-2 mb-2">
+          <div className="relative flex-1 min-w-[220px] max-w-md">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-subtle" />
+            <input
+              type="search"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search name, email, GCash / account number, amount…"
+              className="w-full bg-canvas border border-border rounded-lg pl-8 pr-3 py-2 text-[12px] text-text outline-none focus:border-gold/40"
+              aria-label="Search withdrawals"
+            />
+          </div>
+          {needle && (
+            <p className="text-[11px] text-text-muted m-0">
+              {filtered.length} in {statusMeta[tab].label.toLowerCase()}
+              {STATUS_TABS.filter((k) => k !== tab && found.some((r) => r.status === k)).map((k) => (
+                <button key={k} type="button" onClick={() => setTab(k)} className="ml-2 text-gold hover:underline">
+                  {found.filter((r) => r.status === k).length} in {statusMeta[k].label.toLowerCase()}
+                </button>
+              ))}
+              <button type="button" onClick={() => setQ("")} className="ml-2 text-text-subtle hover:text-text">Clear</button>
+            </p>
+          )}
+        </div>
 
         {loading && (
           <div className="py-8 flex justify-center">
@@ -182,7 +219,7 @@ export default function AdminWithdrawalsPage() {
 
         {!loading && filtered.length === 0 && (
           <p className="text-[11px] text-text-subtle text-center py-8 m-0">
-            Nothing in this tab.
+            {needle ? "No withdrawal in this tab matches your search." : "Nothing in this tab."}
           </p>
         )}
 
