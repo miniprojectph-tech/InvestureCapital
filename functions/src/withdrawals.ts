@@ -200,3 +200,35 @@ export const adminDecideWithdrawal = onCall(async (request) => {
     return { ok: true, status: decision === "approve" ? "approved" : "rejected", processedAt: now };
   });
 });
+
+/**
+ * Admin deletes a REJECTED withdrawal: the request and its bell notices are
+ * removed, so it disappears from the member's history too. The wallet was
+ * already refunded when it was rejected, so no money moves. A copy of the
+ * request goes to the admin audit.
+ */
+export const adminDeleteWithdrawal = onCall(async (request) => {
+  const adminUid = request.auth?.uid;
+  if (!adminUid) throw new HttpsError("unauthenticated", "Sign in required.");
+  const caller = await db.collection("users").doc(adminUid).get();
+  if (caller.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Admin role required.");
+  const id = typeof request.data?.id === "string" ? request.data.id : "";
+  if (!id || !/^[A-Za-z0-9_-]{6,60}$/.test(id)) throw new HttpsError("invalid-argument", "Pick a withdrawal.");
+  const wRef = db.collection("withdrawals").doc(id);
+  const snap = await wRef.get();
+  if (!snap.exists) throw new HttpsError("not-found", "That withdrawal no longer exists.");
+  const w = snap.data() as Withdrawal & { status?: string; userName?: string; amount?: number; createdAt?: number; processedAt?: number; note?: string };
+  if (w.status !== "rejected") throw new HttpsError("failed-precondition", "Only rejected withdrawals can be deleted.");
+  const notes = await db.collection("users").doc(w.userId).collection("notifications").where("withdrawalId", "==", id).get();
+  const batch = db.batch();
+  batch.delete(wRef);
+  for (const n of notes.docs) batch.delete(n.ref);
+  batch.set(db.collection("admin_audit").doc(), {
+    type: "withdrawal_deleted", uid: w.userId, userName: w.userName ?? "", withdrawalId: id,
+    title: `Rejected withdrawal deleted: ${w.userName ?? "a member"}, ₱${Number(w.amount ?? 0).toLocaleString("en-PH")}`,
+    subtitle: w.note ? `Reason it was rejected: ${String(w.note).slice(0, 200)}` : "",
+    snapshot: { ...w }, by: adminUid, at: Date.now(),
+  });
+  await batch.commit();
+  return { ok: true, notices: notes.size };
+});

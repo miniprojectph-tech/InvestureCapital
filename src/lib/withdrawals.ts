@@ -173,3 +173,10 @@ export async function setWithdrawalRequestedAt(db: Firestore, w: WithdrawalReque
   await updateDoc(doc(db, "withdrawals", w.id), { createdAt: requestedAt, requestedAtEditedBy: adminUid, ...(w.createdAtOriginal == null ? { createdAtOriginal: w.createdAt } : {}) });
   await audit(db, { type: "withdrawal_requested_date", uid: w.userId, userName: w.userName ?? "", withdrawalId: w.id, title: `Request date changed for ${w.userName ?? "a member"}'s ₱${w.amount.toLocaleString()} withdrawal`, before: w.createdAt, after: requestedAt, by: adminUid });
 }
+/** Admin: delete a rejected withdrawal and its notices (server-side; audited). */
+export async function deleteRejectedWithdrawal(id: string): Promise<{ ok: boolean; notices: number }> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Not connected");
+  const r = await httpsCallable<{ id: string }, { ok: boolean; notices: number }>(functions, "adminDeleteWithdrawal")({ id });
+  return r.data;
+}

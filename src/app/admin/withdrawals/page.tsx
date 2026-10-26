@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, X, Clock, AlertCircle, Loader2, CalendarClock, CalendarCog, Pencil, Search } from "lucide-react";
+import { Check, X, Clock, AlertCircle, Loader2, CalendarClock, CalendarCog, Pencil, Search, Trash2 } from "lucide-react";
 import { PayoutDetails } from "@/components/admin/PayoutDetails";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { Card, CardHeader } from "@/components/Card";
+import { Modal } from "@/components/Modal";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -19,6 +20,7 @@ import {
   setWithdrawalReleaseDate,
   setWithdrawalProcessedAt,
   setWithdrawalRequestedAt,
+  deleteRejectedWithdrawal,
   manilaDayStart,
   manilaDateTime,
   toManilaInput,
@@ -118,6 +120,20 @@ export default function AdminWithdrawalsPage() {
     } finally {
       setBusyId(null);
     }
+  }
+
+  // Rejected withdrawals: delete (with the member's notices about it), after a confirm
+  const [confirmDel, setConfirmDel] = useState<WithdrawalRequest | null>(null);
+  async function removeRejected() {
+    if (!confirmDel) return;
+    const r = confirmDel;
+    setBusyId(r.id); setError(null); setNotice(null);
+    try {
+      await deleteRejectedWithdrawal(r.id);
+      setNotice(`${r.userName}’s rejected ${formatPHP(r.amount)} withdrawal is deleted. It no longer shows for them either.`);
+      setConfirmDel(null);
+    } catch (e) { setError(e instanceof Error ? e.message.replace(/^.*?:\s*/, "") : "Could not delete it"); }
+    finally { setBusyId(null); }
   }
 
   async function reject(id: string) {
@@ -321,6 +337,16 @@ export default function AdminWithdrawalsPage() {
                       <CalendarCog className="w-3 h-3" /> Edit date
                     </button>
                   )}
+                  {r.status === "rejected" && (
+                    <button
+                      onClick={() => { setError(null); setConfirmDel(r); }}
+                      disabled={isBusy}
+                      className="text-[10px] px-2 py-1 rounded-md border bg-card-elev border-border-strong text-text-muted hover:text-red hover:border-red/30 transition flex items-center gap-1 disabled:opacity-60"
+                      aria-label={`Delete ${r.userName}’s rejected withdrawal`}
+                    >
+                      {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />} Delete
+                    </button>
+                  )}
                 </div>
               )}
               {editing?.id === r.id && editing.field === "requested" && (
@@ -359,6 +385,19 @@ export default function AdminWithdrawalsPage() {
           );
         })}
       </Card>
+
+      <Modal open={!!confirmDel} onClose={() => !busyId && setConfirmDel(null)} title="Delete this rejected withdrawal?">
+        {confirmDel && (
+          <div className="flex flex-col gap-3">
+            <p className="text-[12px] m-0">{confirmDel.userName} · {formatPHP(confirmDel.amount)} · asked {formatReleaseDate(confirmDel.createdAt, { withYear: true })}</p>
+            <p className="text-[11px] text-text-muted m-0 leading-relaxed">It disappears from this list and from {confirmDel.userName?.split(" ")[0] ?? "the member"}’s withdrawal history, together with the notifications about it. Their wallet is not touched; it was refunded when the request was rejected. A copy is kept in the admin audit. This can’t be undone.</p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setConfirmDel(null)} disabled={!!busyId} className="flex-1 py-2.5 border border-border-strong rounded-lg text-[12px] text-text-muted">Keep it</button>
+              <button type="button" onClick={removeRejected} disabled={!!busyId} className="flex-1 py-2.5 rounded-lg bg-red text-white text-[12px] font-medium disabled:opacity-60 flex items-center justify-center gap-1.5">{busyId ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null} Delete</button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
