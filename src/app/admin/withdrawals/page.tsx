@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, X, Clock, AlertCircle, Loader2, CalendarClock, CalendarCog, Pencil, Search, Trash2 } from "lucide-react";
+import { Check, X, Clock, AlertCircle, Loader2, CalendarClock, CalendarCog, Pencil, Search, Trash2, AlertTriangle } from "lucide-react";
 import { PayoutDetails } from "@/components/admin/PayoutDetails";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
@@ -101,12 +101,43 @@ export default function AdminWithdrawalsPage() {
   };
   const found = needle ? rows.filter(matches) : rows;
 
-  // Pending: due-first, so today's releases sit at the top of the queue.
-  const filtered = found
-    .filter((r) => r.status === tab)
-    .sort((a, b) => (tab === "pending" ? (releaseOf(a) ?? a.createdAt) - (releaseOf(b) ?? b.createdAt) : 0));
+  // Pending is split by release day: Overdue, then each upcoming day, then "No release day" (schedule off).
+  const manilaDayOf = (ms: number) => { const d = new Date(ms + 8 * 3_600_000); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - 8 * 3_600_000; };
+  const dayKeyOf = (r: WithdrawalRequest): string => {
+    const at = releaseOf(r);
+    if (at == null) return "none";
+    const d = manilaDayOf(at);
+    return d < todayStart ? "overdue" : String(d);
+  };
+  const pendingAll = rows.filter((r) => r.status === "pending");
+  const pendingShown = found.filter((r) => r.status === "pending");
+  const dayKeys = Array.from(new Set(pendingAll.map(dayKeyOf))).sort((a, b) => {
+    const rank = (k: string) => (k === "overdue" ? -Infinity : k === "none" ? Infinity : Number(k));
+    return rank(a) - rank(b);
+  });
+  const dayStats = (k: string) => {
+    const list = pendingShown.filter((r) => dayKeyOf(r) === k);
+    return { count: list.length, total: list.reduce((sum, r) => sum + r.amount, 0) };
+  };
+  const [daySel, setDaySel] = useState<string | null>(null);
+  const defaultDay = dayKeys.includes("overdue") ? "overdue" : dayKeys.includes(String(todayStart)) ? String(todayStart) : dayKeys[0] ?? null;
+  let activeDay = daySel && dayKeys.includes(daySel) ? daySel : defaultDay;
+  // searching: open the first day that holds a match
+  if (needle && activeDay && dayStats(activeDay).count === 0) activeDay = dayKeys.find((k) => dayStats(k).count > 0) ?? activeDay;
+  const dayLabel = (k: string) => (k === "overdue" ? "Overdue" : k === "none" ? "No release day" : `${Number(k) === todayStart ? "Today · " : ""}${formatReleaseDate(Number(k))}`);
+  const isFutureDay = (r: WithdrawalRequest) => { const k = dayKeyOf(r); return k !== "overdue" && k !== "none" && Number(k) > todayStart; };
+
+  const filtered = (tab === "pending" ? pendingShown.filter((r) => dayKeyOf(r) === activeDay) : found.filter((r) => r.status === tab))
+    .sort((a, b) => (tab === "pending" ? (releaseOf(a) ?? a.createdAt) - (releaseOf(b) ?? b.createdAt) || a.createdAt - b.createdAt : 0));
   const dueNow = rows.filter((r) => r.status === "pending" && (releaseOf(r) ?? 0) <= todayStart);
   const dueTotal = dueNow.reduce((s, r) => s + r.amount, 0);
+
+  // Approving a request that belongs to a later release day asks first
+  const [early, setEarly] = useState<WithdrawalRequest | null>(null);
+  function askApprove(r: WithdrawalRequest) {
+    if (isFutureDay(r)) { setEarly(r); return; }
+    approve(r.id);
+  }
 
   async function approve(id: string) {
     const { db } = getFirebase();
@@ -227,6 +258,46 @@ export default function AdminWithdrawalsPage() {
           )}
         </div>
 
+        {tab === "pending" && dayKeys.length > 0 && (
+          <>
+            <div className="flex gap-2 overflow-x-auto pb-1 mb-2 [scrollbar-width:thin]" role="tablist" aria-label="Release day">
+              {dayKeys.map((k) => {
+                const st = dayStats(k);
+                const on = k === activeDay;
+                const late = k === "overdue";
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    role="tab"
+                    aria-selected={on}
+                    onClick={() => setDaySel(k)}
+                    className={cn(
+                      "shrink-0 flex flex-col items-start gap-0.5 px-3 py-1.5 rounded-lg border text-left transition",
+                      on ? (late ? "bg-red/10 border-red/50" : "bg-gold/10 border-gold/50") : late ? "border-red/30 hover:bg-red/5" : "border-border hover:bg-card-elev",
+                      needle && st.count === 0 && "opacity-40",
+                    )}
+                  >
+                    <span className={cn("text-[12px] flex items-center gap-1", on ? (late ? "text-red" : "text-gold") : late ? "text-red/80" : "text-text")}>
+                      {late && <AlertTriangle className="w-3 h-3" />}
+                      {dayLabel(k)} · {st.count}
+                    </span>
+                    <span className="text-[10px] font-mono text-text-subtle">{st.count ? formatPHP(st.total) : "—"}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {activeDay && (
+              <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+                <p className={cn("text-[13px] font-medium m-0", activeDay === "overdue" ? "text-red" : "text-text")}>
+                  {activeDay === "overdue" ? "Past their release day, not yet released" : activeDay === "none" ? "No release day set" : `Release ${Number(activeDay) === todayStart ? "today · " : "on "}${formatReleaseDate(Number(activeDay), { withYear: true })}`}
+                </p>
+                <p className="text-[11px] text-text-muted m-0">{dayStats(activeDay).count} request{dayStats(activeDay).count === 1 ? "" : "s"} · {formatPHP(dayStats(activeDay).total)} to send</p>
+              </div>
+            )}
+          </>
+        )}
+
         {loading && (
           <div className="py-8 flex justify-center">
             <Loader2 className="w-5 h-5 text-vault animate-spin" />
@@ -235,7 +306,7 @@ export default function AdminWithdrawalsPage() {
 
         {!loading && filtered.length === 0 && (
           <p className="text-[11px] text-text-subtle text-center py-8 m-0">
-            {needle ? "No withdrawal in this tab matches your search." : "Nothing in this tab."}
+            {needle ? "No withdrawal in this tab matches your search." : tab === "pending" ? "Nothing pending." : "Nothing in this tab."}
           </p>
         )}
 
@@ -295,7 +366,7 @@ export default function AdminWithdrawalsPage() {
               {tab === "pending" ? (
                 <div className="flex gap-1.5 ml-auto sm:ml-0">
                   <button
-                    onClick={() => approve(r.id)}
+                    onClick={() => askApprove(r)}
                     disabled={isBusy}
                     className="text-[11px] px-3 py-1.5 bg-green/15 text-green rounded-md flex items-center gap-1.5 hover:bg-green/25 transition disabled:opacity-60"
                   >
@@ -385,6 +456,20 @@ export default function AdminWithdrawalsPage() {
           );
         })}
       </Card>
+
+      <Modal open={!!early} onClose={() => !busyId && setEarly(null)} title="Release early?">
+        {early && (
+          <div className="flex flex-col gap-3">
+            <p className="text-[12px] m-0 leading-relaxed">
+              {early.userName}’s {formatPHP(early.amount)} is due <span className="text-gold">{formatReleaseDate(releaseOf(early) ?? early.createdAt, { withYear: true })}</span>. Today is {formatReleaseDate(todayStart, { withYear: true })}. Approve it now anyway?
+            </p>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setEarly(null)} className="flex-1 py-2.5 border border-border-strong rounded-lg text-[12px] text-text-muted">Keep for {formatReleaseDate(releaseOf(early) ?? early.createdAt).split(",")[0]}</button>
+              <button type="button" onClick={() => { const id = early.id; setEarly(null); approve(id); }} className="flex-1 py-2.5 rounded-lg bg-green/20 text-green text-[12px] font-medium">Release early</button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={!!confirmDel} onClose={() => !busyId && setConfirmDel(null)} title="Delete this rejected withdrawal?">
         {confirmDel && (
