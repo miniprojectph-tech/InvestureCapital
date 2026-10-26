@@ -31,6 +31,8 @@ export type WithdrawalRequest = {
   payout?: { type: string; provider: string; accountName: string; accountNumber: string; bankName?: string; from?: "profile"; /** the saved method no longer matches the one on the request */ changedSince?: boolean };
   status: WithdrawalStatus;
   createdAt: number;
+  /** The request date before an admin first corrected it. */
+  createdAtOriginal?: number;
   /** Manila midnight of the day this payout is due, per the release schedule at request time. */
   scheduledReleaseAt?: number | null;
   processedAt?: number;
@@ -165,4 +167,9 @@ export function useWithdrawals(scope: Scope = "me") {
   }, [user, demoMode, scope]);
 
   return { rows, loading };
+}
+/** Admin: correct the date a member asked (pending or approved). No notice to the member; audited. */
+export async function setWithdrawalRequestedAt(db: Firestore, w: WithdrawalRequest, adminUid: string, requestedAt: number): Promise<void> {
+  await updateDoc(doc(db, "withdrawals", w.id), { createdAt: requestedAt, requestedAtEditedBy: adminUid, ...(w.createdAtOriginal == null ? { createdAtOriginal: w.createdAt } : {}) });
+  await audit(db, { type: "withdrawal_requested_date", uid: w.userId, userName: w.userName ?? "", withdrawalId: w.id, title: `Request date changed for ${w.userName ?? "a member"}'s ₱${w.amount.toLocaleString()} withdrawal`, before: w.createdAt, after: requestedAt, by: adminUid });
 }

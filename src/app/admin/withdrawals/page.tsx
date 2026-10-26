@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, X, Clock, AlertCircle, Loader2, CalendarClock, CalendarCog } from "lucide-react";
+import { Check, X, Clock, AlertCircle, Loader2, CalendarClock, CalendarCog, Pencil } from "lucide-react";
 import { PayoutDetails } from "@/components/admin/PayoutDetails";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
@@ -18,6 +18,7 @@ import {
   rejectWithdrawal,
   setWithdrawalReleaseDate,
   setWithdrawalProcessedAt,
+  setWithdrawalRequestedAt,
   manilaDayStart,
   manilaDateTime,
   toManilaInput,
@@ -39,12 +40,26 @@ export default function AdminWithdrawalsPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // the row whose release / released date is being edited, and the typed value
-  const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  // field: the release / released date ("release") or the date the member asked ("requested")
+  const [editing, setEditing] = useState<{ id: string; value: string; field?: "release" | "requested" } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   async function saveDate(r: WithdrawalRequest) {
     const { db } = getFirebase();
     if (!db || !user?.isAdmin || !editing) return;
+    if (editing.field === "requested") {
+      const at = manilaDateTime(editing.value);
+      if (at == null) return setError("Pick a date and time first.");
+      if (at > Date.now() + 60_000) return setError("A request date can’t be in the future.");
+      setBusyId(r.id); setError(null); setNotice(null);
+      try {
+        await setWithdrawalRequestedAt(db, r, user.uid, at);
+        setNotice(`${r.userName}’s request date now reads ${new Date(at).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}.${r.status === "pending" ? " Change the release date too if it should move." : ""}`);
+        setEditing(null);
+      } catch (e) { setError(e instanceof Error ? e.message : "Could not change the date"); }
+      finally { setBusyId(null); }
+      return;
+    }
     const ms = r.status === "pending" ? manilaDayStart(editing.value) : manilaDateTime(editing.value);
     if (ms == null) return setError("Pick a date first.");
     if (r.status === "approved" && ms > Date.now() + 60_000) return setError("A released date can't be in the future.");
@@ -199,7 +214,20 @@ export default function AdminWithdrawalsPage() {
               </div>
               <div className="text-right shrink-0">
                 <p className="text-[13px] font-medium font-mono m-0">{formatPHP(r.amount)}</p>
-                <p className="text-[9px] text-text-subtle m-0 mt-0.5">{timeAgo(r.createdAt)}</p>
+                <p className="text-[9px] text-text-subtle m-0 mt-0.5 flex items-center justify-end gap-1">
+                  Asked {formatReleaseDate(r.createdAt)} · {new Date(r.createdAt).toLocaleTimeString("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit" })}
+                  {r.status !== "rejected" && (
+                    <button
+                      onClick={() => { setError(null); setEditing(editing?.id === r.id && editing.field === "requested" ? null : { id: r.id, field: "requested", value: toManilaInput(r.createdAt, true) }); }}
+                      disabled={isBusy}
+                      className={cn("p-0.5 rounded transition", editing?.id === r.id && editing.field === "requested" ? "text-gold" : "text-text-subtle hover:text-gold")}
+                      aria-label={`Edit ${r.userName}’s request date`}
+                      title="Edit request date"
+                    >
+                      <Pencil className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </p>
                 {releaseAt != null && (
                   <p className={cn("text-[9px] m-0 mt-0.5 font-medium", due ? "text-gold" : "text-text-muted")}>
                     {due ? "Due" : "Releases"} {formatReleaseDate(releaseAt)} · {relativeReleaseLabel(releaseAt)}
@@ -229,9 +257,9 @@ export default function AdminWithdrawalsPage() {
                     <X className="w-3 h-3" /> Reject
                   </button>
                   <button
-                    onClick={() => { setError(null); setEditing(editing?.id === r.id ? null : { id: r.id, value: releaseAt != null ? toManilaInput(releaseAt) : toManilaInput(Date.now()) }); }}
+                    onClick={() => { setError(null); setEditing(editing?.id === r.id && editing.field !== "requested" ? null : { id: r.id, field: "release", value: releaseAt != null ? toManilaInput(releaseAt) : toManilaInput(Date.now()) }); }}
                     disabled={isBusy}
-                    className={cn("text-[11px] px-3 py-1.5 rounded-md border transition flex items-center gap-1.5 disabled:opacity-60", editing?.id === r.id ? "bg-gold/15 border-gold/40 text-gold" : "bg-card-elev border-gold/30 text-gold hover:bg-gold/10")}
+                    className={cn("text-[11px] px-3 py-1.5 rounded-md border transition flex items-center gap-1.5 disabled:opacity-60", editing?.id === r.id && editing.field !== "requested" ? "bg-gold/15 border-gold/40 text-gold" : "bg-card-elev border-gold/30 text-gold hover:bg-gold/10")}
                   >
                     <CalendarCog className="w-3 h-3" /> Change date
                   </button>
@@ -249,22 +277,39 @@ export default function AdminWithdrawalsPage() {
                   </span>
                   {r.status === "approved" && (
                     <button
-                      onClick={() => { setError(null); setEditing(editing?.id === r.id ? null : { id: r.id, value: toManilaInput(r.processedAt ?? Date.now(), true) }); }}
+                      onClick={() => { setError(null); setEditing(editing?.id === r.id && editing.field !== "requested" ? null : { id: r.id, field: "release", value: toManilaInput(r.processedAt ?? Date.now(), true) }); }}
                       disabled={isBusy}
-                      className={cn("text-[10px] px-2 py-1 rounded-md border transition flex items-center gap-1 disabled:opacity-60", editing?.id === r.id ? "bg-gold/15 border-gold/40 text-gold" : "bg-card-elev border-border-strong text-text-muted hover:text-text")}
+                      className={cn("text-[10px] px-2 py-1 rounded-md border transition flex items-center gap-1 disabled:opacity-60", editing?.id === r.id && editing.field !== "requested" ? "bg-gold/15 border-gold/40 text-gold" : "bg-card-elev border-border-strong text-text-muted hover:text-text")}
                     >
                       <CalendarCog className="w-3 h-3" /> Edit date
                     </button>
                   )}
                 </div>
               )}
-              {editing?.id === r.id && (
+              {editing?.id === r.id && editing.field === "requested" && (
+                <div className="basis-full flex flex-wrap items-center gap-2 bg-canvas border border-gold/30 rounded-lg px-3 py-2">
+                  <span className="text-[11px] text-text-muted">Asked on</span>
+                  <input
+                    type="datetime-local"
+                    value={editing.value}
+                    onChange={(e) => setEditing({ ...editing, value: e.target.value })}
+                    className="bg-card border border-border rounded-md px-2 py-1 text-[12px] text-text font-mono outline-none focus:border-gold/40"
+                  />
+                  {(() => { const ms = manilaDateTime(editing.value); return ms != null ? <span className="text-[11px] text-text-subtle">{formatReleaseDate(ms, { withYear: true })}</span> : null; })()}
+                  <button onClick={() => saveDate(r)} disabled={isBusy} className="text-[11px] px-3 py-1 rounded-md bg-gold text-gold-dark font-medium disabled:opacity-60 flex items-center gap-1">{isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null} Save</button>
+                  <button onClick={() => setEditing(null)} className="text-[11px] text-text-muted hover:text-text">Cancel</button>
+                  <span className="basis-full text-[9px] text-text-subtle">
+                    Manila time. Changes the request date the member sees; no notification.{r.createdAtOriginal != null ? ` Originally asked ${new Date(r.createdAtOriginal).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}.` : ""}
+                  </span>
+                </div>
+              )}
+              {editing?.id === r.id && editing.field !== "requested" && (
                 <div className="basis-full flex flex-wrap items-center gap-2 bg-canvas border border-gold/30 rounded-lg px-3 py-2">
                   <span className="text-[11px] text-text-muted">{r.status === "pending" ? "New release date" : "Released on"}</span>
                   <input
                     type={r.status === "pending" ? "date" : "datetime-local"}
                     value={editing.value}
-                    onChange={(e) => setEditing({ id: r.id, value: e.target.value })}
+                    onChange={(e) => setEditing({ ...editing, value: e.target.value })}
                     className="bg-card border border-border rounded-md px-2 py-1 text-[12px] text-text font-mono outline-none focus:border-gold/40"
                   />
                   {(() => { const ms = r.status === "pending" ? manilaDayStart(editing.value) : manilaDateTime(editing.value); return ms != null ? <span className="text-[11px] text-text-subtle">{formatReleaseDate(ms, { withYear: true })}{r.status === "pending" ? ` · ${relativeReleaseLabel(ms)}` : ""}</span> : null; })()}
@@ -279,15 +324,4 @@ export default function AdminWithdrawalsPage() {
       </Card>
     </div>
   );
-}
-
-function timeAgo(ts: number) {
-  const diff = Date.now() - ts;
-  const mins = Math.round(diff / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} min ago`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.round(hrs / 24);
-  return `${days}d ago`;
 }
