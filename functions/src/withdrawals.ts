@@ -31,6 +31,18 @@ function destinationOf(m: PayoutMethod): string {
   return `${provider} · ${String(m.accountName ?? "").slice(0, 80)} · ${tail}`.slice(0, 200);
 }
 
+/** Everything needed to send the money, frozen on the request. */
+export function payoutSnapshot(m: PayoutMethod): { type: string; provider: string; accountName: string; accountNumber: string; bankName?: string } {
+  const provider = m.type === "bankTransfer" && m.bankName ? m.bankName : PAYOUT_LABEL[m.type ?? ""] ?? "Payout";
+  return {
+    type: String(m.type ?? ""),
+    provider,
+    accountName: String(m.accountName ?? "").slice(0, 120),
+    accountNumber: String(m.accountNumber ?? "").replace(/\s+/g, "").slice(0, 60),
+    ...(m.bankName ? { bankName: String(m.bankName).slice(0, 80) } : {}),
+  };
+}
+
 /**
  * A member asks to withdraw from their wallet. The wallet debit and the request
  * are ONE transaction, so money can't leave the wallet without a request, and a
@@ -74,6 +86,8 @@ export const requestWithdrawal = onCall(async (request) => {
       amount,
       type: "short-term",
       destination: destinationOf(method),
+      // the full details the admin pays to, as they were when the member asked (admin-only screen)
+      payout: payoutSnapshot(method),
       status: "pending",
       createdAt: now,
       scheduledReleaseAt: releaseDateFor(now, schedule),

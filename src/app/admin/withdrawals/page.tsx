@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, X, Clock, AlertCircle, Loader2, Send, CalendarClock, CalendarCog } from "lucide-react";
+import { Check, X, Clock, AlertCircle, Loader2, CalendarClock, CalendarCog } from "lucide-react";
+import { PayoutDetails } from "@/components/admin/PayoutDetails";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { Card, CardHeader } from "@/components/Card";
@@ -194,10 +195,7 @@ export default function AdminWithdrawalsPage() {
                   {r.userEmail}
                   {r.note && <span className="text-vault-muted ml-1">· {r.note}</span>}
                 </p>
-                <p className="text-[10px] mt-0.5 m-0 truncate flex items-center gap-1">
-                  <Send className="w-2.5 h-2.5 text-gold shrink-0" />
-                  <span className="text-text font-mono">{r.destination}</span>
-                </p>
+                <PayoutDetails r={r} />
               </div>
               <div className="text-right shrink-0">
                 <p className="text-[13px] font-medium font-mono m-0">{formatPHP(r.amount)}</p>

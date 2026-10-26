@@ -29,6 +29,8 @@ export type WithdrawalRequest = {
   amount: number;
   type: WithdrawalKind;
   destination: string;
+  /** Full payout details, frozen when the member asked. `from: "profile"` = filled in later from their saved method. */
+  payout?: { type: string; provider: string; accountName: string; accountNumber: string; bankName?: string; from?: "profile"; /** the saved method no longer matches the one on the request */ changedSince?: boolean };
   status: WithdrawalStatus;
   createdAt: number;
   /** Manila midnight of the day this payout is due, per the release schedule at request time. */
