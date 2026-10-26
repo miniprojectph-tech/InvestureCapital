@@ -5,7 +5,6 @@ import {
   addDoc,
   collection,
   doc,
-  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -16,7 +15,6 @@ import {
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
-import type { UserState } from "./userState";
 
 export type WithdrawalStatus = "pending" | "approved" | "rejected";
 export type WithdrawalKind = "short-term" | "long-term";
@@ -59,48 +57,24 @@ export async function requestWithdrawal(amount: number): Promise<string> {
   return r.data.id;
 }
 
-export async function approveWithdrawal(
-  db: Firestore,
-  id: string,
-  adminUid: string,
-  note?: string
-): Promise<void> {
-  await updateDoc(doc(db, "withdrawals", id), {
-    status: "approved",
-    processedAt: Date.now(),
-    processedBy: adminUid,
-    ...(note ? { note } : {}),
-  });
+/**
+ * Approve / reject run on the server (`adminDecideWithdrawal`): the "Released"
+ * time is the server's clock, never the admin's device, and a rejection's
+ * wallet refund happens in the same transaction, once.
+ */
+async function decide(id: string, decision: "approve" | "reject", note?: string): Promise<void> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Not connected");
+  await httpsCallable<{ id: string; decision: string; note?: string }, { ok: boolean }>(functions, "adminDecideWithdrawal")({ id, decision, ...(note ? { note } : {}) });
 }
 
-/**
- * Admin rejects: marks doc rejected AND refunds the user's wallet.
- */
-export async function rejectWithdrawal(
-  db: Firestore,
-  id: string,
-  adminUid: string,
-  note?: string
-): Promise<void> {
-  const wRef = doc(db, "withdrawals", id);
-  const wSnap = await getDoc(wRef);
-  if (!wSnap.exists()) throw new Error("Withdrawal not found");
-  const w = wSnap.data() as WithdrawalRequest;
-  // Refund wallet
-  const userRef = doc(db, "users", w.userId);
-  const userSnap = await getDoc(userRef);
-  if (userSnap.exists()) {
-    const u = userSnap.data() as UserState;
-    await updateDoc(userRef, {
-      "balances.wallet": u.balances.wallet + w.amount,
-    });
-  }
-  await updateDoc(wRef, {
-    status: "rejected",
-    processedAt: Date.now(),
-    processedBy: adminUid,
-    ...(note ? { note } : {}),
-  });
+export async function approveWithdrawal(_db: Firestore, id: string, _adminUid: string, note?: string): Promise<void> {
+  await decide(id, "approve", note);
+}
+
+/** Admin rejects: the server marks it rejected AND refunds the member's wallet. */
+export async function rejectWithdrawal(_db: Firestore, id: string, _adminUid: string, note?: string): Promise<void> {
+  await decide(id, "reject", note);
 }
 
 const HOUR_MS = 3_600_000;

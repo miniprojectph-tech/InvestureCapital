@@ -2,6 +2,7 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions";
 import { db } from "./init";
+import { FieldValue } from "firebase-admin/firestore";
 import { grantBonusSpins } from "./events";
 import { mergeWithdrawalSchedule, releaseDateFor, formatReleaseDate, type WithdrawalScheduleConfig } from "./withdrawalSchedule";
 
@@ -163,4 +164,39 @@ export const onWithdrawalWritten = onDocumentWritten("withdrawals/{id}", async (
     });
   }
   logger.info("withdrawal notification", { id: event.params.id, status: after.status });
+});
+
+/**
+ * Admin approves or rejects a pending withdrawal. The time is the SERVER's
+ * clock (an admin device with a wrong date once stamped approvals 36 hours
+ * early), and the whole decision is one transaction: only a pending request
+ * can be decided, so a double-click can't refund the wallet twice.
+ */
+export const adminDecideWithdrawal = onCall(async (request) => {
+  const adminUid = request.auth?.uid;
+  if (!adminUid) throw new HttpsError("unauthenticated", "Sign in required.");
+  const caller = await db.collection("users").doc(adminUid).get();
+  if (caller.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Admin role required.");
+  const d = (request.data ?? {}) as { id?: unknown; decision?: unknown; note?: unknown };
+  const id = typeof d.id === "string" ? d.id : "";
+  const decision = d.decision === "approve" || d.decision === "reject" ? d.decision : null;
+  const note = typeof d.note === "string" ? d.note.trim().slice(0, 300) : "";
+  if (!id || !/^[A-Za-z0-9]{6,40}$/.test(id)) throw new HttpsError("invalid-argument", "Pick a withdrawal.");
+  if (!decision) throw new HttpsError("invalid-argument", "Approve or reject.");
+
+  const wRef = db.collection("withdrawals").doc(id);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(wRef);
+    if (!snap.exists) throw new HttpsError("not-found", "That withdrawal no longer exists.");
+    const w = snap.data() as Withdrawal & { status?: string };
+    if (w.status !== "pending") throw new HttpsError("failed-precondition", `This withdrawal was already ${w.status === "approved" ? "released" : w.status}.`);
+    const now = Date.now();
+    if (decision === "reject") {
+      const userRef = db.collection("users").doc(w.userId);
+      const u = await tx.get(userRef);
+      if (u.exists) tx.update(userRef, { "balances.wallet": FieldValue.increment(Number(w.amount) || 0) });
+    }
+    tx.update(wRef, { status: decision === "approve" ? "approved" : "rejected", processedAt: now, processedBy: adminUid, ...(note ? { note } : {}) });
+    return { ok: true, status: decision === "approve" ? "approved" : "rejected", processedAt: now };
+  });
 });
