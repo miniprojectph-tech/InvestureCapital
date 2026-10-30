@@ -20,6 +20,9 @@ export type PromoFrequency = "once" | "daily" | "always";
 /** all members · members with no placement yet · members with an active placement. */
 export type PromoAudience = "all" | "noPlacement" | "active";
 
+/** One picture of a swipeable set; the label becomes a tab members can tap. */
+export type PromoSlide = { url: string; label: string; path?: string };
+
 export type Promo = {
   id: string;
   /** Admin-only label for the list (members never see it). */
@@ -28,6 +31,8 @@ export type Promo = {
   /** Same light markup as FAQ answers: blank line = paragraph, "- " = bullet, **bold**. */
   body: string;
   media: FaqMedia | null;
+  /** Several pictures to swipe through (a contest: cover, mechanics, prizes…). Used instead of `media` when set. */
+  slides?: PromoSlide[];
   buttonLabel: string;
   /** "/plans", "/faq", … or a full https:// address. Empty = no button. */
   buttonHref: string;
@@ -46,6 +51,8 @@ export type PromoDoc = { items: Promo[]; updatedAt?: number; updatedBy?: string 
 export const PROMO_MAX_TITLE = 80;
 export const PROMO_MAX_BODY = 1200;
 export const PROMO_MAX_BUTTON = 30;
+export const PROMO_MAX_SLIDES = 10;
+export const PROMO_MAX_SLIDE_LABEL = 24;
 
 export function newPromo(): Promo {
   const now = Date.now();
@@ -67,9 +74,9 @@ export function newPromo(): Promo {
   };
 }
 
-/** Something to show: a title, a message or media. */
+/** Something to show: a title, a message, media or pictures to swipe. */
 export function promoHasContent(p: Promo): boolean {
-  return !!(p.title.trim() || p.body.trim() || p.media);
+  return !!(p.title.trim() || p.body.trim() || p.media || (p.slides && p.slides.length > 0));
 }
 
 export function promoInWindow(p: Promo, now = Date.now()): boolean {
@@ -173,6 +180,7 @@ export async function savePromos(items: Promo[], uid: string): Promise<void> {
     buttonLabel: p.buttonLabel.trim().slice(0, PROMO_MAX_BUTTON),
     buttonHref: p.buttonHref.trim().slice(0, 300),
     media: p.media ? stripUndefined({ ...p.media }) : null,
+    slides: (p.slides ?? []).slice(0, PROMO_MAX_SLIDES).map((s) => stripUndefined({ url: s.url, label: s.label.trim().slice(0, PROMO_MAX_SLIDE_LABEL), path: s.path })),
   }));
   await setDoc(doc(db, "content", "promos"), { items: clean, updatedAt: Date.now(), updatedBy: uid, serverUpdatedAt: serverTimestamp() });
 }

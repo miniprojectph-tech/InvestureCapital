@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, ArrowRight, Play } from "lucide-react";
+import { X, ArrowRight, Play, ChevronLeft, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { useUserState } from "@/lib/useUserState";
 import { FaqAnswer } from "@/components/faq/FaqAnswer";
 import { formatDuration, type FaqItem, type FaqMedia } from "@/lib/faq";
@@ -16,6 +17,7 @@ import {
   shouldShowPromo,
   markPromoSeen,
   type Promo,
+  type PromoSlide,
 } from "@/lib/promos";
 
 /**
@@ -136,6 +138,97 @@ function PromoMedia({ media }: { media: FaqMedia }) {
   );
 }
 
+/**
+ * Several pictures to swipe through: native horizontal scroll with snap (so a
+ * finger swipe just works), arrows and keyboard on a computer, dots and a
+ * "3 / 4" counter, and the slide labels as tabs. Every slide takes the shape of
+ * the first picture, so the card never jumps in size while swiping.
+ */
+export function PromoCarousel({ slides }: { slides: PromoSlide[] }) {
+  const track = useRef<HTMLDivElement>(null);
+  const firstImg = useRef<HTMLImageElement>(null);
+  const [index, setIndex] = useState(0);
+  const [ratio, setRatio] = useState<string>("4 / 5");
+  const n = slides.length;
+
+  // the first picture decides the card's shape; a cached picture may be loaded before onLoad can fire
+  const shapeFrom = (im: HTMLImageElement | null) => { if (im?.naturalWidth && im.naturalHeight) setRatio(`${im.naturalWidth} / ${im.naturalHeight}`); };
+  useEffect(() => { if (firstImg.current?.complete) shapeFrom(firstImg.current); }, [slides]);
+
+  // which slide is in view follows the scroll position
+  function onScroll() {
+    const el = track.current;
+    if (!el || el.clientWidth === 0) return;
+    const i = Math.round(el.scrollLeft / el.clientWidth);
+    if (i !== index && i >= 0 && i < n) setIndex(i);
+  }
+  function go(i: number) {
+    const el = track.current;
+    if (!el) return;
+    const next = Math.max(0, Math.min(n - 1, i));
+    el.scrollTo({ left: next * el.clientWidth, behavior: "smooth" });
+    setIndex(next);
+  }
+
+  return (
+    <div className="flex flex-col">
+      <div className="relative" style={{ aspectRatio: ratio }}>
+        <div
+          ref={track}
+          onScroll={onScroll}
+          onKeyDown={(e) => { if (e.key === "ArrowRight") go(index + 1); if (e.key === "ArrowLeft") go(index - 1); }}
+          tabIndex={0}
+          role="group"
+          aria-roledescription="carousel"
+          aria-label={`${n} pictures`}
+          className="absolute inset-0 flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden outline-none bg-black"
+        >
+          {slides.map((s, i) => (
+            <div key={s.url + i} className="w-full h-full shrink-0 snap-center snap-always flex items-center justify-center" aria-hidden={i !== index} aria-label={s.label || `Picture ${i + 1}`}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={s.url}
+                alt={s.label}
+                draggable={false}
+                ref={i === 0 ? firstImg : undefined}
+                onLoad={i === 0 ? (e) => shapeFrom(e.currentTarget) : undefined}
+                className="block w-full h-full object-contain select-none"
+              />
+            </div>
+          ))}
+        </div>
+        {n > 1 && (
+          <>
+            <span className="absolute top-3 left-3 text-[10px] font-mono bg-black/60 text-white px-2 py-0.5 rounded-full pointer-events-none">{index + 1} / {n}</span>
+            {index > 0 && (
+              <button type="button" onClick={() => go(index - 1)} aria-label="Previous picture" className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 text-white flex items-center justify-center hover:bg-black/80 ring-1 ring-white/15">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            )}
+            {index < n - 1 && (
+              <button type="button" onClick={() => go(index + 1)} aria-label="Next picture" className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 text-white flex items-center justify-center hover:bg-black/80 ring-1 ring-white/15">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            )}
+            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-center gap-1.5 pointer-events-none">
+              {slides.map((_, i) => <span key={i} className={cn("h-1.5 rounded-full transition-all", i === index ? "w-4 bg-gold" : "w-1.5 bg-white/50")} />)}
+            </div>
+          </>
+        )}
+      </div>
+      {n > 1 && slides.some((s) => s.label.trim()) && (
+        <div className="flex gap-1.5 px-3 pt-2.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Jump to a picture">
+          {slides.map((s, i) => (
+            <button key={i} type="button" role="tab" aria-selected={i === index} onClick={() => go(i)} className={cn("shrink-0 text-[10px] px-2.5 py-1 rounded-full transition", i === index ? "bg-gold text-gold-dark font-medium" : "bg-card-elev text-text-muted hover:text-text")}>
+              {s.label.trim() || `${i + 1}`}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** The card itself — also used by the admin preview. Laid out like the event card: banner, title, text, button. */
 export function PromoCard({ promo, onDismiss }: { promo: Promo; onDismiss?: (never?: boolean) => void }) {
   // The FAQ renderer handles the text markup (paragraphs, bullets, bold, links).
@@ -149,7 +242,9 @@ export function PromoCard({ promo, onDismiss }: { promo: Promo; onDismiss?: (nev
     <div className="flex flex-col">
       {/* banner */}
       <div className="relative overflow-hidden rounded-t-3xl bg-canvas">
-        {promo.media ? (
+        {promo.slides && promo.slides.length > 0 ? (
+          <PromoCarousel key={promo.slides.map((s) => s.url).join("|")} slides={promo.slides} />
+        ) : promo.media ? (
           // key: a different video must start fresh, not keep the old one playing
           <PromoMedia key={promo.media.url} media={promo.media} />
         ) : (

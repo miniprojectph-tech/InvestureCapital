@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Plus, Trash2, Loader2, Image as ImageIcon, Video as VideoIcon, Link2, X, CheckCircle2, AlertCircle, HelpCircle, Play } from "lucide-react";
+import { Plus, Trash2, Loader2, Image as ImageIcon, Video as VideoIcon, Link2, X, CheckCircle2, AlertCircle, HelpCircle, Play, Images, ChevronUp, ChevronDown } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { PromoCard } from "@/components/promos/PromoPopup";
@@ -20,6 +20,8 @@ import {
   PROMO_MAX_TITLE,
   PROMO_MAX_BODY,
   PROMO_MAX_BUTTON,
+  PROMO_MAX_SLIDES,
+  PROMO_MAX_SLIDE_LABEL,
   type Promo,
   type PromoFrequency,
   type PromoAudience,
@@ -57,7 +59,9 @@ export default function AdminPromosPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [uploading, setUploading] = useState<"image" | "video" | null>(null);
+  const [uploading, setUploading] = useState<"image" | "video" | "slides" | null>(null);
+  const [slideProgress, setSlideProgress] = useState<string | null>(null);
+  const slidesInput = useRef<HTMLInputElement>(null);
   const [ytUrl, setYtUrl] = useState<string | null>(null);
   const [faqPick, setFaqPick] = useState(false);
   const imgInput = useRef<HTMLInputElement>(null);
@@ -120,7 +124,7 @@ export default function AdminPromosPage() {
     setMsg(null);
     try {
       const m = kind === "image" ? await uploadFaqImage(storage, user.uid, file) : await uploadFaqVideo(storage, user.uid, file);
-      patch({ media: m });
+      patch({ media: m, slides: [] });
     } catch (e) {
       setMsg({ ok: false, text: describeStorageError(e) });
     } finally {
@@ -128,11 +132,56 @@ export default function AdminPromosPage() {
     }
   }
 
+  /** Several pictures at once → swipeable slides (replaces a single picture/video). */
+  async function addSlides(files: FileList | null) {
+    if (!files || files.length === 0 || !current || !user) return;
+    const { storage } = getFirebase();
+    if (!storage) return;
+    const room = PROMO_MAX_SLIDES - (current.slides?.length ?? 0);
+    if (room <= 0) return setMsg({ ok: false, text: `A pop-up can have at most ${PROMO_MAX_SLIDES} pictures.` });
+    const list = Array.from(files).slice(0, room);
+    setUploading("slides");
+    setMsg(null);
+    const added: { url: string; label: string; path?: string }[] = [];
+    try {
+      for (let i = 0; i < list.length; i++) {
+        setSlideProgress(`Uploading picture ${i + 1} of ${list.length}…`);
+        const m = await uploadFaqImage(storage, user.uid, list[i]);
+        added.push({ url: m.url, label: "" });
+      }
+      const slides = [...(current.slides ?? []), ...added];
+      patch({ slides, media: null });
+      if (files.length > room) setMsg({ ok: false, text: `Only the first ${room} picture${room === 1 ? "" : "s"} were added — the limit is ${PROMO_MAX_SLIDES}.` });
+    } catch (e) {
+      if (added.length) patch({ slides: [...(current.slides ?? []), ...added], media: null });
+      setMsg({ ok: false, text: describeStorageError(e) });
+    } finally {
+      setUploading(null);
+      setSlideProgress(null);
+    }
+  }
+  function setSlide(i: number, change: Partial<{ label: string }>) {
+    if (!current?.slides) return;
+    patch({ slides: current.slides.map((sl, k) => (k === i ? { ...sl, ...change } : sl)) });
+  }
+  function moveSlide(i: number, dir: -1 | 1) {
+    if (!current?.slides) return;
+    const j = i + dir;
+    if (j < 0 || j >= current.slides.length) return;
+    const next = current.slides.slice();
+    [next[i], next[j]] = [next[j], next[i]];
+    patch({ slides: next });
+  }
+  function removeSlide(i: number) {
+    if (!current?.slides) return;
+    patch({ slides: current.slides.filter((_, k) => k !== i) });
+  }
+
   function addYoutube() {
     if (ytUrl === null) return;
     const m = youtubeMedia(ytUrl);
     if (!m) return setMsg({ ok: false, text: "That doesn't look like a YouTube link." });
-    patch({ media: m });
+    patch({ media: m, slides: [] });
     setYtUrl(null);
   }
 
@@ -177,7 +226,7 @@ export default function AdminPromosPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] m-0 truncate">{p.name || p.title || "Untitled pop-up"}</p>
                   <p className="text-[10px] text-text-subtle m-0 mt-0.5 truncate">
-                    {p.media ? (p.media.kind === "image" ? "Picture" : "Video") : "Text only"} · {p.frequency === "once" ? "shown once" : p.frequency === "daily" ? "once a day" : "every visit"}
+                    {p.slides && p.slides.length ? `${p.slides.length} pictures (swipe)` : p.media ? (p.media.kind === "image" ? "Picture" : "Video") : "Text only"} · {p.frequency === "once" ? "shown once" : p.frequency === "daily" ? "once a day" : "every visit"}
                   </p>
                 </div>
                 <span className={cn("text-[9px] px-2 py-0.5 rounded-full font-medium shrink-0", st.cls)}>{st.label}</span>
@@ -220,11 +269,13 @@ export default function AdminPromosPage() {
               {/* media */}
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] font-medium text-text">Picture or video <span className="text-text-subtle font-normal">· one per pop-up</span></span>
+                  <span className="text-[11px] font-medium text-text">Picture, pictures to swipe, or video <span className="text-text-subtle font-normal">· one kind per pop-up</span></span>
                   <div className="flex flex-wrap gap-1.5">
                     <input ref={imgInput} type="file" accept="image/*" hidden onChange={(e) => { addFile("image", e.target.files?.[0]); e.target.value = ""; }} />
                     <input ref={vidInput} type="file" accept="video/mp4,video/webm,video/quicktime" hidden onChange={(e) => { addFile("video", e.target.files?.[0]); e.target.value = ""; }} />
+                    <input ref={slidesInput} type="file" accept="image/*" multiple hidden onChange={(e) => { addSlides(e.target.files); e.target.value = ""; }} />
                     <MediaButton icon={ImageIcon} label="Picture" busy={uploading === "image"} disabled={!!uploading} onClick={() => imgInput.current?.click()} />
+                    <MediaButton icon={Images} label="Pictures (swipe)" busy={uploading === "slides"} disabled={!!uploading} onClick={() => slidesInput.current?.click()} />
                     <MediaButton icon={VideoIcon} label="Upload video" busy={uploading === "video"} disabled={!!uploading} onClick={() => vidInput.current?.click()} />
                     <MediaButton icon={Link2} label="YouTube link" disabled={!!uploading} onClick={() => { setYtUrl(""); setFaqPick(false); }} />
                     <MediaButton icon={HelpCircle} label="From FAQ" disabled={!!uploading || faqMedia.length === 0} onClick={() => { setFaqPick((v) => !v); setYtUrl(null); }} />
@@ -241,7 +292,7 @@ export default function AdminPromosPage() {
                   <div className="border border-border rounded-lg p-2 flex flex-col gap-1 max-h-[220px] overflow-y-auto">
                     <p className="text-[10px] text-text-subtle m-0 px-1 pb-1">Reuse something already on the Help &amp; FAQ page (no second upload, no extra storage):</p>
                     {faqMedia.map(({ q, m }, i) => (
-                      <button key={i} onClick={() => { patch({ media: m }); setFaqPick(false); }} className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-card-elev text-left">
+                      <button key={i} onClick={() => { patch({ media: m, slides: [] }); setFaqPick(false); }} className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-card-elev text-left">
                         <span className="relative w-14 h-9 rounded bg-canvas border border-border overflow-hidden shrink-0 flex items-center justify-center">
                           {(m.poster || m.thumb || (m.kind === "image" && m.url)) ? (
                             // eslint-disable-next-line @next/next/no-img-element
@@ -257,7 +308,38 @@ export default function AdminPromosPage() {
                     ))}
                   </div>
                 )}
-                {current.media ? (
+                {slideProgress && <p className="text-[10px] text-text-muted m-0 flex items-center gap-1.5"><Loader2 className="w-3 h-3 animate-spin" /> {slideProgress}</p>}
+                {current.slides && current.slides.length > 0 ? (
+                  <div className="flex flex-col gap-1.5">
+                    {current.slides.map((sl, i) => (
+                      <div key={sl.url + i} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-canvas border border-border">
+                        <span className="text-[10px] font-mono text-text-subtle w-4 text-center shrink-0">{i + 1}</span>
+                        <span className="w-12 h-12 rounded bg-card-elev overflow-hidden shrink-0 flex items-center justify-center">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={sl.url} alt="" className="w-full h-full object-cover" />
+                        </span>
+                        <input
+                          className={cn(input, "flex-1 py-1.5")}
+                          value={sl.label}
+                          maxLength={PROMO_MAX_SLIDE_LABEL}
+                          placeholder={i === 0 ? "Label, e.g. Cover" : i === 1 ? "e.g. Mechanics" : "Label (optional)"}
+                          onChange={(e) => setSlide(i, { label: e.target.value })}
+                        />
+                        <div className="flex flex-col shrink-0">
+                          <button type="button" onClick={() => moveSlide(i, -1)} disabled={i === 0} className="p-0.5 text-text-subtle hover:text-text disabled:opacity-25" aria-label="Move up"><ChevronUp className="w-3.5 h-3.5" /></button>
+                          <button type="button" onClick={() => moveSlide(i, 1)} disabled={i === current.slides!.length - 1} className="p-0.5 text-text-subtle hover:text-text disabled:opacity-25" aria-label="Move down"><ChevronDown className="w-3.5 h-3.5" /></button>
+                        </div>
+                        <button type="button" onClick={() => removeSlide(i)} className="p-1 text-text-subtle hover:text-red shrink-0" aria-label="Remove picture"><X className="w-3.5 h-3.5" /></button>
+                      </div>
+                    ))}
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[10px] text-text-subtle m-0">Members swipe through these in this order; a label becomes a tab they can tap. Use pictures of the same shape. {current.slides.length} of {PROMO_MAX_SLIDES}.</p>
+                      {current.slides.length < PROMO_MAX_SLIDES && (
+                        <button type="button" onClick={() => slidesInput.current?.click()} disabled={!!uploading} className="text-[10px] text-gold hover:underline disabled:opacity-40 flex items-center gap-1"><Plus className="w-3 h-3" /> Add pictures</button>
+                      )}
+                    </div>
+                  </div>
+                ) : current.media ? (
                   <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-canvas border border-border">
                     <span className="relative w-16 h-10 rounded bg-card-elev overflow-hidden shrink-0 flex items-center justify-center">
                       {(current.media.poster || current.media.thumb || (current.media.kind === "image" && current.media.url)) ? (
@@ -272,7 +354,7 @@ export default function AdminPromosPage() {
                     <button onClick={() => patch({ media: null })} className="text-[10px] text-text-muted hover:text-red">Remove</button>
                   </div>
                 ) : (
-                  <p className="text-[10px] text-text-subtle m-0">None yet. Uploads allow videos up to 40 MB and 2 minutes.</p>
+                  <p className="text-[10px] text-text-subtle m-0">None yet. “Pictures (swipe)” lets you pick several at once, up to {PROMO_MAX_SLIDES}. Uploads allow videos up to 40 MB and 2 minutes.</p>
                 )}
               </div>
 
