@@ -31,6 +31,8 @@ export type InvestorRow = {
   totalEarned: number;
   joinedAt: number;
   isAdmin: boolean;
+  /** The upline (sponsor) uid, if any. */
+  referredByUserId?: string;
 };
 
 export type AdminAggregate = {
@@ -63,6 +65,7 @@ export async function listInvestors(db: Firestore, max = 100): Promise<InvestorR
         completed.reduce((s, p) => s + (p.totalPaid ?? 0) + (p.lockedBonusPaid ?? 0), 0),
       joinedAt: data.profile?.joinedAt ?? 0,
       isAdmin: data.isAdmin === true,
+      referredByUserId: typeof data.referredByUserId === "string" ? data.referredByUserId : undefined,
     };
   });
 }
@@ -213,5 +216,15 @@ export async function adminSetJoinedAt(uid: string, joinedAt: number): Promise<{
   const { functions } = getFirebase();
   if (!functions) throw new Error("Not connected");
   const r = await httpsCallable<{ uid: string; joinedAt: number }, { before: number; after: number }>(functions, "adminSetJoinedAt")({ uid, joinedAt });
+  return r.data;
+}
+
+export type UplineLine = { placementId: string; capital: number; level?: number; toUserId?: string; toUserName?: string; pct?: number; amount?: number; paid?: boolean; reason?: string | null; skipped?: string };
+export type UplineResult = { ok: boolean; dryRun?: boolean; previous: string | null; uplineName: string; lines: UplineLine[]; total: number; chain?: { uid: string; name: string }[] };
+/** Admin: set / change a member's upline, optionally back-paying commissions on placements that never paid any. `dryRun` previews. */
+export async function adminSetUpline(args: { uid: string; uplineUid: string; backpay: boolean; dryRun?: boolean; reason?: string }): Promise<UplineResult> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Not connected");
+  const r = await httpsCallable<typeof args, UplineResult>(functions, "adminSetUpline")(args);
   return r.data;
 }

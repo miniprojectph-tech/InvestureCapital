@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye, Users, Pencil, Gift, Wallet, Layers, Gamepad2, type LucideIcon } from "lucide-react";
+import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye, Users, Pencil, Gift, Wallet, Layers, Gamepad2, UserPlus, type LucideIcon } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
@@ -11,6 +11,7 @@ import { InvestorPlansPanel } from "@/components/admin/InvestorPlansPanel";
 import { MembersExportButton } from "@/components/admin/MembersExportButton";
 import { DeleteMemberModal } from "@/components/admin/DeleteMemberModal";
 import { ResetPasswordModal } from "@/components/admin/ResetPasswordModal";
+import { SetUplineModal } from "@/components/admin/SetUplineModal";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -218,6 +219,8 @@ export default function AdminInvestorsPage() {
   const [reloadTick, setReloadTick] = useState(0);
   // Joined tab: the member whose join date is being edited, and the typed Manila date-time
   const [joinEdit, setJoinEdit] = useState<{ uid: string; value: string } | null>(null);
+  // Joined tab: the member whose upline is being set
+  const [uplineFor, setUplineFor] = useState<InvestorRow | null>(null);
   const [joinBusy, setJoinBusy] = useState(false);
   async function saveJoined(u: InvestorRow) {
     if (!joinEdit) return;
@@ -591,20 +594,22 @@ export default function AdminInvestorsPage() {
           <ResponsiveTable>
             <table className="w-full text-[11px] table-fixed min-w-[780px]">
               <colgroup>
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "18%" }} />
-                <col style={{ width: "12%" }} />
+                <col style={{ width: "13%" }} />
+                <col style={{ width: "16%" }} />
+                <col style={{ width: "11%" }} />
+                <col style={{ width: "13%" }} />
+                <col style={{ width: "8%" }} />
                 <col style={{ width: "10%" }} />
-                <col style={{ width: "12%" }} />
-                <col style={{ width: "12%" }} />
                 <col style={{ width: "10%" }} />
-                <col style={{ width: "12%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "11%" }} />
               </colgroup>
               <thead>
                 <tr className="text-text-subtle text-left">
                   <th className="font-normal py-2 px-1">Name</th>
                   <th className="font-normal py-2 px-1">Email</th>
                   <th className="font-normal py-2 px-1">Joined</th>
+                  <th className="font-normal py-2 px-1">Upline</th>
                   <th className="font-normal py-2 px-1 text-right">Placements</th>
                   <th className="font-normal py-2 px-1 text-right">Wallet</th>
                   <th className="font-normal py-2 px-1 text-right">Locked-In Due</th>
@@ -632,6 +637,21 @@ export default function AdminInvestorsPage() {
                               <Pencil className="w-3 h-3" />
                             </button>
                           )}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 px-1 text-[10px]">
+                      {u.isAdmin ? (
+                        <span className="text-text-dim">—</span>
+                      ) : u.referredByUserId ? (
+                        <span className="inline-flex items-center gap-1 min-w-0">
+                          <span className="truncate text-text">{rows.find((r) => r.uid === u.referredByUserId)?.name ?? `${u.referredByUserId.slice(0, 6)}…`}</span>
+                          <button onClick={() => { setAccountMsg(null); setUplineFor(u); }} className="p-0.5 text-text-subtle hover:text-gold shrink-0" aria-label={`Change ${u.name}'s upline`} title="Change upline"><Pencil className="w-3 h-3" /></button>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="text-red">None</span>
+                          <button onClick={() => { setAccountMsg(null); setUplineFor(u); }} className="text-[10px] px-1.5 py-0.5 rounded-md border border-gold/40 text-gold hover:bg-gold/10 inline-flex items-center gap-1 whitespace-nowrap"><UserPlus className="w-3 h-3" /> Set upline</button>
                         </span>
                       )}
                     </td>
@@ -674,7 +694,7 @@ export default function AdminInvestorsPage() {
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={8} className="text-center text-text-subtle py-8">No investors match your search.</td></tr>
+                  <tr><td colSpan={9} className="text-center text-text-subtle py-8">No investors match your search.</td></tr>
                 )}
               </tbody>
             </table>
@@ -683,6 +703,7 @@ export default function AdminInvestorsPage() {
       )}
 
       <ResetPasswordModal member={resetting} onClose={() => setResetting(null)} />
+      <SetUplineModal member={uplineFor} investors={rows} onClose={() => setUplineFor(null)} onDone={(m) => { setUplineFor(null); setAccountMsg(m); reloadInvestors(); }} />
       <DeleteMemberModal
         member={deleting}
         onClose={() => setDeleting(null)}

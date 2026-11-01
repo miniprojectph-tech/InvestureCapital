@@ -45,6 +45,7 @@ export {
   adminPaySkippedCommission,
   adminResetEconomy,
   adminSetTestClock,
+  adminSetUpline,
   tickTestClocks,
 } from "./compplan";
 export { getReferralStats } from "./referral-stats";

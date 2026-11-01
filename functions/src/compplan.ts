@@ -1216,3 +1216,128 @@ export const tickTestClocks = onSchedule("every 1 minutes", async () => {
     }
   }
 });
+
+// ============================================================================
+// Admin: set or change a member's upline (sponsor)
+// ============================================================================
+
+type UplineLine = {
+  placementId: string;
+  capital: number;
+  level?: number;
+  toUserId?: string;
+  toUserName?: string;
+  pct?: number;
+  amount?: number;
+  paid?: boolean;
+  reason?: string | null;
+  /** the whole placement was left alone (it already paid commissions) */
+  skipped?: string;
+};
+
+/**
+ * A member who forgot the referral link can be attached to their upline after
+ * the fact. Optionally back-pays the six-level commissions their existing
+ * placements would have paid (today's rates, no event multipliers, Fast-Start
+ * not re-checked), but only on placements that never paid any commission, so
+ * changing an upline can't pay twice. `dryRun` returns the lines without writing.
+ */
+export const adminSetUpline = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const adminUid = request.auth.uid;
+  await assertAdmin(adminUid);
+  const d = (request.data ?? {}) as { uid?: unknown; uplineUid?: unknown; backpay?: unknown; dryRun?: unknown; reason?: unknown };
+  const uid = typeof d.uid === "string" ? d.uid : "";
+  const uplineUid = typeof d.uplineUid === "string" ? d.uplineUid : "";
+  const backpay = d.backpay === true;
+  const dryRun = d.dryRun === true;
+  const reason = typeof d.reason === "string" ? d.reason.trim().slice(0, 200) : "";
+  if (!uid || !uplineUid) throw new HttpsError("invalid-argument", "Pick the member and the upline.");
+  if (uid === uplineUid) throw new HttpsError("invalid-argument", "A member can't be their own upline.");
+  const cfg = await loadCompPlan();
+  const now = Date.now();
+
+  return db.runTransaction(async (tx) => {
+    const memberSnap = await tx.get(userRef(uid));
+    if (!memberSnap.exists) throw new HttpsError("not-found", "Member not found.");
+    const member = memberSnap.data() as UserDoc;
+    const previous = member.referredByUserId ?? null;
+    if (previous === uplineUid) throw new HttpsError("failed-precondition", "That member is already the upline.");
+
+    // The new upline's own chain, which must not lead back to the member.
+    const chain: { uid: string; data: UserDoc }[] = [];
+    const seen = new Set<string>([uid]);
+    let cursor: string | undefined = uplineUid;
+    while (cursor && !seen.has(cursor) && chain.length < 30) {
+      seen.add(cursor);
+      const snap = await tx.get(userRef(cursor));
+      if (!snap.exists) { if (cursor === uplineUid) throw new HttpsError("not-found", "Upline not found."); break; }
+      const data = snap.data() as UserDoc;
+      chain.push({ uid: cursor, data });
+      cursor = data.referredByUserId;
+    }
+    if (cursor === uid) throw new HttpsError("failed-precondition", `That would make a loop: ${displayName(chain[0]?.data, uplineUid)} is already in this member's downline.`);
+    const uplines = chain.slice(0, cfg.referralLevels.length);
+    const memberName = displayName(member, uid);
+    const uplineName = displayName(chain[0]?.data, uplineUid);
+
+    // Back-pay: only placements that never paid a commission (reads before writes).
+    const lines: UplineLine[] = [];
+    let total = 0;
+    if (backpay) {
+      const placements = [...(member.placements ?? []), ...(member.completedPlacements ?? [])];
+      for (const p of placements) {
+        const existing = await tx.get(db.collection("commissions").where("placementId", "==", p.id).where("type", "==", "level").limit(1));
+        if (!existing.empty) { lines.push({ placementId: p.id, capital: p.capital, skipped: "already paid commissions" }); continue; }
+        uplines.forEach((up, i) => {
+          const pct = cfg.referralLevels[i] ?? 0;
+          const amount = Math.round(((p.capital * pct) / 100) * 100) / 100;
+          const active = !cfg.requireActiveReferral || isActiveUpline(up.data, cfg);
+          const paid = active && amount > 0;
+          lines.push({ placementId: p.id, capital: p.capital, level: i + 1, toUserId: up.uid, toUserName: displayName(up.data, up.uid), pct, amount, paid, reason: paid ? null : active ? "zero commission" : `no active placement of ${peso(cfg.uplineMinActive)}` });
+          if (paid) total += amount;
+        });
+      }
+    }
+    total = Math.round(total * 100) / 100;
+    if (dryRun) return { ok: true, dryRun: true, previous, uplineName, lines, total, chain: uplines.map((u) => ({ uid: u.uid, name: displayName(u.data, u.uid) })) };
+
+    const writes: Write[] = [];
+    const patches = new UserPatches();
+    patches.set(uid, { referredByUserId: uplineUid, uplineHistory: FieldValue.arrayUnion({ from: previous, to: uplineUid, at: now, by: adminUid, reason }) });
+    for (const l of lines) {
+      if (l.level === undefined || !l.toUserId) continue;
+      writes.push({
+        ref: commissionRef(),
+        data: {
+          type: "level", level: l.level, toUserId: l.toUserId, toUserName: l.toUserName, fromUserId: uid, fromUserName: memberName,
+          placementId: l.placementId, placementAmount: l.capital, pct: l.pct, amount: l.amount,
+          status: l.paid ? "paid" : "skipped", reason: l.paid ? "upline set by admin" : l.reason,
+          backpay: true, schedOffsetMs: 0, createdAt: now, creditedAt: now,
+        },
+      });
+      if (!l.paid || !l.amount) continue;
+      patches.credit(l.toUserId, l.amount);
+      activity(writes, l.toUserId, {
+        type: "referral-commission",
+        title: `Level ${l.level} commission — ${memberName}`,
+        subtitle: `${l.pct}% of ${peso(l.capital)} placement ${l.placementId}`,
+        amount: l.amount, amountKind: "in",
+      });
+      notify(writes, l.toUserId, now, { type: "commission", title: `Level ${l.level} commission +${peso(l.amount)}`, body: `${memberName} placed ${peso(l.capital)} (${l.placementId}).`, amount: l.amount, planId: l.placementId });
+    }
+    notify(writes, uid, now, { type: "upline", title: `Your upline is now ${uplineName}`, body: "Set by the admin. Message the admin if this is not right." });
+    notify(writes, uplineUid, now, { type: "team", title: `${memberName} is now in your team`, body: total > 0 ? `Added by the admin · ${peso(total)} in commissions credited to your team.` : "Added by the admin." });
+    writes.push({
+      ref: db.collection("admin_audit").doc(),
+      data: {
+        type: "upline_set", uid, userName: memberName, title: `Upline set for ${memberName}: ${uplineName}`,
+        subtitle: `${previous ? `was ${displayName(chain.find((c) => c.uid === previous)?.data, previous)}` : "had none"}${total > 0 ? ` · back-paid ${peso(total)}` : ""}${reason ? ` · ${reason}` : ""}`,
+        before: previous, after: uplineUid, backpaid: total, by: adminUid, at: now,
+      },
+    });
+    patches.flush(tx);
+    for (const w of writes) tx.set(w.ref, w.data);
+    return { ok: true, previous, uplineName, lines, total };
+  });
+});
