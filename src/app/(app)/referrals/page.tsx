@@ -6,6 +6,7 @@ import { Copy, Check, Share2, Users, Coins, Zap, Award, Loader2, RefreshCw, Aler
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { TeamTree } from "@/components/TeamTree";
+import { DirectReferralsCard } from "@/components/DirectReferralsCard";
 import { formatPHP, cn } from "@/lib/utils";
 import { useReferralCode } from "@/lib/useReferrals";
 import { useCompPlan, useReferralStats, useMyCommissions, earningsRequiringActive, peso, type Commission } from "@/lib/compplan";
@@ -180,40 +181,8 @@ export default function ReferralsPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         {/* Directs */}
-        <Card>
-          <CardHeader
-            title="Direct referrals"
-            subtitle={`Leadership Bonus: ${cfg.leadershipPct}% of each direct's Locked-In Bonus when their term completes${cfg.requireActiveLeadership && cfg.uplineMinActive > 0 ? ` — you must have an active placement (${formatPHP(cfg.uplineMinActive, { short: true })}+) at that moment` : ""}`}
-            right={<Award className="w-4 h-4 text-gold" />}
-          />
-          {!stats ? (
-            <div className="py-6 flex justify-center"><Loader2 className="w-4 h-4 text-gold animate-spin" /></div>
-          ) : stats.directs.length === 0 ? (
-            <p className="text-[11px] text-text-subtle m-0">No one has joined with your link yet. Share it to start building your team.</p>
-          ) : (
-            <div className="flex flex-col gap-1 max-h-[360px] overflow-y-auto">
-              {stats.directs.map((d) => (
-                <div key={d.uid} className="flex items-center gap-2.5 px-3 py-2 bg-canvas border border-border rounded-lg">
-                  <div className={cn("w-7 h-7 rounded-full text-[10px] font-semibold flex items-center justify-center shrink-0", d.activePlaced > 0 ? "bg-green/15 text-green" : "bg-card-elev text-text-subtle")}>
-                    {d.name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "?"}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[11px] text-text m-0 truncate">{d.name}</p>
-                    <p className="text-[9px] text-text-subtle m-0">
-                      {d.activePlaced > 0 ? `${formatPHP(d.activePlaced, { short: true })} active · ${d.placements} placement${d.placements === 1 ? "" : "s"}` : "No active placement"}
-                      {d.joinedAt ? ` · joined ${new Date(d.joinedAt).toLocaleDateString("en-PH", { month: "short", day: "numeric" })}` : ""}
-                    </p>
-                  </div>
-                  {d.pendingLockedBonus > 0 && (
-                    <span className="text-[9px] text-gold font-mono shrink-0" title="Your Leadership Bonus when their term completes">
-                      +{formatPHP((d.pendingLockedBonus * stats.leadershipPct) / 100, { short: true })}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </Card>
+        <DirectReferralsCard stats={stats} cfg={cfg} />
+
 
         {/* History */}
         <Card>

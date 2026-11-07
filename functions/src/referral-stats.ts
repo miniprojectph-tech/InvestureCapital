@@ -18,7 +18,24 @@ export type DirectStat = {
   placements: number;
   /** Locked-In Bonuses still to be paid on their active placements (drives Leadership). */
   pendingLockedBonus: number;
+  /** Level-1 commission this member has been paid from this direct, all time. */
+  commissionPaid: number;
+  /** One line per active placement: what it paid and what Leadership it will pay, and when. */
+  items: DirectPlacement[];
 };
+export type DirectPlacement = {
+  id: string;
+  capital: number;
+  termMonths: number;
+  startedAt: number;
+  /** When the term completes (the Leadership Bonus is paid on the next hourly run). */
+  endsAt: number;
+  lockedBonus: number;
+  /** Level-1 commission paid to this member for this placement. */
+  commission: number;
+};
+
+const DAY_MS = 86_400_000;
 
 /**
  * One person in the team tree. `p` is the position of their sponsor in the same
@@ -100,13 +117,26 @@ export const getReferralStats = onCall(async (request) => {
           if (parent >= 0) tree[parent].c++;
         }
         if (lvl === 1) {
+          const active = u.placements ?? [];
           directs.push({
             uid: doc.id,
             name: displayName(u, doc.id),
             joinedAt: u.profile?.joinedAt ?? 0,
             activePlaced: cap,
-            placements: (u.placements ?? []).length,
-            pendingLockedBonus: (u.placements ?? []).reduce((s, p) => s + (p.lockedBonus ?? 0), 0),
+            placements: active.length,
+            pendingLockedBonus: active.reduce((s, p) => s + (p.lockedBonus ?? 0), 0),
+            commissionPaid: 0, // filled in below from the commission records
+            items: active
+              .map((p) => ({
+                id: String(p.id ?? ""),
+                capital: Number(p.capital) || 0,
+                termMonths: Number(p.termMonths) || 0,
+                startedAt: Number(p.startedAt) || 0,
+                endsAt: (Number(p.startedAt) || 0) + (Number(p.cycles) || 0) * (Number(p.cycleDays) || 0) * DAY_MS,
+                lockedBonus: Number(p.lockedBonus) || 0,
+                commission: 0,
+              }))
+              .sort((a, b) => a.endsAt - b.endsAt),
           });
         }
         if (total >= MAX_NODES) break;
@@ -120,6 +150,23 @@ export const getReferralStats = onCall(async (request) => {
   // Pad missing levels so the UI always shows every configured level.
   for (let lvl = levels.length + 1; lvl <= cfg.referralLevels.length; lvl++) {
     levels.push({ level: lvl, pct: cfg.referralLevels[lvl - 1] ?? 0, members: 0, active: 0, placed: 0 });
+  }
+
+  // Level-1 commission paid to this member, per direct and per placement. Two equality
+  // filters, so no composite index is needed; one read per direct placement ever paid.
+  if (directs.length > 0) {
+    const byUid = new Map(directs.map((d) => [d.uid, d]));
+    const comms = await db.collection("commissions").where("toUserId", "==", rootUid).where("level", "==", 1).get();
+    for (const c of comms.docs) {
+      const x = c.data() as { type?: string; status?: string; fromUserId?: string; placementId?: string; amount?: number };
+      if (x.type !== "level" || x.status !== "paid") continue;
+      const d = byUid.get(String(x.fromUserId ?? ""));
+      if (!d) continue;
+      const amt = Number(x.amount) || 0;
+      d.commissionPaid = Math.round((d.commissionPaid + amt) * 100) / 100;
+      const item = d.items.find((i) => i.id === x.placementId);
+      if (item) item.commission = Math.round((item.commission + amt) * 100) / 100;
+    }
   }
 
   directs.sort((a, b) => b.activePlaced - a.activePlaced || b.joinedAt - a.joinedAt);

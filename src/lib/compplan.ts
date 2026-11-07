@@ -408,7 +408,14 @@ export async function markNotificationsRead(uid: string, ids: string[]): Promise
 // ===== Referral stats (server-computed downline) =====
 
 export type ReferralLevelStat = { level: number; pct: number; members: number; active: number; placed: number };
-export type DirectStat = { uid: string; name: string; joinedAt: number; activePlaced: number; placements: number; pendingLockedBonus: number };
+/** One active placement of a direct: the level-1 commission it paid you and the Locked-In Bonus behind your Leadership Bonus. */
+export type DirectPlacement = { id: string; capital: number; termMonths: number; startedAt: number; endsAt: number; lockedBonus: number; commission: number };
+export type DirectStat = {
+  uid: string; name: string; joinedAt: number; activePlaced: number; placements: number; pendingLockedBonus: number;
+  /** Older servers don't send these two. */
+  commissionPaid?: number;
+  items?: DirectPlacement[];
+};
 export type FastStartTierStat = { minPlacement: number; bonus: number; qualifying: number; paidAt: number | null };
 /**
  * One person in the team tree. `p` = position of their sponsor in the list (-1 = a direct
