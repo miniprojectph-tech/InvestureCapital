@@ -29,6 +29,8 @@ export type MemberExportRow = {
   sponsor: string;
   referralCode: string;
   role: "Admin" | "Member";
+  /** Admin-only account tags ("; "-separated). Older servers don't send it. */
+  tags?: string;
 };
 
 type Result = { ok: boolean; filter: MemberExportFilter; generatedAt: number; total: number; rows: MemberExportRow[] };
@@ -50,6 +52,7 @@ const COLUMNS: { header: string; width: number; get: (r: MemberExportRow) => str
   { header: "Sponsor", width: 26, get: (r) => r.sponsor },
   { header: "Referral code", width: 15, get: (r) => r.referralCode, text: true },
   { header: "Role", width: 10, get: (r) => r.role },
+  { header: "Tags", width: 26, get: (r) => r.tags ?? "" },
 ];
 
 function manilaDate(ms: number): string {
@@ -75,12 +78,13 @@ function download(blob: Blob, name: string) {
  * Ask the server for the member rows (admin-only, audited), then build the file
  * in the browser and download it. Returns how many members were exported.
  */
-export async function exportMembers(filter: MemberExportFilter, format: MemberExportFormat): Promise<number> {
+export async function exportMembers(filter: MemberExportFilter, format: MemberExportFormat, tag?: { id: string; name: string } | null): Promise<number> {
   const { functions } = getFirebase();
   if (!functions) throw new Error("Export isn't available right now.");
-  const res = await httpsCallable<{ filter: MemberExportFilter }, Result>(functions, "adminExportMembers")({ filter });
+  const res = await httpsCallable<{ filter: MemberExportFilter; tag?: string }, Result>(functions, "adminExportMembers")(tag ? { filter, tag: tag.id } : { filter });
   const { rows, generatedAt } = res.data;
-  const base = `investure-members_${filter}_${fileStamp(generatedAt)}`;
+  const tagPart = tag ? `_${tag.name.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").toLowerCase() || "tag"}` : "";
+  const base = `investure-members_${filter}${tagPart}_${fileStamp(generatedAt)}`;
 
   if (format === "csv") {
     // A leading apostrophe-free trick for CSV: wrap number-like text as ="…" so

@@ -4,13 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { FileSpreadsheet, Loader2, CheckCircle2, AlertCircle, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { exportMembers, MEMBER_FILTER_LABEL, type MemberExportFilter, type MemberExportFormat } from "@/lib/membersExport";
+import type { AccountTag } from "@/lib/accountTags";
 
 const FILTERS: MemberExportFilter[] = ["all", "active", "withPayout", "noPayout"];
 
 /** Admin › Investors: download the member directory (name, email, phone, mode of payout…). */
-export function MembersExportButton() {
+export function MembersExportButton({ tags = [] }: { tags?: AccountTag[] }) {
   const [open, setOpen] = useState(false);
   const [filter, setFilter] = useState<MemberExportFilter>("all");
+  const [tagId, setTagId] = useState("");
   const [format, setFormat] = useState<MemberExportFormat>("xlsx");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -27,7 +29,8 @@ export function MembersExportButton() {
     setBusy(true);
     setMsg(null);
     try {
-      const n = await exportMembers(filter, format);
+      const tag = tags.find((t) => t.id === tagId) ?? null;
+      const n = await exportMembers(filter, format, tag);
       setMsg({ ok: true, text: n === 0 ? "No members match that filter." : `${n.toLocaleString()} member${n === 1 ? "" : "s"} exported. Check your downloads.` });
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message.replace(/^[A-Z_]+:\s*/, "") : "Export failed." });
@@ -49,7 +52,7 @@ export function MembersExportButton() {
       {open && (
         <div className="absolute right-0 top-full mt-2 z-30 w-[300px] max-w-[calc(100vw-32px)] bg-card border border-border-strong rounded-xl p-3.5 shadow-2xl shadow-black/60">
           <p className="text-[12px] font-medium m-0">Member directory</p>
-          <p className="text-[10px] text-text-subtle m-0 mt-0.5 mb-3">Name, email, phone, mode of payout, account details, wallet, placements, sponsor.</p>
+          <p className="text-[10px] text-text-subtle m-0 mt-0.5 mb-3">Name, email, phone, mode of payout, account details, wallet, placements, sponsor, tags.</p>
 
           <p className="text-[10px] uppercase tracking-[0.12em] text-text-subtle m-0 mb-1.5">Who to include</p>
           <div className="flex flex-col gap-1 mb-3">
@@ -60,6 +63,16 @@ export function MembersExportButton() {
               </label>
             ))}
           </div>
+
+          {tags.length > 0 && (
+            <>
+              <p className="text-[10px] uppercase tracking-[0.12em] text-text-subtle m-0 mb-1.5">Tag</p>
+              <select value={tagId} onChange={(e) => setTagId(e.target.value)} aria-label="Only accounts with this tag" className="w-full mb-3 bg-canvas border border-border rounded-lg px-2.5 py-1.5 text-[11px] text-text outline-none [color-scheme:dark]">
+                <option value="">Any tag or none</option>
+                {tags.map((t) => <option key={t.id} value={t.id}>Only {t.name}</option>)}
+              </select>
+            </>
+          )}
 
           <p className="text-[10px] uppercase tracking-[0.12em] text-text-subtle m-0 mb-1.5">Format</p>
           <div className="inline-flex rounded-full bg-canvas border border-border p-0.5 mb-3">

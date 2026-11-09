@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye, Users, Pencil, Gift, Wallet, Layers, Gamepad2, UserPlus, type LucideIcon } from "lucide-react";
+import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye, Users, Pencil, Gift, Wallet, Layers, Gamepad2, UserPlus, Tag, X, type LucideIcon } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
@@ -12,6 +12,10 @@ import { MembersExportButton } from "@/components/admin/MembersExportButton";
 import { DeleteMemberModal } from "@/components/admin/DeleteMemberModal";
 import { ResetPasswordModal } from "@/components/admin/ResetPasswordModal";
 import { SetUplineModal } from "@/components/admin/SetUplineModal";
+import { AccountTagsPanel } from "@/components/admin/AccountTagsPanel";
+import { TagPickerModal } from "@/components/admin/TagPickerModal";
+import { TagChips } from "@/components/admin/TagChips";
+import { useAccountTags } from "@/lib/accountTags";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -27,7 +31,7 @@ import {
   type AdminGameRow,
 } from "@/lib/game";
 
-type ChipKey = "vault" | "wallet" | "plans" | "joined" | "games";
+type ChipKey = "vault" | "wallet" | "plans" | "joined" | "games" | "tags";
 type EditFields = { energy: string; streak: string; weeklyScore: string };
 
 function fmtDate(ms: number) {
@@ -86,9 +90,10 @@ const TAB_LABELS: Record<ChipKey, string> = {
   plans: "Plans",
   joined: "Joined",
   games: "Games",
+  tags: "Tags",
 };
-const TAB_ORDER: ChipKey[] = ["joined", "vault", "wallet", "plans", "games"];
-const TAB_ICONS: Record<ChipKey, LucideIcon> = { joined: Users, vault: Gift, wallet: Wallet, plans: Layers, games: Gamepad2 };
+const TAB_ORDER: ChipKey[] = ["joined", "vault", "wallet", "plans", "games", "tags"];
+const TAB_ICONS: Record<ChipKey, LucideIcon> = { joined: Users, vault: Gift, wallet: Wallet, plans: Layers, games: Gamepad2, tags: Tag };
 
 export default function AdminInvestorsPage() {
   const { user, demoMode } = useAuth();
@@ -96,6 +101,17 @@ export default function AdminInvestorsPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useHashTab<ChipKey>(TAB_ORDER, "joined");
+  // Admin-only account tags: chips, a filter for every list, and the Tags tab report.
+  const accountTags = useAccountTags();
+  const [tagFilter, setTagFilter] = useState(""); // "" = everyone, "none" = no tag, else a tag id
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [tagFor, setTagFor] = useState<{ uid: string; name: string }[] | null>(null);
+  const hasTag = useCallback((uid: string) => {
+    if (!tagFilter) return true;
+    const ids = (accountTags.links.get(uid) ?? []).filter((id) => accountTags.byId.has(id));
+    return tagFilter === "none" ? ids.length === 0 : ids.includes(tagFilter);
+  }, [tagFilter, accountTags.links, accountTags.byId]);
+  const tagNames = (uid: string) => accountTags.tagsOf(uid).map((t) => t.name).join("; ");
 
   const { config } = useGameConfig();
   const { settings: gamesSettings } = useGamesSettings();
@@ -199,7 +215,7 @@ export default function AdminInvestorsPage() {
   const gameTable = useMemo(() => {
     const q = query.toLowerCase();
     return rows
-      .filter((r) => !q || r.name?.toLowerCase().includes(q) || r.email?.toLowerCase().includes(q))
+      .filter((r) => (!q || r.name?.toLowerCase().includes(q) || r.email?.toLowerCase().includes(q)) && hasTag(r.uid))
       .map((r) => {
         const g = gameByUid.get(r.uid);
         return {
@@ -211,7 +227,7 @@ export default function AdminInvestorsPage() {
         };
       })
       .sort((a, b) => b.points - a.points || b.totalCasts - a.totalCasts);
-  }, [rows, gameByUid, query]);
+  }, [rows, gameByUid, query, hasTag]);
 
   const [deleting, setDeleting] = useState<{ uid: string; name: string; email: string } | null>(null);
   const [accountMsg, setAccountMsg] = useState<string | null>(null);
@@ -257,7 +273,7 @@ export default function AdminInvestorsPage() {
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
     const matched = rows.filter(
-      (r) => !q || r.name?.toLowerCase().includes(q) || r.email?.toLowerCase().includes(q)
+      (r) => (!q || r.name?.toLowerCase().includes(q) || r.email?.toLowerCase().includes(q)) && hasTag(r.uid)
     );
     return [...matched].sort((a, b) => {
       switch (sortKey) {
@@ -267,60 +283,60 @@ export default function AdminInvestorsPage() {
         case "joined": default: return b.joinedAt - a.joinedAt;
       }
     });
-  }, [rows, query, sortKey]);
+  }, [rows, query, sortKey, hasTag]);
 
   function exportCsv() {
     const date = new Date().toISOString().slice(0, 10);
     if (sortKey === "games") {
       exportCsvFile(
         gameTable.map((r) => ({
-          Name: r.name, Email: r.email, Points: r.points, Credits: r.energy,
+          Name: r.name, Email: r.email, Tags: tagNames(r.uid), Points: r.points, Credits: r.energy,
           Streak: r.streak, Weekly: r.weeklyScore, Casts: r.totalCasts, Fish: r.collectionCount,
         })),
-        ["Name", "Email", "Points", "Credits", "Streak", "Weekly", "Casts", "Fish"],
+        ["Name", "Email", "Points", "Credits", "Streak", "Weekly", "Casts", "Fish", "Tags"],
         `investors-games-${date}`,
       );
     } else if (sortKey === "vault") {
       exportCsvFile(
         filtered.map((u) => ({
-          Name: u.name, Email: u.email, "Capital Placed": u.deployed,
+          Name: u.name, Email: u.email, Tags: tagNames(u.uid), "Capital Placed": u.deployed,
           "Locked-In Due": u.bonusesDue, "Total Earned": u.totalEarned,
           "Active Placements": u.activePlansCount, "Completed": u.completedPlansCount,
           Role: u.isAdmin ? "Admin" : "Investor",
         })),
-        ["Name", "Email", "Capital Placed", "Locked-In Due", "Total Earned", "Active Placements", "Completed", "Role"],
+        ["Name", "Email", "Capital Placed", "Locked-In Due", "Total Earned", "Active Placements", "Completed", "Role", "Tags"],
         `investors-bonuses-${date}`,
       );
     } else if (sortKey === "wallet") {
       exportCsvFile(
         filtered.map((u) => ({
-          Name: u.name, Email: u.email, Wallet: u.wallet, Deployed: u.deployed,
+          Name: u.name, Email: u.email, Tags: tagNames(u.uid), Wallet: u.wallet, Deployed: u.deployed,
           "Total Portfolio": u.wallet + u.deployed,
           "Active Plans": u.activePlansCount,
           Role: u.isAdmin ? "Admin" : "Investor",
         })),
-        ["Name", "Email", "Wallet", "Deployed", "Total Portfolio", "Active Plans", "Role"],
+        ["Name", "Email", "Wallet", "Deployed", "Total Portfolio", "Active Plans", "Role", "Tags"],
         `investors-wallet-${date}`,
       );
     } else if (sortKey === "plans") {
       exportCsvFile(
         filtered.map((u) => ({
-          Name: u.name, Email: u.email, "Active Plans": u.activePlansCount,
+          Name: u.name, Email: u.email, Tags: tagNames(u.uid), "Active Plans": u.activePlansCount,
           "Deployed Capital": u.deployed, "Completed Plans": u.completedPlansCount,
           "Total Earned": u.totalEarned,
           Role: u.isAdmin ? "Admin" : "Investor",
         })),
-        ["Name", "Email", "Active Plans", "Deployed Capital", "Completed Plans", "Total Earned", "Role"],
+        ["Name", "Email", "Active Plans", "Deployed Capital", "Completed Plans", "Total Earned", "Role", "Tags"],
         `investors-plans-${date}`,
       );
     } else {
       exportCsvFile(
         filtered.map((u) => ({
-          Name: u.name, Email: u.email, Joined: fmtDate(u.joinedAt),
+          Name: u.name, Email: u.email, Tags: tagNames(u.uid), Joined: fmtDate(u.joinedAt),
           "Active Placements": u.activePlansCount, Wallet: u.wallet, "Locked-In Due": u.bonusesDue,
           Role: u.isAdmin ? "Admin" : "Investor",
         })),
-        ["Name", "Email", "Joined", "Active Placements", "Wallet", "Locked-In Due", "Role"],
+        ["Name", "Email", "Joined", "Active Placements", "Wallet", "Locked-In Due", "Role", "Tags"],
         `investors-${date}`,
       );
     }
@@ -340,7 +356,9 @@ export default function AdminInvestorsPage() {
     plans: `${rows.length} accounts · plan activity & earnings`,
     joined: `${rows.length} accounts · newest first`,
     games: `${rows.length} accounts · game credits & points`,
+    tags: `${accountTags.tags.length} tag${accountTags.tags.length === 1 ? "" : "s"} · only admins see them`,
   };
+  const activeTag = tagFilter && tagFilter !== "none" ? accountTags.byId.get(tagFilter) : undefined;
 
   return (
     <div>
@@ -362,7 +380,19 @@ export default function AdminInvestorsPage() {
                 className="bg-transparent text-[11px] outline-none flex-1 min-w-0 text-text placeholder:text-text-subtle"
               />
             </div>
-            <MembersExportButton />
+            {accountTags.tags.length > 0 && sortKey !== "tags" && (
+              <select
+                value={tagFilter}
+                onChange={(e) => { setTagFilter(e.target.value); setPicked(new Set()); }}
+                aria-label="Filter by tag"
+                className={cn("text-[11px] px-3 py-1.5 bg-card border rounded-full outline-none max-w-[170px] [color-scheme:dark]", tagFilter ? "border-gold/50 text-text" : "border-border text-text-muted")}
+              >
+                <option value="">All accounts</option>
+                <option value="none">No tag</option>
+                {accountTags.tags.map((t) => <option key={t.id} value={t.id}>{t.name} ({accountTags.counts.get(t.id) ?? 0})</option>)}
+              </select>
+            )}
+            <MembersExportButton tags={accountTags.tags} />
             <button
               onClick={exportCsv}
               title="Exports the rows of the tab you are looking at"
@@ -373,6 +403,25 @@ export default function AdminInvestorsPage() {
           </>
         }
       />
+
+      {/* ── Tags tab: make tags + report by tag ── */}
+      {sortKey === "tags" && (
+        <AccountTagsPanel
+          rows={rows}
+          tags={accountTags.tags}
+          links={accountTags.links}
+          counts={accountTags.counts}
+          onOpenTag={(id) => { setTagFilter(id); setPicked(new Set()); setSortKey("joined"); }}
+        />
+      )}
+
+      {/* A tag filter is on: say so on every list */}
+      {tagFilter && sortKey !== "tags" && (
+        <div className="mb-3 flex items-center gap-2 text-[11px] text-text-muted">
+          Showing {tagFilter === "none" ? "accounts with no tag" : <>accounts tagged {activeTag ? <TagChips tags={[activeTag]} /> : "…"}</>}
+          <button onClick={() => { setTagFilter(""); setPicked(new Set()); }} className="inline-flex items-center gap-0.5 text-text-subtle hover:text-text"><X className="w-3 h-3" /> Show all</button>
+        </div>
+      )}
 
       {/* ── Games tab ── */}
       {sortKey === "games" && (
@@ -496,7 +545,7 @@ export default function AdminInvestorsPage() {
                 {filtered.map((u) => {
                   return (
                     <tr key={u.uid} className="border-t border-border hover:bg-card-elev/50 transition">
-                      <td className="py-2 px-1"><p className="m-0 text-[11px] truncate font-medium">{u.name}</p></td>
+                      <td className="py-2 px-1"><p className="m-0 text-[11px] truncate font-medium">{u.name}</p><TagChips tags={accountTags.tagsOf(u.uid)} className="mt-0.5" /></td>
                       <td className="py-2 px-1"><p className="m-0 text-[10px] text-text-muted truncate">{u.email}</p></td>
                       <td className="py-2 px-1 text-right font-mono">{formatPHP(u.deployed, { short: true })}</td>
                       <td className="py-2 px-1 text-right font-mono text-vault">{u.bonusesDue > 0 ? formatPHP(u.bonusesDue, { short: true }) : "—"}</td>
@@ -554,7 +603,7 @@ export default function AdminInvestorsPage() {
                   const total = u.wallet + u.deployed;
                   return (
                     <tr key={u.uid} className="border-t border-border hover:bg-card-elev/50 transition">
-                      <td className="py-2 px-1"><p className="m-0 text-[11px] truncate font-medium">{u.name}</p></td>
+                      <td className="py-2 px-1"><p className="m-0 text-[11px] truncate font-medium">{u.name}</p><TagChips tags={accountTags.tagsOf(u.uid)} className="mt-0.5" /></td>
                       <td className="py-2 px-1"><p className="m-0 text-[10px] text-text-muted truncate">{u.email}</p></td>
                       <td className="py-2 px-1 text-right font-mono">{formatPHP(u.wallet, { short: true })}</td>
                       <td className="py-2 px-1 text-right font-mono text-green">{formatPHP(u.deployed, { short: true })}</td>
@@ -591,6 +640,20 @@ export default function AdminInvestorsPage() {
       {sortKey === "joined" && (
         <Card>
           <CardHeader title={`All investors (${filtered.length})`} subtitle="Account overview sorted by join date" />
+          {picked.size > 0 && (
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-lg bg-gold/10 border border-gold/30 text-[11px]">
+              <span>{picked.size} selected</span>
+              <span className="flex items-center gap-2">
+                <button
+                  onClick={() => { setAccountMsg(null); setTagFor(rows.filter((r) => picked.has(r.uid)).map((r) => ({ uid: r.uid, name: r.name }))); }}
+                  className="px-2.5 py-1 rounded-md bg-gold text-gold-dark font-medium inline-flex items-center gap-1"
+                >
+                  <Tag className="w-3 h-3" /> Tags…
+                </button>
+                <button onClick={() => setPicked(new Set())} className="px-2 py-1 rounded-md border border-border-strong text-text-muted hover:text-text">Clear</button>
+              </span>
+            </div>
+          )}
           <ResponsiveTable>
             <table className="w-full text-[11px] table-fixed min-w-[780px]">
               <colgroup>
@@ -606,7 +669,18 @@ export default function AdminInvestorsPage() {
               </colgroup>
               <thead>
                 <tr className="text-text-subtle text-left">
-                  <th className="font-normal py-2 px-1">Name</th>
+                  <th className="font-normal py-2 px-1">
+                    <span className="inline-flex items-center gap-1.5">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all shown"
+                        className="accent-[#3DD598]"
+                        checked={filtered.length > 0 && filtered.every((u) => picked.has(u.uid))}
+                        onChange={(e) => setPicked(e.target.checked ? new Set(filtered.map((u) => u.uid)) : new Set())}
+                      />
+                      Name
+                    </span>
+                  </th>
                   <th className="font-normal py-2 px-1">Email</th>
                   <th className="font-normal py-2 px-1">Joined</th>
                   <th className="font-normal py-2 px-1">Upline</th>
@@ -619,8 +693,21 @@ export default function AdminInvestorsPage() {
               </thead>
               <tbody>
                 {filtered.map((u) => (
-                  <tr key={u.uid} className="border-t border-border hover:bg-card-elev/50 transition">
-                    <td className="py-2 px-1"><p className="m-0 text-[11px] truncate font-medium">{u.name}</p></td>
+                  <tr key={u.uid} className={cn("border-t border-border hover:bg-card-elev/50 transition", picked.has(u.uid) && "bg-gold/5")}>
+                    <td className="py-2 px-1">
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${u.name}`}
+                          className="accent-[#3DD598] shrink-0"
+                          checked={picked.has(u.uid)}
+                          onChange={() => setPicked((p) => { const n = new Set(p); if (n.has(u.uid)) n.delete(u.uid); else n.add(u.uid); return n; })}
+                        />
+                        <span className="m-0 text-[11px] truncate font-medium">{u.name}</span>
+                        <button onClick={() => { setAccountMsg(null); setTagFor([{ uid: u.uid, name: u.name }]); }} className="p-0.5 text-text-subtle hover:text-gold shrink-0" aria-label={`Tags for ${u.name}`} title="Tags"><Tag className="w-3 h-3" /></button>
+                      </span>
+                      <TagChips tags={accountTags.tagsOf(u.uid)} className="mt-0.5 ml-[18px]" />
+                    </td>
                     <td className="py-2 px-1"><p className="m-0 text-[10px] text-text-muted truncate">{u.email}</p></td>
                     <td className="py-2 px-1 text-text-muted text-[10px]">
                       {joinEdit?.uid === u.uid ? (
@@ -703,6 +790,14 @@ export default function AdminInvestorsPage() {
       )}
 
       <ResetPasswordModal member={resetting} onClose={() => setResetting(null)} />
+      <TagPickerModal
+        members={tagFor}
+        tags={accountTags.tags}
+        links={accountTags.links}
+        onClose={() => setTagFor(null)}
+        onDone={(m) => { setTagFor(null); setPicked(new Set()); setAccountMsg(m); }}
+        onManage={() => { setTagFor(null); setSortKey("tags"); }}
+      />
       <SetUplineModal member={uplineFor} investors={rows} onClose={() => setUplineFor(null)} onDone={(m) => { setUplineFor(null); setAccountMsg(m); reloadInvestors(); }} />
       <DeleteMemberModal
         member={deleting}

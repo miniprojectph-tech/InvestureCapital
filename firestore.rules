@@ -398,6 +398,22 @@ service cloud.firestore {
       allow read: if isAdmin();
     }
 
+    // === Admin-only account tags (labels for admin reports; members never read them) ===
+    match /account_tags/{tagId} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 24
+        && request.resource.data.color is string;
+    }
+    match /account_tag_links/{memberId} {
+      allow read, delete: if isAdmin();
+      allow create, update: if isAdmin()
+        && request.resource.data.tags is list
+        && request.resource.data.tags.size() <= 20;
+    }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

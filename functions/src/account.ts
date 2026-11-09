@@ -105,6 +105,7 @@ export const adminDeleteMember = onCall({ timeoutSeconds: 120 }, async (request)
 
   const cleanups: Promise<unknown>[] = [
     db.collection("faq_voters").doc(uid).delete(),
+    db.collection("account_tag_links").doc(uid).delete(),
     db.collection("test_clocks").doc(uid).delete(),
     db.collection("leaderboard").doc(uid).delete(),
     db.collection("tongits_leaderboard").doc(uid).delete(),
