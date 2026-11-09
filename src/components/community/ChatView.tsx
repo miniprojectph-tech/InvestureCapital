@@ -442,6 +442,14 @@ export function ChatView({
     const rx = summarizeReactions(m.reactions, reactor, m.boost);
     const canRemove = !!onDelete && (own || hasModeration);
 
+    // Picture and video bubbles are exactly as wide as the media (caption wraps under it),
+    // sized from the stored proportions so nothing is cropped: up to 260 x 420 on phones,
+    // 360 x 480 on wide screens (--mw / --mh below). Tall pictures get narrower instead.
+    const ratio = m.media?.w && m.media?.h ? m.media.w / m.media.h : null;
+    const mediaWidth = (m.kind === "image" || m.kind === "video") && m.media
+      ? (ratio ? `min(var(--mw), calc(var(--mh) * ${ratio.toFixed(4)}))` : "var(--mw)")
+      : undefined;
+
     const radius = own
       ? cn("rounded-[18px]", first && !last && "rounded-br-[5px]", !first && !last && "rounded-r-[5px]", !first && last && "rounded-tr-[5px]")
       : cn("rounded-[18px]", first && !last && "rounded-bl-[5px]", !first && !last && "rounded-l-[5px]", !first && last && "rounded-tl-[5px]");
@@ -449,9 +457,10 @@ export function ChatView({
     const bubble = (
       <div
         className={cn(
-          "relative max-w-full overflow-hidden",
+          "relative max-w-full overflow-hidden [--mw:260px] [--mh:420px] lg:[--mw:360px] lg:[--mh:480px]",
           m.kind === "sticker" ? "" : cn(radius, own ? "bg-[linear-gradient(135deg,#4F8EF7,#7B61FF)] text-white" : "bg-[#232B45] text-text"),
         )}
+        style={mediaWidth ? { width: mediaWidth } : undefined}
       >
         {m.replyTo && (
           <div className={cn("mx-3 mt-2 px-2.5 py-1.5 rounded-lg border-l-2 text-[11px] leading-snug", own ? "bg-white/15 border-white/60 text-white/90" : "bg-canvas/60 border-blue text-text-muted")}>
@@ -470,23 +479,23 @@ export function ChatView({
         )}
 
         {m.kind === "image" && m.media && (
-          <button onClick={(e) => { e.stopPropagation(); setLightbox(m.media!); }} className="block max-w-[260px]" aria-label="Open image">
+          <button onClick={(e) => { e.stopPropagation(); setLightbox(m.media!); }} className="block w-full" aria-label="Open image">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={m.media.thumb ?? m.media.url} alt="" loading="lazy" className="block w-full h-auto max-h-[320px] object-cover" style={m.media.w && m.media.h ? { aspectRatio: `${m.media.w} / ${m.media.h}` } : undefined} />
+            <img src={m.media.thumb ?? m.media.url} alt="" loading="lazy" className={cn("block w-full h-auto", !ratio && "max-h-[var(--mh)] object-contain bg-black/20")} style={ratio ? { aspectRatio: `${m.media.w} / ${m.media.h}` } : undefined} />
           </button>
         )}
 
         {m.kind === "video" && m.media && (
-          <div className="max-w-[280px] bg-black">
+          <div className="w-full bg-black">
             {isPlaying ? (
-              <video src={m.media.url} poster={m.media.poster} controls autoPlay playsInline preload="none" className="block w-full max-h-[320px]" />
+              <video src={m.media.url} poster={m.media.poster} controls autoPlay playsInline preload="none" className="block w-full max-h-[var(--mh)]" />
             ) : (
               <button onClick={(e) => { e.stopPropagation(); setPlaying((s) => new Set(s).add(m.id)); }} className="relative block w-full" aria-label="Play video">
                 {m.media.poster ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.media.poster} alt="" loading="lazy" className="block w-full h-auto max-h-[320px] object-cover opacity-90" />
+                  <img src={m.media.poster} alt="" loading="lazy" className="block w-full h-auto max-h-[var(--mh)] object-cover opacity-90" />
                 ) : (
-                  <div className="w-[280px] h-[160px]" />
+                  <div className="w-full h-[160px]" />
                 )}
                 <span className="absolute inset-0 flex items-center justify-center">
                   <span className="w-12 h-12 rounded-full bg-black/60 border border-white/30 flex items-center justify-center">
@@ -514,13 +523,13 @@ export function ChatView({
     );
 
     return (
-      <div className={cn("flex items-end gap-2 group", own ? "flex-row-reverse" : "flex-row", rx.total > 0 && "mb-3")}>
+      <div className={cn("flex items-end gap-2 group", own ? "flex-row-reverse" : "flex-row", rx.total > 0 && "mb-5")}>
         {/* Avatar column (others only, on the last bubble of a group) */}
         {!own && <div className="w-[30px] shrink-0">{last && <Avatar item={m} />}</div>}
 
-        <div className={cn("relative max-w-[78%] min-w-0", own ? "flex justify-end" : "")}>
+        <div className={cn("relative max-w-[78%] lg:max-w-[min(78%,560px)] min-w-0", own ? "flex justify-end" : "")}>
           <div
-            className={cn("relative", !inOverlay && "cursor-default select-none md:select-text")}
+            className={cn("relative min-w-0 max-w-full", !inOverlay && "cursor-default select-none md:select-text")}
             onClick={() => !inOverlay && setShownTime((t) => (t === m.id ? null : m.id))}
             onPointerDown={(e) => !inOverlay && onPressStart(e, m)}
             onPointerMove={onPressMove}
@@ -537,7 +546,7 @@ export function ChatView({
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setSheet({ item: m, picker: false }); }}
                 className={cn(
-                  "absolute -bottom-2.5 flex items-center gap-0.5 pl-1.5 pr-2 py-0.5 rounded-full bg-card-elev border-2 border-card text-[12px] shadow-md shadow-black/40",
+                  "absolute -bottom-4 flex items-center gap-0.5 pl-1.5 pr-2 py-0.5 rounded-full bg-card-elev border-2 border-card text-[12px] shadow-md shadow-black/40",
                   own ? "left-1" : "right-1",
                   rx.mine && "ring-1 ring-blue",
                 )}
