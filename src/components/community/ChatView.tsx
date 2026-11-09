@@ -613,7 +613,7 @@ export function ChatView({
   }
 
   return (
-    <div className={cn("bg-card border border-border rounded-xl flex flex-col overflow-hidden", className)} style={{ height: "calc(100dvh - 235px)", minHeight: 460 }}>
+    <div className={cn("bg-card border border-border rounded-xl flex flex-col overflow-hidden", className)} style={{ height: "calc(100dvh - var(--chat-offset, 235px))", minHeight: 460 }}>
       {header}
 
       {/* Pinned */}

@@ -125,6 +125,18 @@ export default function CommunityPage() {
   const dmBadge = useMemo(() => new Set(dmTl ? [dmTl] : []), [dmTl]);
   const inboxUnread = inboxThreads.filter(needsReply).length;
 
+  // The chat boxes are sized to fill the screen. When the "Turn on notifications"
+  // banner shows above them they shrink by its height, so the message box (and the
+  // admin's send button) stays on screen.
+  const [pushBox, setPushBox] = useState<HTMLDivElement | null>(null);
+  const [pushH, setPushH] = useState(0);
+  useEffect(() => {
+    if (!pushBox || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setPushH(Math.round(pushBox.getBoundingClientRect().height)));
+    ro.observe(pushBox);
+    return () => ro.disconnect();
+  }, [pushBox]);
+
   // Deep link from Support: /community#admin
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -287,7 +299,7 @@ export default function CommunityPage() {
   ];
 
   return (
-    <div>
+    <div style={{ "--chat-offset": `${235 + pushH}px` } as React.CSSProperties}>
       <TopHeader title="Community" subtitle="Chat with everyone, or message the admin directly" />
 
       {demoMode && (
@@ -296,7 +308,10 @@ export default function CommunityPage() {
         </p>
       )}
 
-      <PushCard />
+      {/* flow-root so the measured height includes the banner's bottom margin */}
+      <div ref={setPushBox} className="flow-root">
+        <PushCard />
+      </div>
 
       {/* Phone: Messenger-style pills */}
       <div className="flex items-center gap-1.5 mb-3 lg:hidden overflow-x-auto">
@@ -328,7 +343,7 @@ export default function CommunityPage() {
       ) : (
         <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-3">
           {/* Desktop: chat list */}
-          <div className="hidden lg:flex flex-col bg-card border border-border rounded-xl p-2.5 gap-1" style={{ height: "calc(100dvh - 235px)", minHeight: 460 }}>
+          <div className="hidden lg:flex flex-col bg-card border border-border rounded-xl p-2.5 gap-1" style={{ height: "calc(100dvh - var(--chat-offset, 235px))", minHeight: 460 }}>
             <div className="flex items-baseline justify-between px-2 pt-1 pb-2">
               <span className="text-[17px] font-extrabold tracking-tight">Chats</span>
               {online !== null && <span className="text-[10px] text-text-subtle">{online.toLocaleString()} active now</span>}

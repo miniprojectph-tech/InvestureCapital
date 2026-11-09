@@ -69,7 +69,7 @@ export function TeamLeaderPanel({ me, canSend }: { me: { uid: string; name: stri
             <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search members" className="w-full bg-canvas border border-border rounded-lg pl-8 pr-3 py-2 text-[11px] text-text outline-none focus:border-[#5CE0D2]/50 placeholder:text-text-subtle" />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100dvh - 330px)", minHeight: 240 }}>
+        <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100dvh - var(--chat-offset, 235px) - 95px)", minHeight: 240 }}>
           {list === "chats" && (chatRows.length === 0 ? (
             <p className="text-[11px] text-text-subtle text-center py-8 m-0 px-4">No conversations yet. Pick someone from New members or All members and send the first message.</p>
           ) : chatRows.map((t) => {
@@ -140,7 +140,7 @@ export function TeamLeaderPanel({ me, canSend }: { me: { uid: string; name: stri
             onDelete={(m: ChatItem) => (m.senderId === me.uid ? deleteDmMessage(me.uid, selected.uid, m.id) : Promise.resolve())}
           />
         ) : (
-          <div className="bg-card border border-border rounded-xl flex items-center justify-center" style={{ height: "calc(100dvh - 235px)", minHeight: 420 }}>
+          <div className="bg-card border border-border rounded-xl flex items-center justify-center" style={{ height: "calc(100dvh - var(--chat-offset, 235px))", minHeight: 420 }}>
             <div className="text-center px-6">
               <MessageCircle className="w-8 h-8 text-text-subtle mx-auto mb-2" />
               <p className="text-[12px] text-text-muted m-0">Pick a conversation, or a member to write to.</p>

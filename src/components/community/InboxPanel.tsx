@@ -116,7 +116,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100dvh - 330px)", minHeight: 240 }}>
+        <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100dvh - var(--chat-offset, 235px) - 95px)", minHeight: 240 }}>
           {filtered.length === 0 ? (
             <p className="text-[11px] text-text-subtle text-center py-8 m-0">{show === "new" ? `Nobody joined in the last ${NEW_MEMBER_DAYS} days.` : show === "unread" ? "Nothing waiting for a reply." : "No conversations yet."}</p>
           ) : (
@@ -210,7 +210,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
             onDelete={(m: ChatItem) => deleteInboxMessage(selected, m.id)}
           />
         ) : (
-          <div className="bg-card border border-border rounded-xl flex items-center justify-center" style={{ height: "calc(100dvh - 235px)", minHeight: 420 }}>
+          <div className="bg-card border border-border rounded-xl flex items-center justify-center" style={{ height: "calc(100dvh - var(--chat-offset, 235px))", minHeight: 420 }}>
             <div className="text-center px-6">
               <MessageCircle className="w-8 h-8 text-text-subtle mx-auto mb-2" />
               <p className="text-[12px] text-text-muted m-0">Select a member conversation to reply.</p>
