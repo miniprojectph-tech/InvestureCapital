@@ -6,6 +6,7 @@ import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
+import { PlacedPanel } from "@/components/admin/PlacedPanel";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -120,6 +121,12 @@ export default function AdminPlanRequestsPage() {
         }
       />
 
+      {/* Approved: every placement that went live — paid in or reinvested from the wallet */}
+      {tab === "approved" && (
+        <PlacedPanel approved={rows.filter((r) => r.status === "approved")} requestsLoading={loading} onViewReceipt={setViewReceipt} />
+      )}
+
+      {tab !== "approved" && (
       <Card>
         <CardHeader
           title={`${statusMeta[tab].label} requests`}
@@ -199,6 +206,7 @@ export default function AdminPlanRequestsPage() {
           );
         })}
       </Card>
+      )}
 
       <Modal open={viewReceipt !== null} onClose={() => setViewReceipt(null)} title="Payment receipt" maxWidth="max-w-2xl">
         {viewReceipt && (
