@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ShieldCheck, Inbox, Pin, Crown, Lock, ArrowLeft, Search } from "lucide-react";
 import { LockedRoom } from "@/components/community/LockedRoom";
 import { TopHeader } from "@/components/TopHeader";
@@ -69,6 +69,16 @@ import {
 
 type Tab = "room" | "admin" | "inbox" | "team" | `dm:${string}` | `room:${string}`;
 
+/** The address fragment for an open chat (the Community Room is #community). */
+const chatHash = (key: Tab) => `#${key === "room" ? "community" : key}`;
+/** Which chat a fragment opens, or null for the list. */
+function tabFromHash(h: string): Tab | null {
+  if (h === "#community") return "room";
+  if (h === "#admin" || h === "#team" || h === "#inbox") return h.slice(1) as Tab;
+  if (/^#(dm|room):[A-Za-z0-9_-]+$/.test(h)) return h.slice(1) as Tab;
+  return null;
+}
+
 function previewOf(m: ChatItem | undefined): string {
   if (!m) return "No messages yet";
   const body = m.text ?? (m.kind === "image" ? "📷 Photo" : m.kind === "video" ? "🎬 Video" : m.kind === "sticker" ? "Sticker" : "");
@@ -98,8 +108,33 @@ export default function CommunityPage() {
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
   }, [wide, phoneOpen]);
-  const openChat = (key: Tab) => { setTab(key); setPhoneOpen(true); };
-  const backToList = () => setPhoneOpen(false);
+  // Phones: opening a chat adds a history step (#community, #admin, #room:…), so the
+  // phone's own Back button closes the chat and returns to the list, like Messenger.
+  // Next.js keeps native pushState/replaceState in step with its router.
+  const pushedRef = useRef(false);
+  const openChat = (key: Tab) => {
+    setTab(key);
+    setPhoneOpen(true);
+    if (!wide && typeof window !== "undefined") {
+      window.history.pushState(null, "", `${window.location.pathname}${window.location.search}${chatHash(key)}`);
+      pushedRef.current = true;
+    }
+  };
+  const backToList = () => {
+    // our own history step: going back closes the chat (see the popstate listener)
+    if (pushedRef.current) { window.history.back(); return; }
+    setPhoneOpen(false);
+    window.history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
+  };
+  useEffect(() => {
+    const onPop = () => {
+      const key = tabFromHash(window.location.hash);
+      if (key) { setTab(key); setPhoneOpen(true); pushedRef.current = true; }
+      else { pushedRef.current = false; setPhoneOpen(false); }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
 
   const modRole = useChatModRole();
   const tlRole = useTeamLeaderRole();
@@ -167,11 +202,18 @@ export default function CommunityPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const h = window.location.hash;
-    if (h === "#admin") setTab("admin");
-    else if (h === "#team") setTab("team");
-    else if (h.startsWith("#dm:") || h.startsWith("#room:")) setTab(h.slice(1) as Tab);
-    // a link straight to a chat opens it, on phones too
-    if (h === "#admin" || h === "#team" || h.startsWith("#dm:") || h.startsWith("#room:")) setPhoneOpen(true);
+    const key = tabFromHash(h);
+    if (!key) return;
+    setTab(key);
+    // a link straight to a chat opens it, on phones too — with the list underneath,
+    // so the phone's Back button lands on the chat list rather than leaving
+    setPhoneOpen(true);
+    if (!window.matchMedia("(min-width: 1024px)").matches) {
+      const base = `${window.location.pathname}${window.location.search}`;
+      window.history.replaceState(null, "", base);
+      window.history.pushState(null, "", `${base}${h}`);
+      pushedRef.current = true;
+    }
   }, []);
 
   // Admins need their RTDB moderator flag before posting as admin.
