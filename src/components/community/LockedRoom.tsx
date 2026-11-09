@@ -1,6 +1,6 @@
 "use client";
 
-import { Lock } from "lucide-react";
+import { Lock, ArrowLeft } from "lucide-react";
 
 // A made-up conversation, blurred. Nothing from the real room is ever sent to
 // people outside it (the rules refuse it), so there is nothing real to un-blur.
@@ -16,9 +16,9 @@ const FAKE: { own: boolean; w: string; h?: number }[] = [
 ];
 
 /** What someone not added to an exclusive room sees when they open it. */
-export function LockedRoom({ name }: { name: string }) {
+export function LockedRoom({ name, onBack, fullScreen }: { name: string; onBack?: () => void; fullScreen?: boolean }) {
   return (
-    <div className="relative bg-card border border-border rounded-xl overflow-hidden" style={{ height: "calc(100dvh - var(--chat-offset, 235px))", minHeight: 460 }} aria-label={`${name} is locked`}>
+    <div className={fullScreen ? "relative bg-card overflow-hidden" : "relative bg-card border border-border rounded-xl overflow-hidden"} style={{ height: "calc(100dvh - var(--chat-offset, 235px))", minHeight: 460 }} aria-label={`${name} is locked`}>
       <div className="absolute inset-0 p-4 flex flex-col gap-3 blur-[8px] opacity-70 select-none pointer-events-none" aria-hidden="true">
         {FAKE.map((b, i) => (
           <div
@@ -28,6 +28,9 @@ export function LockedRoom({ name }: { name: string }) {
           />
         ))}
       </div>
+      {onBack && (
+        <button type="button" onClick={onBack} className="absolute top-2.5 left-2.5 z-10 w-9 h-9 rounded-full bg-canvas/70 flex items-center justify-center text-blue" aria-label="Back to chats"><ArrowLeft className="w-5 h-5" /></button>
+      )}
       <div className="absolute inset-0 bg-canvas/30 flex flex-col items-center justify-center gap-3 px-6 text-center">
         <div className="w-14 h-14 rounded-full bg-[#F5C66B]/15 border border-[#F5C66B]/40 flex items-center justify-center">
           <Lock className="w-6 h-6 text-[#F5C66B]" />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ShieldCheck, Inbox, Pin, Crown, Lock } from "lucide-react";
+import { ShieldCheck, Inbox, Pin, Crown, Lock, ArrowLeft, Search } from "lucide-react";
 import { LockedRoom } from "@/components/community/LockedRoom";
 import { TopHeader } from "@/components/TopHeader";
 import { PushCard } from "@/components/PushCard";
@@ -78,6 +78,28 @@ function previewOf(m: ChatItem | undefined): string {
 export default function CommunityPage() {
   const { user, demoMode } = useAuth();
   const [tab, setTab] = useState<Tab>("room");
+  // Phones (below lg) work like Messenger: a list of chats, and a chat opens full
+  // screen until ← goes back. Wide screens keep the list beside the open chat.
+  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  const [chatSearch, setChatSearch] = useState("");
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  // A chat counts as open (read stamps, typing, live thread) only when it is on screen.
+  const showingChat = wide || phoneOpen;
+  // the page behind a full-screen chat must not scroll
+  useEffect(() => {
+    if (wide || !phoneOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [wide, phoneOpen]);
+  const openChat = (key: Tab) => { setTab(key); setPhoneOpen(true); };
+  const backToList = () => setPhoneOpen(false);
 
   const modRole = useChatModRole();
   const tlRole = useTeamLeaderRole();
@@ -92,7 +114,7 @@ export default function CommunityPage() {
   const mutedUids = useMemo(() => new Set(mutedList.map((m) => m.uid)), [mutedList]);
 
   const uid = user?.uid ?? null;
-  const inboxFeed = useInbox(tab === "admin" ? uid : null);
+  const inboxFeed = useInbox(tab === "admin" && showingChat ? uid : null);
   const { messages: inbox, loading: inboxLoading } = inboxFeed;
   const inboxMeta = useInboxMeta(uid);
   const adminUnread = isInboxUnread(inboxMeta, "user");
@@ -102,7 +124,7 @@ export default function CommunityPage() {
   const online = useOnlineCount();
 
   // Typing indicators for whichever conversation is open
-  const typingScope = useMemo(() => (tab === "room" ? { room: true as const } : tab === "admin" && uid ? { thread: uid } : null), [tab, uid]);
+  const typingScope = useMemo(() => (!showingChat ? null : tab === "room" ? { room: true as const } : tab === "admin" && uid ? { thread: uid } : null), [tab, uid, showingChat]);
   // The admin account types and posts as "Admin", never under its own name.
   const typing = useTypingSignal(typingScope, uid ?? "", user?.isAdmin ? STAFF_NAME : user?.name ?? "");
   const typingNames = useTypingNames(typingScope, uid ?? "");
@@ -148,6 +170,8 @@ export default function CommunityPage() {
     if (h === "#admin") setTab("admin");
     else if (h === "#team") setTab("team");
     else if (h.startsWith("#dm:") || h.startsWith("#room:")) setTab(h.slice(1) as Tab);
+    // a link straight to a chat opens it, on phones too
+    if (h === "#admin" || h === "#team" || h.startsWith("#dm:") || h.startsWith("#room:")) setPhoneOpen(true);
   }, []);
 
   // Admins need their RTDB moderator flag before posting as admin.
@@ -156,15 +180,15 @@ export default function CommunityPage() {
   }, [user?.isAdmin]);
 
   useEffect(() => {
-    if (!dmTl || !uid || !dmThread || !isDmUnread(dmThread, "member")) return;
+    if (!showingChat || !dmTl || !uid || !dmThread || !isDmUnread(dmThread, "member")) return;
     markDmRead(dmTl, uid, "member");
-  }, [dmTl, uid, dmThread, dmFeed.messages.length]);
+  }, [showingChat, dmTl, uid, dmThread, dmFeed.messages.length]);
 
   // Mark the admin thread read whenever it's open and new messages arrive.
   useEffect(() => {
-    if (tab !== "admin" || !uid || !inboxMeta || !adminUnread) return;
+    if (!showingChat || tab !== "admin" || !uid || !inboxMeta || !adminUnread) return;
     markInboxRead(uid, "user");
-  }, [tab, uid, inboxMeta, adminUnread, inbox.length]);
+  }, [showingChat, tab, uid, inboxMeta, adminUnread, inbox.length]);
 
   // The room counts as read up to the newest message while its tab is open
   // (that is what clears the badges on the menu and the app icon).
@@ -172,9 +196,9 @@ export default function CommunityPage() {
   const roomReadAt = useRoomReadAt(uid);
   const roomUnread = useRoomUnread(!!uid && !demoMode);
   useEffect(() => {
-    if (tab !== "room" || !uid || demoMode || !newestRoomAt || newestRoomAt <= roomReadAt) return;
+    if (!showingChat || tab !== "room" || !uid || demoMode || !newestRoomAt || newestRoomAt <= roomReadAt) return;
     setRoomRead(uid, newestRoomAt);
-  }, [tab, uid, demoMode, newestRoomAt, roomReadAt]);
+  }, [showingChat, tab, uid, demoMode, newestRoomAt, roomReadAt]);
 
   // Admin-created rooms this person may enter (admins: all that are not hidden… and hidden ones too)
   const allRooms = useRooms();
@@ -204,8 +228,15 @@ export default function CommunityPage() {
 
   const lastRoom = room[room.length - 1];
 
+  const back = !wide ? (
+    <button type="button" onClick={backToList} className="w-8 h-8 -ml-1 shrink-0 flex items-center justify-center text-blue" aria-label="Back to chats"><ArrowLeft className="w-5 h-5" /></button>
+  ) : null;
+  // full screen on phones: no card border or corners around the chat
+  const fill = !wide ? "rounded-none border-0" : undefined;
+
   const roomHeader = (
     <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border shrink-0">
+      {back}
       <div className="relative shrink-0">
         <div className="w-9 h-9 rounded-full bg-[#F5C66B] text-[#2A1D05] text-[12px] font-extrabold flex items-center justify-center">IC</div>
         <span className="absolute -right-0.5 -bottom-0.5 w-3 h-3 rounded-full bg-green border-2 border-card" />
@@ -219,6 +250,7 @@ export default function CommunityPage() {
 
   const adminHeader = (
     <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border shrink-0">
+      {back}
       <div className="w-9 h-9 rounded-full bg-[#F5C66B]/20 border border-[#F5C66B]/40 flex items-center justify-center shrink-0">
         <ShieldCheck className="w-4 h-4 text-[#F5C66B]" />
       </div>
@@ -235,7 +267,7 @@ export default function CommunityPage() {
       label: "Community Room",
       sub: previewOf(lastRoom),
       at: lastRoom?.at,
-      unread: tab === "room" ? 0 : roomUnread,
+      unread: showingChat && tab === "room" ? 0 : roomUnread,
       icon: (
         <div className="relative shrink-0">
           <div className="w-11 h-11 rounded-full bg-[#F5C66B] text-[#2A1D05] text-[13px] font-extrabold flex items-center justify-center">IC</div>
@@ -251,7 +283,7 @@ export default function CommunityPage() {
         label: r.name,
         sub: locked ? "" : r.blurb || `${ROOM_AUDIENCE_LABEL[r.audience]} · ${ROOM_POSTING_LABEL[r.posting]}`,
         at: undefined,
-        unread: locked || tab === `room:${r.id}` ? 0 : roomsUnread.byRoom[r.id] ?? 0,
+        unread: locked || (showingChat && tab === `room:${r.id}`) ? 0 : roomsUnread.byRoom[r.id] ?? 0,
         locked,
         icon: locked ? (
           <div className="w-11 h-11 rounded-full bg-card-elev border border-[#F5C66B]/40 flex items-center justify-center shrink-0 text-[#F5C66B]"><Lock className="w-[18px] h-[18px]" /></div>
@@ -329,36 +361,64 @@ export default function CommunityPage() {
         <PushCard />
       </div>
 
-      {/* Phone: Messenger-style pills */}
-      <div className="flex items-center gap-1.5 mb-3 lg:hidden overflow-x-auto">
-        {chatItems.map((c) => (
-          <button
-            key={c.key}
-            onClick={() => setTab(c.key)}
-            className={cn(
-              "relative flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[12px] font-semibold transition whitespace-nowrap",
-              tab === c.key ? "bg-blue/20 text-blue" : "bg-card text-text-muted hover:text-text",
-            )}
-          >
-            {c.label}
-            {c.locked && <Lock className="w-3 h-3 text-[#F5C66B]" aria-label="Locked" />}
-            {c.unread > 0 && <span className="min-w-[16px] h-4 px-1 rounded-full bg-red text-white text-[10px] font-bold flex items-center justify-center">{c.unread}</span>}
-          </button>
-        ))}
-      </div>
+      {/* Phone: Messenger-style list of chats (a chat then opens full screen) */}
+      {!wide && !phoneOpen && (
+        <div className="bg-card border border-border rounded-xl py-2">
+          <div className="px-3.5 pt-1.5 pb-2">
+            <div className="flex items-baseline justify-between">
+              <span className="text-[22px] font-extrabold tracking-tight">Chats</span>
+              {online !== null && <span className="text-[11px] text-text-subtle">{online.toLocaleString()} active now</span>}
+            </div>
+            <div className="mt-2 flex items-center gap-2 px-3.5 py-2 bg-canvas rounded-full">
+              <Search className="w-4 h-4 text-text-subtle shrink-0" />
+              <input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)} placeholder="Search chats" aria-label="Search chats" className="bg-transparent text-[14px] outline-none w-full text-text placeholder:text-text-subtle" />
+            </div>
+          </div>
+          {chatItems
+            .filter((c) => { const s = chatSearch.trim().toLowerCase(); return !s || c.label.toLowerCase().includes(s) || c.sub.toLowerCase().includes(s); })
+            .map((c) => (
+              <button key={c.key} onClick={() => openChat(c.key)} className="w-full flex items-center gap-3 px-3.5 py-2.5 text-left active:bg-card-elev transition">
+                {c.icon}
+                <div className="min-w-0 flex-1">
+                  <p className={cn("text-[15px] m-0 truncate flex items-center gap-1", c.unread ? "font-bold text-text" : "font-semibold text-text")}>
+                    <span className="truncate">{c.label}</span>
+                    {c.locked && <Lock className="w-3.5 h-3.5 text-text-subtle shrink-0" aria-label="Locked" />}
+                  </p>
+                  {c.sub && <p className={cn("text-[13px] m-0 truncate mt-0.5", c.unread ? "text-text font-semibold" : "text-text-muted")}>{c.sub}</p>}
+                </div>
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  {c.at ? <span className={cn("text-[11px]", c.unread ? "text-text" : "text-text-subtle")}>{formatRelative(c.at)}</span> : null}
+                  {c.unread > 1 ? (
+                    <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-blue text-white text-[11px] font-bold flex items-center justify-center">{c.unread > 99 ? "99+" : c.unread}</span>
+                  ) : c.unread === 1 ? (
+                    <span className="w-2.5 h-2.5 rounded-full bg-blue" />
+                  ) : null}
+                </div>
+              </button>
+            ))}
+        </div>
+      )}
 
-      {tab === "inbox" && canInbox ? (
-        <>
-          <button onClick={() => setTab("room")} className="hidden lg:inline-flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text mb-2">← Back to chats</button>
+      {!showingChat ? null : tab === "inbox" && canInbox ? (
+        <div className={cn(!wide && "fixed inset-0 z-[65] bg-canvas flex flex-col overflow-y-auto px-2 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] [--chat-offset:calc(64px+env(safe-area-inset-top)+env(safe-area-inset-bottom))]")}>
+          {!wide ? (
+            <button onClick={backToList} className="flex items-center gap-1.5 text-[14px] text-blue font-semibold py-3 px-1 shrink-0"><ArrowLeft className="w-5 h-5" /> Chats</button>
+          ) : (
+            <button onClick={() => setTab("room")} className="inline-flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text mb-2">← Back to chats</button>
+          )}
           <InboxPanel staff={{ uid: user.uid, name: STAFF_NAME, isAdmin: user.isAdmin, isMod: modRole.isMod }} canSend={!demoMode} />
-        </>
+        </div>
       ) : tab === "team" && tlRole.isTL ? (
-        <>
-          <button onClick={() => setTab("room")} className="hidden lg:inline-flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text mb-2">← Back to chats</button>
+        <div className={cn(!wide && "fixed inset-0 z-[65] bg-canvas flex flex-col overflow-y-auto px-2 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] [--chat-offset:calc(64px+env(safe-area-inset-top)+env(safe-area-inset-bottom))]")}>
+          {!wide ? (
+            <button onClick={backToList} className="flex items-center gap-1.5 text-[14px] text-blue font-semibold py-3 px-1 shrink-0"><ArrowLeft className="w-5 h-5" /> Chats</button>
+          ) : (
+            <button onClick={() => setTab("room")} className="inline-flex items-center gap-1.5 text-[11px] text-text-muted hover:text-text mb-2">← Back to chats</button>
+          )}
           <TeamLeaderPanel me={{ uid: user.uid, name: user.name, photo: me?.profile?.photoURL ?? null }} canSend={!demoMode} />
-        </>
+        </div>
       ) : (
-        <div className="lg:grid lg:grid-cols-[300px_1fr] lg:gap-3">
+        <div className={cn("lg:grid lg:grid-cols-[300px_1fr] lg:gap-3", !wide && "fixed inset-0 z-[65] bg-card flex flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] [--chat-offset:calc(env(safe-area-inset-top)+env(safe-area-inset-bottom))]")}>
           {/* Desktop: chat list */}
           <div className="hidden lg:flex flex-col bg-card border border-border rounded-xl p-2.5 gap-1" style={{ height: "calc(100dvh - var(--chat-offset, 235px))", minHeight: 460 }}>
             <div className="flex items-baseline justify-between px-2 pt-1 pb-2">
@@ -396,6 +456,7 @@ export default function CommunityPage() {
           {tab === "room" && (
             <ChatView
               key="room"
+              className={fill}
               header={roomHeader}
               messages={room}
               loading={roomLoading}
@@ -427,7 +488,7 @@ export default function CommunityPage() {
             />
           )}
 
-          {openRoom && openLocked && <LockedRoom name={openRoom.name} />}
+          {openRoom && openLocked && <LockedRoom name={openRoom.name} onBack={!wide ? backToList : undefined} fullScreen={!wide} />}
 
           {openRoom && !openLocked && (
             <RoomChat
@@ -442,14 +503,18 @@ export default function CommunityPage() {
               tlBadges={tlBadges}
               caps={roomCaps}
               demoMode={demoMode}
+              onBack={!wide ? backToList : undefined}
+              fullScreen={!wide}
             />
           )}
 
           {dmTl && (
             <ChatView
               key={tab}
+              className={fill}
               header={
                 <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border shrink-0">
+                  {back}
                   <Avatar src={dmThread?.photo} name={dmThread?.name ?? "Team Leader"} id={dmTl} size={36} ring="ring-1 ring-[#5CE0D2]/40" />
                   <div className="min-w-0 flex-1">
                     <p className="text-[14px] font-bold m-0 truncate flex items-center gap-1.5">{dmThread?.name ?? "Team Leader"} <span className="text-[8px] font-bold tracking-[0.06em] text-[#5CE0D2] bg-[#5CE0D2]/15 border border-[#5CE0D2]/40 px-1.5 py-px rounded-full">Team Leader</span></p>
@@ -481,6 +546,7 @@ export default function CommunityPage() {
           {tab === "admin" && (
             <ChatView
               key="admin"
+              className={fill}
               header={adminHeader}
               messages={inbox}
               loading={inboxLoading}

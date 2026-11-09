@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { CalendarClock, Lock, Loader2 } from "lucide-react";
+import { CalendarClock, Lock, Loader2, ArrowLeft } from "lucide-react";
 import { ChatView } from "@/components/community/ChatView";
 import { Modal } from "@/components/Modal";
 import { cn } from "@/lib/utils";
@@ -36,8 +36,12 @@ const input = "bg-canvas border border-border rounded-lg px-3 py-2 text-[12px] t
  * chat view; the room's settings decide who may post, who may react, what
  * history a member sees, and whether the admin may date posts.
  */
-export function RoomChat({ room, sender, isStaff, isMod, muted, mutedUids, tlBadges, caps, demoMode, addedAt }: {
+export function RoomChat({ room, sender, isStaff, isMod, muted, mutedUids, tlBadges, caps, demoMode, addedAt, onBack, fullScreen }: {
   room: RoomConfig;
+  /** Phones: back to the chat list (shows a ← in the header). */
+  onBack?: () => void;
+  /** Phones: the chat fills the screen (no card border or corners). */
+  fullScreen?: boolean;
   /** Exclusive rooms: when this person was added ("from join date" history starts there). */
   addedAt?: number;
   sender: Sender;
@@ -100,6 +104,7 @@ export function RoomChat({ room, sender, isStaff, isMod, muted, mutedUids, tlBad
 
   const header = (
     <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border shrink-0">
+      {onBack && <button type="button" onClick={onBack} className="w-8 h-8 -ml-1 shrink-0 flex items-center justify-center text-blue" aria-label="Back to chats"><ArrowLeft className="w-5 h-5" /></button>}
       <div className="w-9 h-9 rounded-full bg-card-elev border border-border flex items-center justify-center shrink-0 text-gold text-[13px] font-extrabold">{room.name.slice(0, 1).toUpperCase()}</div>
       <div className="min-w-0 flex-1">
         <p className="text-[14px] font-bold m-0 truncate">{room.name}</p>
@@ -119,9 +124,10 @@ export function RoomChat({ room, sender, isStaff, isMod, muted, mutedUids, tlBad
   );
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className={cn("flex flex-col gap-2", fullScreen && "gap-0")}>
       <ChatView
         key={room.id}
+        className={fullScreen ? "rounded-none border-0" : undefined}
         header={header}
         messages={feed.messages}
         loading={feed.loading}
@@ -149,7 +155,7 @@ export function RoomChat({ room, sender, isStaff, isMod, muted, mutedUids, tlBad
         tlBadges={tlBadges}
         {...moderation}
       />
-      {!canPost && lockLine && room.posting !== "members" && (
+      {!canPost && lockLine && room.posting !== "members" && !fullScreen && (
         <p className="text-[11px] text-text-subtle m-0 flex items-center gap-1.5 px-1"><Lock className="w-3 h-3" /> {lockLine}</p>
       )}
 
