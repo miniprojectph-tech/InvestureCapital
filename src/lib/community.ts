@@ -73,7 +73,12 @@ export type ChatItem = {
   boost?: Boost;
   /** Posted by a Team Leader (the chip shows while their badge is switched on). */
   tl?: boolean;
+  /** Admin multi-photo post: every photo in order (the first is also `media`). */
+  album?: ChatMedia[];
 };
+
+/** Most photos one admin post can carry. */
+export const MAX_ALBUM = 10;
 
 /** A member granted chat-only moderator powers by a full admin. */
 export type ChatMod = { uid: string; name: string; at: number; inbox: boolean };
@@ -106,9 +111,18 @@ export const MAX_GIF_BYTES = 3 * 1024 * 1024;
 export type Sender = { uid: string; name: string; isAdmin: boolean; isMod?: boolean; /** Team Leader: posts under their own name with the chip */ isTL?: boolean; /** profile picture URL, carried on each message */ photo?: string | null };
 /** The one name the team posts under: the admin account in the room, and admin or moderators in private chats. */
 export const STAFF_NAME = "Admin";
-export type SendPayload = { kind: ChatKind; text?: string; media?: ChatMedia; sticker?: string; replyTo?: ReplyRef };
+export type SendPayload = { kind: ChatKind; text?: string; media?: ChatMedia; album?: ChatMedia[]; sticker?: string; replyTo?: ReplyRef };
 
-type RawCommon = { kind: ChatKind; text?: string; media?: ChatMedia; at: number; sticker?: string; replyTo?: ReplyRef; re?: Reactions; photo?: string };
+type RawCommon = { kind: ChatKind; text?: string; media?: ChatMedia; album?: unknown; at: number; sticker?: string; replyTo?: ReplyRef; re?: Reactions; photo?: string };
+
+/** RTDB hands lists back as arrays (or objects when sparse); keep only real photos, two or more. */
+function albumOf(raw: unknown): ChatMedia[] | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const list = (Array.isArray(raw) ? raw : Object.values(raw as Record<string, unknown>))
+    .filter((x): x is ChatMedia => !!x && typeof (x as ChatMedia).url === "string")
+    .slice(0, MAX_ALBUM);
+  return list.length > 1 ? list : undefined;
+}
 type RawRoom = RawCommon & { uid: string; name: string; admin?: boolean; mod?: boolean; tl?: boolean; boost?: Boost };
 type RawInbox = RawCommon & { from: string; name: string };
 
@@ -118,14 +132,14 @@ const roomToItem = (id: string, raw: unknown): ChatItem => {
   const m = raw as RawRoom;
   // The admin account never shows its own name in the room — always "Admin" (older posts included).
   const admin = !!m.admin && !m.mod;
-  return { id, senderId: m.uid, name: admin ? STAFF_NAME : m.name, photo: admin ? undefined : m.photo, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, mod: false, tl: !admin && m.tl === true, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re, boost: m.boost };
+  return { id, senderId: m.uid, name: admin ? STAFF_NAME : m.name, photo: admin ? undefined : m.photo, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, mod: false, tl: !admin && m.tl === true, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re, boost: m.boost, album: albumOf(m.album) };
 };
 
 const inboxToItem = (id: string, raw: unknown): ChatItem => {
   const m = raw as RawInbox;
   // Every reply from the team — admin or a moderator with inbox access — reads as "Admin" (older "Moderator" replies included).
   const admin = m.from === "admin";
-  return { id, senderId: m.from, name: admin ? STAFF_NAME : m.name, photo: admin ? undefined : m.photo, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re };
+  return { id, senderId: m.from, name: admin ? STAFF_NAME : m.name, photo: admin ? undefined : m.photo, kind: m.kind, text: m.text, media: m.media, at: m.at, admin, sticker: m.sticker, replyTo: m.replyTo, reactions: m.re, album: albumOf(m.album) };
 };
 
 const byTime = (a: ChatItem, b: ChatItem) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
@@ -806,6 +820,7 @@ function needRtdb() {
 
 function previewText(p: SendPayload): string {
   if (p.text?.trim()) return p.text.trim().slice(0, 120);
+  if (p.album && p.album.length > 1) return `📷 ${p.album.length} photos`;
   return p.kind === "image" ? "📷 Photo" : p.kind === "video" ? "🎬 Video" : p.kind === "sticker" ? "Sticker" : "";
 }
 
@@ -815,6 +830,17 @@ function optionalFields(payload: SendPayload, maxText: number): Record<string, u
   const text = payload.text?.trim();
   if (text) out.text = text.slice(0, maxText);
   if (payload.media) out.media = payload.media;
+  // Admin multi-photo post (the rules refuse it from anyone else).
+  if (payload.kind === "image" && payload.album && payload.album.length > 1) {
+    out.album = payload.album.slice(0, MAX_ALBUM).map((m) => {
+      const c: Record<string, unknown> = { url: m.url };
+      if (m.thumb) c.thumb = m.thumb;
+      if (m.original) c.original = m.original;
+      if (m.w) c.w = m.w;
+      if (m.h) c.h = m.h;
+      return c;
+    });
+  }
   if (payload.kind === "sticker" && payload.sticker) out.sticker = payload.sticker;
   if (payload.replyTo) {
     const r: ReplyRef = { id: payload.replyTo.id.slice(0, 40), name: payload.replyTo.name.slice(0, 40) };

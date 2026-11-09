@@ -23,6 +23,8 @@ import {
   Copy,
   ThumbsUp,
   Plus,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Avatar as SharedAvatar } from "@/components/Avatar";
 import { cn } from "@/lib/utils";
@@ -34,6 +36,7 @@ import {
   type ReplyRef,
   type SendPayload,
   MAX_TEXT,
+  MAX_ALBUM,
   uploadChatImage,
   uploadChatVideo,
   youtubeId,
@@ -61,6 +64,8 @@ type Props = {
   allowVideo?: boolean;
   /** Pictures (gallery + camera). Default on. */
   allowImage?: boolean;
+  /** Admins: pick several pictures at once and send them as one post (rules enforce it too). */
+  allowAlbum?: boolean;
   /** Storage folder for this chat's uploads (defaults to community/{uploaderUid}). */
   uploadFolder?: string;
   /** Admin-set caps for this chat. */
@@ -106,6 +111,8 @@ type Props = {
 };
 
 type Pending = { file: File; kind: "image" | "video"; preview: string };
+type AlbumPick = { id: string; file: File; preview: string };
+type Lightbox = { list: ChatMedia[]; i: number };
 type Sheet = { item: ChatItem; picker: boolean };
 
 const URL_RE = /(https?:\/\/[^\s]+)/g;
@@ -148,7 +155,7 @@ function Avatar({ item, size = 30 }: { item: ChatItem; size?: number }) {
 
 function snippetOf(m: ChatItem): string {
   if (m.text) return m.text;
-  if (m.kind === "image") return "📷 Photo";
+  if (m.kind === "image") return m.album ? `📷 ${m.album.length} photos` : "📷 Photo";
   if (m.kind === "video") return "🎬 Video";
   if (m.kind === "sticker") return "Sticker";
   return "";
@@ -165,6 +172,7 @@ export function ChatView({
   sendDisabledReason,
   allowVideo = false,
   allowImage = true,
+  allowAlbum = false,
   uploadFolder,
   maxImageBytes,
   maxVideoBytes,
@@ -200,7 +208,11 @@ export function ChatView({
   const [pending, setPending] = useState<Pending | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lightbox, setLightbox] = useState<ChatMedia | null>(null);
+  const [lightbox, setLightbox] = useState<Lightbox | null>(null);
+  // Admin multi-photo post being put together, and "Uploading 2 of 6" while it sends.
+  const [album, setAlbum] = useState<AlbumPick[]>([]);
+  const [progress, setProgress] = useState<string | null>(null);
+  const swipeX = useRef<number | null>(null);
   const [playing, setPlaying] = useState<Set<string>>(new Set());
   const [tray, setTray] = useState(false);
   const [replyTo, setReplyTo] = useState<ReplyRef | null>(null);
@@ -230,6 +242,18 @@ export function ChatView({
     if (!pending) return;
     return () => URL.revokeObjectURL(pending.preview);
   }, [pending]);
+
+  // Full-screen photos: arrow keys step through a multi-photo post, Escape closes.
+  useEffect(() => {
+    if (!lightbox) return;
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape") setLightbox(null);
+      else if (e.key === "ArrowRight") setLightbox((l) => l && { ...l, i: (l.i + 1) % l.list.length });
+      else if (e.key === "ArrowLeft") setLightbox((l) => l && { ...l, i: (l.i - 1 + l.list.length) % l.list.length });
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [lightbox]);
 
   useEffect(() => {
     if (!hoverMenu && !hoverPicker) return;
@@ -280,6 +304,50 @@ export function ChatView({
     setPending({ file, kind, preview: URL.createObjectURL(file) });
   }
 
+  /** Gallery picks. Admins may pick several: two or more become one multi-photo post. */
+  function pickImages(files: FileList | null) {
+    const list = files ? Array.from(files) : [];
+    if (!list.length) return;
+    if (!allowAlbum || (list.length === 1 && album.length === 0)) return pickFile("image", list[0]);
+    setError(null);
+    const tooBig = maxImageBytes ? list.filter((f) => f.size > maxImageBytes) : [];
+    const ok = list.filter((f) => !tooBig.includes(f));
+    // a single picture already waiting joins the post as its first photo
+    const carried: AlbumPick[] = pending?.kind === "image" ? [{ id: `p${Date.now()}`, file: pending.file, preview: URL.createObjectURL(pending.file) }] : [];
+    if (pending) setPending(null);
+    const room = MAX_ALBUM - album.length - carried.length;
+    const added = ok.slice(0, Math.max(0, room)).map((file, i) => ({ id: `${Date.now()}-${i}-${file.name}`, file, preview: URL.createObjectURL(file) }));
+    setAlbum((a) => [...a, ...carried, ...added]);
+    const notes = [
+      tooBig.length ? `${tooBig.length} too large (limit ${Math.round((maxImageBytes ?? 0) / 1024 / 1024)} MB)` : "",
+      ok.length > room ? `only ${MAX_ALBUM} photos fit in one post` : "",
+    ].filter(Boolean);
+    if (notes.length) setError(`Some photos were left out: ${notes.join(", ")}.`);
+  }
+
+  function removeFromAlbum(id: string) {
+    setAlbum((a) => {
+      const gone = a.find((x) => x.id === id);
+      if (gone) URL.revokeObjectURL(gone.preview);
+      return a.filter((x) => x.id !== id);
+    });
+  }
+
+  function moveInAlbum(id: string, by: number) {
+    setAlbum((a) => {
+      const i = a.findIndex((x) => x.id === id);
+      const j = i + by;
+      if (i < 0 || j < 0 || j >= a.length) return a;
+      const next = [...a];
+      [next[i], next[j]] = [next[j], next[i]];
+      return next;
+    });
+  }
+
+  function clearAlbum() {
+    setAlbum((a) => { a.forEach((x) => URL.revokeObjectURL(x.preview)); return []; });
+  }
+
   function autoGrow() {
     const el = textRef.current;
     if (!el) return;
@@ -306,15 +374,28 @@ export function ChatView({
 
   async function submit() {
     const body = text.trim();
-    if (sending || (!body && !pending)) return;
+    if (sending || (!body && !pending && album.length === 0)) return;
     if (blockLinks && containsLink(body)) {
       setError("Only admins can share links in the Community Room.");
       return;
     }
     try {
       let media: ChatMedia | undefined;
+      let photos: ChatMedia[] | undefined;
       let kind: SendPayload["kind"] = "text";
-      if (pending) {
+      if (album.length > 0) {
+        const { storage } = getFirebase();
+        if (!storage) throw new Error("Uploads are unavailable in demo mode.");
+        setSending(true);
+        photos = [];
+        for (let i = 0; i < album.length; i++) {
+          setProgress(`Uploading ${i + 1} of ${album.length}…`);
+          photos.push(await uploadChatImage(storage, uploaderUid, album[i].file, { keepOriginal, folder: uploadFolder, maxBytes: maxImageBytes }));
+        }
+        media = photos[0];
+        kind = "image";
+        if (photos.length < 2) photos = undefined;
+      } else if (pending) {
         const { storage } = getFirebase();
         if (!storage) throw new Error("Uploads are unavailable in demo mode.");
         setSending(true);
@@ -323,14 +404,17 @@ export function ChatView({
           : await uploadChatVideo(storage, uploaderUid, pending.file, { folder: uploadFolder, maxBytes: maxVideoBytes, maxSeconds: maxVideoSeconds });
         kind = pending.kind;
       }
-      await send({ kind, text: body || undefined, media });
+      setProgress(null);
+      await send({ kind, text: body || undefined, media, album: photos });
       setText("");
       setPending(null);
+      clearAlbum();
       setTray(false);
       if (textRef.current) textRef.current.style.height = "auto";
     } catch (e) {
       if (!error) setError(describeStorageError(e));
       setSending(false);
+      setProgress(null);
     }
   }
 
@@ -446,9 +530,20 @@ export function ChatView({
     // sized from the stored proportions so nothing is cropped: up to 260 x 420 on phones,
     // 360 x 480 on wide screens (--mw / --mh below). Tall pictures get narrower instead.
     const ratio = m.media?.w && m.media?.h ? m.media.w / m.media.h : null;
-    const mediaWidth = (m.kind === "image" || m.kind === "video") && m.media
-      ? (ratio ? `min(var(--mw), calc(var(--mh) * ${ratio.toFixed(4)}))` : "var(--mw)")
-      : undefined;
+    const photos = m.kind === "image" && m.album && m.album.length > 1 ? m.album : null;
+    const mediaWidth = photos
+      ? "var(--mw)"
+      : (m.kind === "image" || m.kind === "video") && m.media
+        ? (ratio ? `min(var(--mw), calc(var(--mh) * ${ratio.toFixed(4)}))` : "var(--mw)")
+        : undefined;
+    // Multi-photo grid: 2 side by side, 3 as one large + two small, 4+ as 2×2 with "+N".
+    const tile = (list: ChatMedia[], i: number, cls?: string) => (
+      <button key={i} onClick={(e) => { e.stopPropagation(); setLightbox({ list, i }); }} className={cn("relative block overflow-hidden bg-black/30 min-h-0", cls)} aria-label={`Open photo ${i + 1} of ${list.length}`}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={list[i].thumb ?? list[i].url} alt="" loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+        {i === 3 && list.length > 4 && <span className="absolute inset-0 bg-black/55 text-white text-[22px] font-semibold flex items-center justify-center">+{list.length - 4}</span>}
+      </button>
+    );
 
     const radius = own
       ? cn("rounded-[18px]", first && !last && "rounded-br-[5px]", !first && !last && "rounded-r-[5px]", !first && last && "rounded-tr-[5px]")
@@ -478,8 +573,18 @@ export function ChatView({
           )
         )}
 
-        {m.kind === "image" && m.media && (
-          <button onClick={(e) => { e.stopPropagation(); setLightbox(m.media!); }} className="block w-full" aria-label="Open image">
+        {photos && (
+          photos.length === 2 ? (
+            <div className="grid grid-cols-2 gap-[2px] aspect-[8/5]">{tile(photos, 0)}{tile(photos, 1)}</div>
+          ) : photos.length === 3 ? (
+            <div className="grid grid-cols-[2fr_1fr] grid-rows-2 gap-[2px] aspect-square">{tile(photos, 0, "row-span-2")}{tile(photos, 1)}{tile(photos, 2)}</div>
+          ) : (
+            <div className="grid grid-cols-2 grid-rows-2 gap-[2px] aspect-square">{[0, 1, 2, 3].map((i) => tile(photos, i))}</div>
+          )
+        )}
+
+        {!photos && m.kind === "image" && m.media && (
+          <button onClick={(e) => { e.stopPropagation(); setLightbox({ list: [m.media!], i: 0 }); }} className="block w-full" aria-label="Open image">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={m.media.thumb ?? m.media.url} alt="" loading="lazy" className={cn("block w-full h-auto", !ratio && "max-h-[var(--mh)] object-contain bg-black/20")} style={ratio ? { aspectRatio: `${m.media.w} / ${m.media.h}` } : undefined} />
           </button>
@@ -746,13 +851,42 @@ export function ChatView({
                 </p>
               </div>
             )}
+            {album.length > 0 && (
+              <div className="px-3 pt-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {album.map((a, i) => (
+                    <div key={a.id} className="relative w-14 h-14 rounded-lg overflow-hidden bg-canvas border border-border">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={a.preview} alt="" className="w-full h-full object-cover" />
+                      <button onClick={() => removeFromAlbum(a.id)} disabled={sending} className="absolute top-0.5 right-0.5 w-4 h-4 rounded-full bg-black/70 text-white flex items-center justify-center" aria-label={`Remove photo ${i + 1}`}>
+                        <X className="w-2.5 h-2.5" />
+                      </button>
+                      {i > 0 && (
+                        <button onClick={() => moveInAlbum(a.id, -1)} disabled={sending} className="absolute bottom-0.5 left-0.5 w-4 h-4 rounded-full bg-black/70 text-white flex items-center justify-center" aria-label={`Move photo ${i + 1} earlier`}>
+                          <ChevronLeft className="w-3 h-3" />
+                        </button>
+                      )}
+                      <span className="absolute bottom-0.5 right-1 text-[9px] text-white font-semibold drop-shadow">{i + 1}</span>
+                    </div>
+                  ))}
+                  {album.length < MAX_ALBUM && (
+                    <button onClick={() => imgInput.current?.click()} disabled={sending} className="w-14 h-14 rounded-lg border border-dashed border-border-strong text-text-subtle hover:text-text flex items-center justify-center" aria-label="Add more photos">
+                      <Plus className="w-5 h-5" />
+                    </button>
+                  )}
+                </div>
+                <p className="text-[10px] text-text-subtle m-0 mt-1">
+                  {progress ?? `${album.length} photo${album.length === 1 ? "" : "s"} in one post · ${album.length > 1 ? "‹ moves a photo earlier · " : ""}will be compressed`}
+                </p>
+              </div>
+            )}
             {error && <p className="text-[10px] text-red m-0 px-3 pt-2">{error}</p>}
 
             <div className="flex items-end gap-0.5 p-2">
               {allowImage && (
                 <>
-                  <input ref={imgInput} type="file" accept="image/*" hidden onChange={(e) => { pickFile("image", e.target.files?.[0]); e.target.value = ""; }} />
-                  <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { pickFile("image", e.target.files?.[0]); e.target.value = ""; }} />
+                  <input ref={imgInput} type="file" accept="image/*" multiple={allowAlbum} hidden onChange={(e) => { pickImages(e.target.files); e.target.value = ""; }} />
+                  <input ref={camInput} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { if (album.length > 0) pickImages(e.target.files); else pickFile("image", e.target.files?.[0]); e.target.value = ""; }} />
                   <button onClick={() => imgInput.current?.click()} className="w-9 h-9 rounded-full flex items-center justify-center text-blue hover:bg-card-elev transition shrink-0" aria-label="Attach image" disabled={sending}>
                     <ImageIcon className="w-[22px] h-[22px]" />
                   </button>
@@ -786,7 +920,7 @@ export function ChatView({
                   <Smile className="w-[22px] h-[22px]" />
                 </button>
               </div>
-              {text.trim() || pending ? (
+              {text.trim() || pending || album.length > 0 ? (
                 <button onClick={submit} disabled={sending} className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-blue hover:bg-card-elev transition disabled:opacity-50" aria-label="Send">
                   {sending ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-[22px] h-[22px]" />}
                 </button>
@@ -803,20 +937,48 @@ export function ChatView({
       {tray && canSend && <StickerTray onSticker={sendSticker} onEmoji={insertEmoji} />}
 
       {/* Lightbox */}
-      {lightbox && (
-        <div className="fixed inset-0 z-[80] bg-black/92 flex flex-col items-center justify-center p-3" onClick={() => setLightbox(null)}>
-          <button className="absolute top-3 right-3 p-2 text-white/80 hover:text-white" aria-label="Close">
-            <X className="w-6 h-6" />
-          </button>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={lightbox.url} alt="" className="max-w-[96vw] max-h-[84dvh] object-contain rounded-md" onClick={(e) => e.stopPropagation()} />
-          {lightbox.original && (
-            <a href={lightbox.original} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-white/80 hover:text-white underline">
-              <ExternalLink className="w-3.5 h-3.5" /> View full quality
-            </a>
-          )}
-        </div>
-      )}
+      {lightbox && (() => {
+        const cur = lightbox.list[lightbox.i];
+        const many = lightbox.list.length > 1;
+        const go = (by: number) => setLightbox((l) => l && { ...l, i: (l.i + by + l.list.length) % l.list.length });
+        return (
+          <div
+            className="fixed inset-0 z-[80] bg-black/92 flex flex-col items-center justify-center p-3"
+            onClick={() => setLightbox(null)}
+            onTouchStart={(e) => { swipeX.current = e.touches[0]?.clientX ?? null; }}
+            onTouchEnd={(e) => {
+              const start = swipeX.current;
+              swipeX.current = null;
+              const end = e.changedTouches[0]?.clientX;
+              if (!many || start == null || end == null || Math.abs(end - start) < 40) return;
+              go(end < start ? 1 : -1);
+            }}
+          >
+            <button className="absolute top-3 right-3 p-2 text-white/80 hover:text-white" aria-label="Close">
+              <X className="w-6 h-6" />
+            </button>
+            {many && <p className="absolute top-4 left-4 m-0 text-[12px] text-white/80 font-mono">{lightbox.i + 1} / {lightbox.list.length}</p>}
+            {many && (
+              <>
+                <button onClick={(e) => { e.stopPropagation(); go(-1); }} className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center" aria-label="Previous photo"><ChevronLeft className="w-6 h-6" /></button>
+                <button onClick={(e) => { e.stopPropagation(); go(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center" aria-label="Next photo"><ChevronRight className="w-6 h-6" /></button>
+              </>
+            )}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img key={cur.url} src={cur.url} alt="" className="max-w-[96vw] max-h-[80dvh] object-contain rounded-md" onClick={(e) => e.stopPropagation()} />
+            {many && (
+              <div className="mt-3 flex gap-1.5">
+                {lightbox.list.map((_, i) => <span key={i} className={cn("w-1.5 h-1.5 rounded-full", i === lightbox.i ? "bg-white" : "bg-white/30")} />)}
+              </div>
+            )}
+            {cur.original && (
+              <a href={cur.original} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-white/80 hover:text-white underline">
+                <ExternalLink className="w-3.5 h-3.5" /> View full quality
+              </a>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Hold-a-message sheet: reactions + actions (Messenger style) */}
       {sheet && (

@@ -131,6 +131,7 @@ export function RoomChat({ room, sender, isStaff, isMod, muted, mutedUids, tlBad
         sendDisabledReason={lockLine}
         allowVideo={isStaff || room.media}
         allowImage={isStaff || room.media}
+        allowAlbum={isAdmin}
         maxImageBytes={caps.imageMB * 1024 * 1024}
         maxVideoBytes={caps.videoMB * 1024 * 1024}
         maxVideoSeconds={caps.videoSeconds}

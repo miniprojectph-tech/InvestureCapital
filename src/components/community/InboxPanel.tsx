@@ -197,6 +197,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
             canSend={canSend}
             sendDisabledReason="Moderator access is still syncing…"
             allowVideo
+            allowAlbum={staff.isAdmin}
             keepOriginal
             maxText={1000}
             hasMore={feed.hasMore}

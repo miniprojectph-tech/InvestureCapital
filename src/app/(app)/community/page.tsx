@@ -387,6 +387,7 @@ export default function CommunityPage() {
               sendDisabledReason={muted ? "You've been muted in the Community Room. Message the admin if you think this is a mistake." : undefined}
               allowVideo={canVideo}
               allowImage={canImage}
+              allowAlbum={!!user.isAdmin}
               maxImageBytes={roomCaps.imageMB * 1024 * 1024}
               maxVideoBytes={roomCaps.videoMB * 1024 * 1024}
               maxVideoSeconds={roomCaps.videoSeconds}
