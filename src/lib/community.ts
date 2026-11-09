@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, updateDoc, writeBatch } from "firebase/firestore";
 import {
   ref,
   onValue,
@@ -1402,7 +1402,8 @@ export function useRoomUnread(enabled: boolean): number {
 // shape as the room, pinned post at `community/roomPinned/{id}`, and each
 // member's read stamps at `community/roomsRead/{uid}/{id}`.
 
-export type RoomAudience = "all" | "tl" | "mods" | "admins";
+/** "members" = exclusive: everyone sees the name and a lock; only people the admin added get in. */
+export type RoomAudience = "all" | "tl" | "mods" | "admins" | "members";
 export type RoomPosting = "members" | "react" | "read";
 export type RoomHistory = "join" | "all";
 export type RoomConfig = {
@@ -1421,7 +1422,7 @@ export type RoomConfig = {
   createdAt?: number;
   createdBy?: string;
 };
-export const ROOM_AUDIENCE_LABEL: Record<RoomAudience, string> = { all: "Everyone", tl: "Team Leaders", mods: "Moderators", admins: "Admins" };
+export const ROOM_AUDIENCE_LABEL: Record<RoomAudience, string> = { all: "Everyone", tl: "Team Leaders", mods: "Moderators", admins: "Admins", members: "Selected members" };
 export const ROOM_POSTING_LABEL: Record<RoomPosting, string> = { members: "Members post", react: "React only", read: "Read only" };
 export const ROOM_HISTORY_LABEL: Record<RoomHistory, string> = { join: "From join date", all: "Everything" };
 
@@ -1431,7 +1432,7 @@ function toRoom(id: string, raw: unknown): RoomConfig {
     id,
     name: String(r.name ?? "Room"),
     blurb: String(r.blurb ?? ""),
-    audience: (["all", "tl", "mods", "admins"] as const).includes(r.audience as RoomAudience) ? (r.audience as RoomAudience) : "all",
+    audience: (["all", "tl", "mods", "admins", "members"] as const).includes(r.audience as RoomAudience) ? (r.audience as RoomAudience) : "all",
     posting: (["members", "react", "read"] as const).includes(r.posting as RoomPosting) ? (r.posting as RoomPosting) : "members",
     media: r.media === true,
     history: r.history === "all" ? "all" : "join",
@@ -1459,15 +1460,93 @@ export function useRooms(): RoomConfig[] {
   return rooms;
 }
 
-export type RoomViewer = { isAdmin: boolean; isMod: boolean; isTL: boolean };
-/** Admins are inside every room; otherwise the room's audience decides. Hidden rooms are admin-only. */
+/** `memberOf`: exclusive rooms this person was added to (room id → when). */
+export type RoomViewer = { isAdmin: boolean; isMod: boolean; isTL: boolean; memberOf?: Record<string, number> };
+/** May open the room: admins are inside every room; otherwise the room's audience decides. Hidden rooms are admin-only. */
 export function canSeeRoom(r: RoomConfig, v: RoomViewer): boolean {
   if (v.isAdmin) return true;
   if (r.hidden) return false;
-  return r.audience === "all" || (r.audience === "tl" && v.isTL) || (r.audience === "mods" && v.isMod);
+  return r.audience === "all" || (r.audience === "tl" && v.isTL) || (r.audience === "mods" && v.isMod) || (r.audience === "members" && !!v.memberOf?.[r.id]);
 }
+/** Rooms this person can open (what badges and unread counts use). */
 export function visibleRooms(rooms: RoomConfig[], v: RoomViewer): RoomConfig[] {
   return rooms.filter((r) => !r.hidden && canSeeRoom(r, v));
+}
+/** Rooms in the Chats list: the ones they can open, plus exclusive rooms shown locked. */
+export function listedRooms(rooms: RoomConfig[], v: RoomViewer): RoomConfig[] {
+  return rooms.filter((r) => !r.hidden && (canSeeRoom(r, v) || r.audience === "members"));
+}
+
+/**
+ * Exclusive rooms this person was added to: room id → when they were added.
+ * Each member may read only their own entry, so this listens per exclusive room.
+ */
+export function useMyRoomMemberships(rooms: RoomConfig[]): Record<string, number> {
+  const { user } = useAuth();
+  const uid = user?.uid ?? null;
+  const [map, setMap] = useState<Record<string, number>>({});
+  const ids = rooms.filter((r) => r.audience === "members").map((r) => r.id).join(",");
+  useEffect(() => {
+    if (!uid || !ids) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    const unsubs = ids.split(",").map((id) =>
+      onValue(ref(rtdb, `community/roomMembers/${id}/${uid}`), (s) => {
+        const at = (s.val() as { at?: number } | null)?.at;
+        setMap((prev) => {
+          if (typeof at === "number") return prev[id] === at ? prev : { ...prev, [id]: at };
+          if (!(id in prev)) return prev;
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+      }, () => {}),
+    );
+    return () => { for (const u of unsubs) u(); };
+  }, [uid, ids]);
+  return map;
+}
+
+export type RoomMember = { uid: string; name: string; at: number };
+/** Admin: who is in an exclusive room. */
+export function useRoomMembers(roomId: string | null): RoomMember[] {
+  // kept with the room it belongs to, so switching rooms never shows the last room's people
+  const [state, setState] = useState<{ roomId: string; list: RoomMember[] } | null>(null);
+  useEffect(() => {
+    if (!roomId) return;
+    const { rtdb } = getFirebase();
+    if (!rtdb) return;
+    return onValue(ref(rtdb, `community/roomMembers/${roomId}`), (s) => {
+      const v = (s.val() as Record<string, { name?: string; at?: number }> | null) ?? {};
+      setState({ roomId, list: Object.entries(v).map(([uid, x]) => ({ uid, name: String(x?.name ?? "Member"), at: Number(x?.at ?? 0) })).sort((a, b) => a.name.localeCompare(b.name)) });
+    }, () => setState({ roomId, list: [] }));
+  }, [roomId]);
+  return useMemo(() => (roomId && state?.roomId === roomId ? state.list : []), [roomId, state]);
+}
+
+/**
+ * Admin: add people to / take people off an exclusive room. People added get a
+ * bell notice (which also goes out as a push); taking someone off is silent.
+ */
+export async function setRoomMembers(room: { id: string; name: string }, add: { uid: string; name: string }[], remove: string[], adminUid: string) {
+  const rtdb = needRtdb();
+  const upd: Record<string, unknown> = {};
+  const now = Date.now();
+  for (const m of add) upd[`community/roomMembers/${room.id}/${m.uid}`] = { at: now, name: m.name.slice(0, 40), by: adminUid };
+  for (const uid of remove) upd[`community/roomMembers/${room.id}/${uid}`] = null;
+  if (Object.keys(upd).length) await update(ref(rtdb), upd);
+  const { db } = getFirebase();
+  if (db && add.length) {
+    for (let i = 0; i < add.length; i += 400) {
+      const batch = writeBatch(db);
+      for (const m of add.slice(i, i + 400)) {
+        batch.set(doc(collection(db, "users", m.uid, "notifications")), {
+          type: "room", title: `You've been added to ${room.name}`, body: "Open Community to see the room.", href: `/community#room:${room.id}`, at: now, read: false,
+        });
+      }
+      await batch.commit();
+    }
+  }
 }
 
 /** Admin: create (no id) or update a room's settings. */
@@ -1488,14 +1567,18 @@ export function setRoomHidden(id: string, hidden: boolean) {
 }
 /** Admin: the room, its messages and its pinned post are gone for good (media files stay in Storage). */
 export function deleteRoom(id: string) {
-  return update(ref(needRtdb()), { [`community/rooms/${id}`]: null, [`community/roomMsgs/${id}`]: null, [`community/roomPinned/${id}`]: null });
+  return update(ref(needRtdb()), { [`community/rooms/${id}`]: null, [`community/roomMsgs/${id}`]: null, [`community/roomPinned/${id}`]: null, [`community/roomMembers/${id}`]: null });
 }
 
-/** The messages of an admin-created room, paged like the Community Room. */
-export function useRoomFeed(roomId: string | null, history: RoomHistory, staff: boolean): PagedMessages {
+/**
+ * The messages of an admin-created room, paged like the Community Room.
+ * `addedAt`: exclusive rooms start "from join date" at the day the person was added.
+ */
+export function useRoomFeed(roomId: string | null, history: RoomHistory, staff: boolean, addedAt?: number): PagedMessages {
   const { user } = useAuth();
   const [joined, setJoined] = useState<number | null>(null);
-  const needJoin = !!user && !!roomId && !staff && history === "join";
+  const fromAdded = !staff && history === "join" && typeof addedAt === "number";
+  const needJoin = !!user && !!roomId && !staff && history === "join" && !fromAdded;
   useEffect(() => {
     if (!needJoin || !user) return;
     const { rtdb } = getFirebase();
@@ -1506,7 +1589,7 @@ export function useRoomFeed(roomId: string | null, history: RoomHistory, staff: 
       else ensureCommunityMember();
     }, () => {});
   }, [needJoin, user]);
-  const since = !user || !roomId ? undefined : needJoin ? joined ?? undefined : null;
+  const since = !user || !roomId ? undefined : fromAdded ? addedAt : needJoin ? joined ?? undefined : null;
   return usePagedMessages(roomId ? roomMsgPath(roomId) : null, since, roomToItem);
 }
 
@@ -1537,13 +1620,13 @@ export function useRoomsReadAt(uid: string | null): Record<string, number> {
  * full-history room does not greet a new member with 99+). One bounded
  * listener per room.
  */
-export function useRoomsUnread(rooms: RoomConfig[], enabled: boolean): { total: number; byRoom: Record<string, number> } {
+export function useRoomsUnread(rooms: RoomConfig[], enabled: boolean, memberOf: Record<string, number> = {}): { total: number; byRoom: Record<string, number> } {
   const { user } = useAuth();
   const uid = enabled && user ? user.uid : null;
   const readMap = useRoomsReadAt(uid);
   const [joined, setJoined] = useState<number | null>(null);
   const [byRoom, setByRoom] = useState<Record<string, number>>({});
-  const key = rooms.map((r) => `${r.id}:${r.history}`).join(",");
+  const key = rooms.map((r) => `${r.id}:${r.history}:${r.audience === "members" ? memberOf[r.id] ?? 0 : ""}`).join(",");
   const readKey = rooms.map((r) => readMap[r.id] ?? 0).join(",");
 
   useEffect(() => {
@@ -1558,9 +1641,11 @@ export function useRoomsUnread(rooms: RoomConfig[], enabled: boolean): { total: 
     const { rtdb } = getFirebase();
     if (!rtdb) return;
     const unsubs = rooms.map((r) => {
-      const readAt = Math.max(readMap[r.id] ?? 0, joined);
-      // "join" rooms only allow a query starting exactly at the join date; "all" rooms allow any start
-      const start = r.history === "all" ? readAt + 1 : joined;
+      // exclusive rooms count from the day the person was added
+      const base = r.audience === "members" && memberOf[r.id] ? memberOf[r.id] : joined;
+      const readAt = Math.max(readMap[r.id] ?? 0, base);
+      // "join" rooms only allow a query starting exactly at the join (or added) date; "all" rooms allow any start
+      const start = r.history === "all" ? readAt + 1 : base;
       const q = rtdbQuery(ref(rtdb, roomMsgPath(r.id)), orderByChild("at"), startAt(start), limitToLast(UNREAD_CAP));
       return onValue(q, (s) => {
         let n = 0;

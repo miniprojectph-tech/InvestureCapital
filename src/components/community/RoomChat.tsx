@@ -36,8 +36,10 @@ const input = "bg-canvas border border-border rounded-lg px-3 py-2 text-[12px] t
  * chat view; the room's settings decide who may post, who may react, what
  * history a member sees, and whether the admin may date posts.
  */
-export function RoomChat({ room, sender, isStaff, isMod, muted, mutedUids, tlBadges, caps, demoMode }: {
+export function RoomChat({ room, sender, isStaff, isMod, muted, mutedUids, tlBadges, caps, demoMode, addedAt }: {
   room: RoomConfig;
+  /** Exclusive rooms: when this person was added ("from join date" history starts there). */
+  addedAt?: number;
   sender: Sender;
   isStaff: boolean;
   isMod: boolean;
@@ -50,7 +52,7 @@ export function RoomChat({ room, sender, isStaff, isMod, muted, mutedUids, tlBad
   const { user } = useAuth();
   const uid = user?.uid ?? "";
   const isAdmin = !!user?.isAdmin;
-  const feed = useRoomFeed(room.id, room.history, isStaff);
+  const feed = useRoomFeed(room.id, room.history, isStaff, room.audience === "members" ? addedAt : undefined);
   const pinned = usePinnedMessage(feed.messages, room.id);
   const readMap = useRoomsReadAt(demoMode ? null : uid || null);
   const newestAt = feed.messages.length ? feed.messages[feed.messages.length - 1].at : 0;

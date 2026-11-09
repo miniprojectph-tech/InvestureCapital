@@ -1,16 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { addDoc, collection } from "firebase/firestore";
 import Link from "next/link";
-import { Plus, Pencil, Eye, EyeOff, Trash2, Loader2, AlertCircle, ExternalLink } from "lucide-react";
+import { Plus, Pencil, Eye, EyeOff, Trash2, Loader2, AlertCircle, ExternalLink, Search, X, Lock } from "lucide-react";
 import { Card, CardHeader } from "@/components/Card";
 import { Modal } from "@/components/Modal";
 import { Switch } from "@/components/Switch";
 import { cn } from "@/lib/utils";
 import { getFirebase } from "@/lib/firebase";
+import { listInvestors, type InvestorRow } from "@/lib/adminQueries";
 import {
-  useRooms, saveRoom, setRoomHidden, deleteRoom,
+  useRooms, saveRoom, setRoomHidden, deleteRoom, useRoomMembers, setRoomMembers,
   ROOM_AUDIENCE_LABEL, ROOM_POSTING_LABEL, ROOM_HISTORY_LABEL,
   type RoomConfig, type RoomAudience, type RoomPosting, type RoomHistory,
 } from "@/lib/community";
@@ -39,12 +40,32 @@ async function audit(type: string, title: string, subtitle: string, by: string) 
 export function RoomsCard({ uid }: { uid: string }) {
   const rooms = useRooms();
   const [draft, setDraft] = useState<Draft | null>(null);
+  // Exclusive rooms: who is in it now, and the additions / removals waiting for "Save".
+  const saved = useRoomMembers(draft?.id && draft.audience === "members" ? draft.id : null);
+  const [adds, setAdds] = useState<{ uid: string; name: string }[]>([]);
+  const [drops, setDrops] = useState<Set<string>>(new Set());
+  const [people, setPeople] = useState<InvestorRow[] | null>(null);
+  const [q, setQ] = useState("");
+  const shown = useMemo(() => [...saved.filter((m) => !drops.has(m.uid)).map((m) => ({ uid: m.uid, name: m.name })), ...adds], [saved, drops, adds]);
+  const matches = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!people || s.length < 2) return [];
+    const inRoom = new Set(shown.map((m) => m.uid));
+    return people.filter((p) => !p.isAdmin && !inRoom.has(p.uid) && (p.name.toLowerCase().includes(s) || p.email.toLowerCase().includes(s))).slice(0, 8);
+  }, [q, people, shown]);
+  async function loadPeople() {
+    if (people) return;
+    const { db } = getFirebase();
+    if (!db) return;
+    setPeople(await listInvestors(db, 2000).catch(() => []));
+  }
+  const resetMembers = () => { setAdds([]); setDrops(new Set()); setQ(""); };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<RoomConfig | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
-  const edit = (r: RoomConfig) => { setError(null); setDraft({ id: r.id, name: r.name, blurb: r.blurb, audience: r.audience, posting: r.posting, media: r.media, history: r.history, dateEdit: r.dateEdit, hidden: r.hidden, order: r.order }); };
+  const edit = (r: RoomConfig) => { setError(null); resetMembers(); if (r.audience === "members") loadPeople(); setDraft({ id: r.id, name: r.name, blurb: r.blurb, audience: r.audience, posting: r.posting, media: r.media, history: r.history, dateEdit: r.dateEdit, hidden: r.hidden, order: r.order }); };
 
   async function save() {
     if (!draft) return;
@@ -53,9 +74,16 @@ export function RoomsCard({ uid }: { uid: string }) {
     try {
       const id = await saveRoom(draft, uid);
       await audit(draft.id ? "room_updated" : "room_created", `Room ${draft.id ? "updated" : "created"}: ${draft.name.trim()}`, `${ROOM_AUDIENCE_LABEL[draft.audience]} · ${ROOM_POSTING_LABEL[draft.posting]} · ${ROOM_HISTORY_LABEL[draft.history]}`, uid);
-      setNote(draft.id ? "Room updated." : `"${draft.name.trim()}" is open.`);
+      let memberNote = "";
+      if (draft.audience === "members" && (adds.length || drops.size)) {
+        await setRoomMembers({ id, name: draft.name.trim() }, adds, [...drops], uid);
+        const dropped = saved.filter((m) => drops.has(m.uid)).map((m) => m.name);
+        await audit("room_members", `Room members: ${draft.name.trim()}`, [adds.length ? `added ${adds.map((a) => a.name).join(", ")}` : "", dropped.length ? `removed ${dropped.join(", ")}` : ""].filter(Boolean).join(" · ").slice(0, 900), uid);
+        memberNote = ` ${adds.length ? `${adds.length} added and told.` : ""}${drops.size ? ` ${drops.size} removed.` : ""}`;
+      }
+      setNote((draft.id ? "Room updated." : `"${draft.name.trim()}" is open.`) + memberNote);
       setDraft(null);
-      void id;
+      resetMembers();
     } catch (e) { setError(e instanceof Error ? e.message.replace(/^.*?:\s*/, "") : "Could not save the room."); }
     finally { setBusy(false); }
   }
@@ -89,7 +117,7 @@ export function RoomsCard({ uid }: { uid: string }) {
       <CardHeader
         title="Rooms"
         subtitle="Extra chats beside the Community Room, each with its own audience, posting rule and history"
-        right={<button type="button" onClick={() => { setError(null); setDraft(blank(rooms.length + 1)); }} className="px-3 py-1.5 rounded-lg bg-gold text-gold-dark text-[11px] font-medium flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New room</button>}
+        right={<button type="button" onClick={() => { setError(null); resetMembers(); setDraft(blank(rooms.length + 1)); }} className="px-3 py-1.5 rounded-lg bg-gold text-gold-dark text-[11px] font-medium flex items-center gap-1.5"><Plus className="w-3.5 h-3.5" /> New room</button>}
       />
       <div className="flex flex-col">
         <div className="flex items-center justify-between gap-3 py-2.5 border-b border-border">
@@ -104,7 +132,7 @@ export function RoomsCard({ uid }: { uid: string }) {
           <div key={r.id} className="flex items-center justify-between gap-3 py-2.5 border-b border-border last:border-b-0">
             <div className="min-w-0">
               <p className={cn("text-[13px] m-0 truncate", r.hidden && "text-text-subtle")}>{r.name}{r.hidden && <span className="text-[9px] font-bold tracking-[0.06em] uppercase text-text-subtle bg-canvas border border-border px-1.5 py-0.5 rounded-full ml-1.5">hidden</span>}</p>
-              <p className="text-[11px] text-text-subtle m-0 truncate">{ROOM_AUDIENCE_LABEL[r.audience]} · {ROOM_POSTING_LABEL[r.posting].toLowerCase()} · {r.history === "all" ? "full history" : "from join date"}{r.media ? " · media" : ""}{r.dateEdit ? " · post dates" : ""}{r.blurb ? ` · “${r.blurb}”` : ""}</p>
+              <p className="text-[11px] text-text-subtle m-0 truncate">{r.audience === "members" && <Lock className="w-3 h-3 inline mr-1 -mt-px" />}{ROOM_AUDIENCE_LABEL[r.audience]} · {ROOM_POSTING_LABEL[r.posting].toLowerCase()} · {r.history === "all" ? "full history" : "from join date"}{r.media ? " · media" : ""}{r.dateEdit ? " · post dates" : ""}{r.blurb ? ` · “${r.blurb}”` : ""}</p>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <Link href={`/community#room:${r.id}`} className="h-7 px-2 rounded-md border border-border text-[10px] text-gold hover:underline inline-flex items-center gap-1" aria-label={`Open ${r.name}`}>Open <ExternalLink className="w-3 h-3" /></Link>
@@ -122,10 +150,44 @@ export function RoomsCard({ uid }: { uid: string }) {
           <div className="flex flex-col">
             <label className="flex flex-col gap-1 py-2"><span className="text-[11px] font-medium">Name</span><input autoFocus value={draft.name} maxLength={40} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Testimonials" className={input} /></label>
             <label className="flex flex-col gap-1 py-2"><span className="text-[11px] font-medium">Short line under the name <span className="font-normal text-text-subtle">(optional)</span></span><input value={draft.blurb} maxLength={80} onChange={(e) => setDraft({ ...draft, blurb: e.target.value })} placeholder="Real results from members" className={input} /></label>
-            {row("Who can see it", "Admins are always inside", <Seg<RoomAudience> value={draft.audience} options={[["all", "Everyone"], ["tl", "Team Leaders"], ["mods", "Moderators"], ["admins", "Admins"]]} onChange={(v) => setDraft({ ...draft, audience: v })} />)}
-            {row("Who can post", draft.posting === "react" ? "Members can react, not write" : draft.posting === "read" ? "Members can only read" : "Members chat as in the Community Room", <Seg<RoomPosting> value={draft.posting} options={[["members", "Members"], ["react", "React only"], ["read", "Read only"]]} onChange={(v) => setDraft({ ...draft, posting: v })} />)}
+            <div className="py-2.5 border-b border-border">
+              <p className="text-[13px] m-0">Who can see it</p>
+              <p className="text-[11px] text-text-subtle m-0 mb-2">{draft.audience === "members" ? "Everyone sees the name and a lock. Only the people below can open it." : "Admins are always inside"}</p>
+              <div className="flex flex-wrap"><Seg<RoomAudience> value={draft.audience} options={[["all", "Everyone"], ["tl", "Team Leaders"], ["mods", "Moderators"], ["admins", "Admins"], ["members", "Selected members"]]} onChange={(v) => { setDraft({ ...draft, audience: v }); if (v === "members") loadPeople(); }} /></div>
+            </div>
+            {draft.audience === "members" && (
+              <div className="py-2.5 border-b border-border">
+                <p className="text-[13px] m-0">Room members · {shown.length}</p>
+                <p className="text-[11px] text-text-subtle m-0 mb-2">People you add get a notice. Taking someone off is silent. Admins are always inside.</p>
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-text-subtle" />
+                  <input value={q} onChange={(e) => setQ(e.target.value)} onFocus={loadPeople} placeholder={people ? "Add people by name or email…" : "Loading members…"} className={cn(input, "pl-8")} />
+                </div>
+                {q.trim().length >= 2 && (
+                  <div className="mt-1.5 bg-canvas border border-border rounded-lg overflow-hidden">
+                    {matches.length === 0 && <p className="text-[11px] text-text-subtle m-0 px-3 py-2">{people ? "No member matches that." : "Loading…"}</p>}
+                    {matches.map((p) => (
+                      <button key={p.uid} type="button" onClick={() => { setDrops((d) => { const n = new Set(d); n.delete(p.uid); return n; }); if (!saved.some((m) => m.uid === p.uid)) setAdds((a) => [...a, { uid: p.uid, name: p.name }]); setQ(""); }} className="w-full text-left px-3 py-2 text-[12px] hover:bg-card-elev flex items-center justify-between gap-2 border-b border-border last:border-b-0">
+                        <span className="truncate">{p.name} <span className="text-text-subtle">{p.email}</span></span>
+                        <Plus className="w-3.5 h-3.5 text-gold shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-1.5 mt-2 max-h-[140px] overflow-y-auto">
+                  {shown.length === 0 && <p className="text-[11px] text-text-subtle m-0">Nobody yet. Search above to add people.</p>}
+                  {shown.map((m) => (
+                    <span key={m.uid} className={cn("inline-flex items-center gap-1 text-[11px] bg-canvas border rounded-full pl-2.5 pr-1 py-0.5", adds.some((a) => a.uid === m.uid) ? "border-gold/50" : "border-border")}>
+                      {m.name}
+                      <button type="button" onClick={() => { if (adds.some((a) => a.uid === m.uid)) setAdds((a) => a.filter((x) => x.uid !== m.uid)); else setDrops((d) => new Set(d).add(m.uid)); }} className="w-4 h-4 rounded-full text-text-subtle hover:text-red flex items-center justify-center" aria-label={`Take ${m.name} off the room`}><X className="w-3 h-3" /></button>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {row("Members can", draft.posting === "react" ? "React to posts, not write. Admins can always post." : draft.posting === "read" ? "Only read. Admins can always post." : "Chat as in the Community Room. Admins can always post.", <Seg<RoomPosting> value={draft.posting} options={[["members", "Post and react"], ["react", "React only"], ["read", "Read only"]]} onChange={(v) => setDraft({ ...draft, posting: v })} />)}
             {row("Pictures and video", "for members' posts; admin posts always may", <Switch checked={draft.media} onChange={(v) => setDraft({ ...draft, media: v })} label="Pictures and video" />)}
-            {row("History", "what a member sees from before they joined", <Seg<RoomHistory> value={draft.history} options={[["join", "From join date"], ["all", "Everything"]]} onChange={(v) => setDraft({ ...draft, history: v })} />)}
+            {row("History", draft.audience === "members" ? "what someone sees from before they were added" : "what a member sees from before they joined", <Seg<RoomHistory> value={draft.history} options={[["join", draft.audience === "members" ? "From the day added" : "From join date"], ["all", "Everything"]]} onChange={(v) => setDraft({ ...draft, history: v })} />)}
             {row("Post dates", "admin can set or change a post's date", <Switch checked={draft.dateEdit} onChange={(v) => setDraft({ ...draft, dateEdit: v })} label="Post dates" />)}
             {row("Order in the chat list", "lower comes first", <input type="number" value={draft.order} onChange={(e) => setDraft({ ...draft, order: Number(e.target.value) || 0 })} className={cn(input, "w-[72px] font-mono")} />)}
             {error && <p className="text-[11px] text-red m-0 mt-2 flex items-start gap-1.5"><AlertCircle className="w-3.5 h-3.5 shrink-0 mt-px" /> {error}</p>}

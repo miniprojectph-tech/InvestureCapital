@@ -135,7 +135,7 @@ async function runDigest(force: boolean): Promise<DigestResult> {
   }
 
   const dayAgo = now - 24 * 3_600_000;
-  const [subsSnap, prefsSnap, lastSnap, readSnap, roomSnap, roomsSnap, roomsReadSnap, tlSnap, modSnap] = await Promise.all([
+  const [subsSnap, prefsSnap, lastSnap, readSnap, roomSnap, roomsSnap, roomsReadSnap, tlSnap, modSnap, roomMembersSnap] = await Promise.all([
     rtdb.ref("push/subs").once("value"),
     rtdb.ref("push/prefs").once("value"),
     rtdb.ref("push/last").once("value"),
@@ -145,7 +145,10 @@ async function runDigest(force: boolean): Promise<DigestResult> {
     rtdb.ref("community/roomsRead").once("value"),
     rtdb.ref("teamLeaders").once("value"),
     rtdb.ref("chatMods").once("value"),
+    rtdb.ref("community/roomMembers").once("value"),
   ]);
+  // exclusive rooms: who was added, and when
+  const roomMembers = (roomMembersSnap.val() ?? {}) as Record<string, Record<string, { at?: number }>>;
   const subs = (subsSnap.val() ?? {}) as Record<string, Record<string, Sub>>;
   const prefs = (prefsSnap.val() ?? {}) as Record<string, Prefs>;
   const last = (lastSnap.val() ?? {}) as Record<string, number>;
@@ -170,7 +173,7 @@ async function runDigest(force: boolean): Promise<DigestResult> {
     .filter((r) => !r.hidden && r.audience !== "admins");
   const roomMsgs = new Map<string, Msg[]>();
   for (const r of rooms) roomMsgs.set(r.id, collect(await rtdb.ref(`community/roomMsgs/${r.id}`).orderByChild("at").startAt(dayAgo).limitToLast(300).once("value")));
-  const canSee = (r: Room, uid: string) => r.audience === "all" || (r.audience === "tl" && uid in tls) || (r.audience === "mods" && uid in mods);
+  const canSee = (r: Room, uid: string) => r.audience === "all" || (r.audience === "tl" && uid in tls) || (r.audience === "mods" && uid in mods) || (r.audience === "members" && !!roomMembers[r.id]?.[uid]);
 
   const result: DigestResult = { ...base, ran: true, members: Object.keys(subs).length };
   const stamps: Record<string, number> = {};
@@ -194,7 +197,7 @@ async function runDigest(force: boolean): Promise<DigestResult> {
         if (readStamp > lastPush) opened = true;
       };
       count(msgs, readAt);
-      for (const r of rooms) if (canSee(r, uid)) count(roomMsgs.get(r.id) ?? [], Math.max(roomsRead[uid]?.[r.id] ?? 0, joined));
+      for (const r of rooms) if (canSee(r, uid)) count(roomMsgs.get(r.id) ?? [], Math.max(roomsRead[uid]?.[r.id] ?? 0, joined, r.audience === "members" ? Number(roomMembers[r.id]?.[uid]?.at ?? 0) : 0));
       if (!fresh) continue;
       if (!opened && now - lastPush < cfg.cooldownMin * 60_000) continue;
       const shown = unread > 99 ? "99+" : String(unread);

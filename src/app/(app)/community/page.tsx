@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ShieldCheck, Inbox, Pin, Crown } from "lucide-react";
+import { ShieldCheck, Inbox, Pin, Crown, Lock } from "lucide-react";
+import { LockedRoom } from "@/components/community/LockedRoom";
 import { TopHeader } from "@/components/TopHeader";
 import { PushCard } from "@/components/PushCard";
 import { ChatView } from "@/components/community/ChatView";
@@ -56,6 +57,9 @@ import {
   useRoomUnread,
   useRooms,
   visibleRooms,
+  listedRooms,
+  canSeeRoom,
+  useMyRoomMemberships,
   useRoomsUnread,
   ROOM_AUDIENCE_LABEL,
   ROOM_POSTING_LABEL,
@@ -174,9 +178,14 @@ export default function CommunityPage() {
 
   // Admin-created rooms this person may enter (admins: all that are not hidden… and hidden ones too)
   const allRooms = useRooms();
-  const rooms = useMemo(() => visibleRooms(allRooms, { isAdmin: !!user?.isAdmin, isMod: modRole.isMod, isTL: tlRole.isTL }), [allRooms, user?.isAdmin, modRole.isMod, tlRole.isTL]);
-  const roomsUnread = useRoomsUnread(rooms, !!uid && !demoMode);
-  const openRoom = tab.startsWith("room:") ? rooms.find((r) => `room:${r.id}` === tab) ?? null : null;
+  // Exclusive rooms: everyone sees the name with a lock; only people the admin added get in.
+  const memberOf = useMyRoomMemberships(allRooms);
+  const viewer = useMemo(() => ({ isAdmin: !!user?.isAdmin, isMod: modRole.isMod, isTL: tlRole.isTL, memberOf }), [user?.isAdmin, modRole.isMod, tlRole.isTL, memberOf]);
+  const rooms = useMemo(() => visibleRooms(allRooms, viewer), [allRooms, viewer]);
+  const listed = useMemo(() => listedRooms(allRooms, viewer), [allRooms, viewer]);
+  const roomsUnread = useRoomsUnread(rooms, !!uid && !demoMode, memberOf);
+  const openRoom = tab.startsWith("room:") ? listed.find((r) => `room:${r.id}` === tab) ?? null : null;
+  const openLocked = !!openRoom && !canSeeRoom(openRoom, viewer);
 
   if (!user) return null;
 
@@ -220,7 +229,7 @@ export default function CommunityPage() {
     </div>
   );
 
-  const chatItems: { key: Tab; label: string; sub: string; at?: number; unread: number; icon: React.ReactNode }[] = [
+  const chatItems: { key: Tab; label: string; sub: string; at?: number; unread: number; icon: React.ReactNode; locked?: boolean }[] = [
     {
       key: "room",
       label: "Community Room",
@@ -234,16 +243,23 @@ export default function CommunityPage() {
         </div>
       ),
     },
-    ...rooms.map((r) => ({
-      key: `room:${r.id}` as Tab,
-      label: r.name,
-      sub: r.blurb || `${ROOM_AUDIENCE_LABEL[r.audience]} · ${ROOM_POSTING_LABEL[r.posting]}`,
-      at: undefined,
-      unread: tab === `room:${r.id}` ? 0 : roomsUnread.byRoom[r.id] ?? 0,
-      icon: (
-        <div className="w-11 h-11 rounded-full bg-card-elev border border-border flex items-center justify-center shrink-0 text-gold text-[14px] font-extrabold">{r.name.slice(0, 1).toUpperCase()}</div>
-      ),
-    })),
+    ...listed.map((r) => {
+      // someone not added to an exclusive room sees only its name and a lock
+      const locked = !canSeeRoom(r, viewer);
+      return {
+        key: `room:${r.id}` as Tab,
+        label: r.name,
+        sub: locked ? "" : r.blurb || `${ROOM_AUDIENCE_LABEL[r.audience]} · ${ROOM_POSTING_LABEL[r.posting]}`,
+        at: undefined,
+        unread: locked || tab === `room:${r.id}` ? 0 : roomsUnread.byRoom[r.id] ?? 0,
+        locked,
+        icon: locked ? (
+          <div className="w-11 h-11 rounded-full bg-card-elev border border-[#F5C66B]/40 flex items-center justify-center shrink-0 text-[#F5C66B]"><Lock className="w-[18px] h-[18px]" /></div>
+        ) : (
+          <div className="w-11 h-11 rounded-full bg-card-elev border border-border flex items-center justify-center shrink-0 text-gold text-[14px] font-extrabold">{r.name.slice(0, 1).toUpperCase()}</div>
+        ),
+      };
+    }),
     {
       key: "admin",
       label: "Message Admin",
@@ -325,6 +341,7 @@ export default function CommunityPage() {
             )}
           >
             {c.label}
+            {c.locked && <Lock className="w-3 h-3 text-[#F5C66B]" aria-label="Locked" />}
             {c.unread > 0 && <span className="min-w-[16px] h-4 px-1 rounded-full bg-red text-white text-[10px] font-bold flex items-center justify-center">{c.unread}</span>}
           </button>
         ))}
@@ -357,10 +374,13 @@ export default function CommunityPage() {
                 {c.icon}
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className={cn("text-[13px] m-0 truncate", c.unread ? "font-bold text-text" : "font-semibold text-text")}>{c.label}</p>
+                    <p className={cn("text-[13px] m-0 truncate flex items-center gap-1", c.unread ? "font-bold text-text" : "font-semibold text-text")}>
+                      <span className="truncate">{c.label}</span>
+                      {c.locked && <Lock className="w-3 h-3 text-text-subtle shrink-0" aria-label="Locked" />}
+                    </p>
                     {c.at ? <span className="text-[10px] text-text-subtle shrink-0">{formatRelative(c.at)}</span> : null}
                   </div>
-                  <p className={cn("text-[11px] m-0 truncate mt-0.5", c.unread ? "text-text font-medium" : "text-text-muted")}>{c.sub}</p>
+                  {c.sub && <p className={cn("text-[11px] m-0 truncate mt-0.5", c.unread ? "text-text font-medium" : "text-text-muted")}>{c.sub}</p>}
                 </div>
                 {c.unread > 0 && <span className="w-2.5 h-2.5 rounded-full bg-blue shrink-0" />}
               </button>
@@ -407,10 +427,13 @@ export default function CommunityPage() {
             />
           )}
 
-          {openRoom && (
+          {openRoom && openLocked && <LockedRoom name={openRoom.name} />}
+
+          {openRoom && !openLocked && (
             <RoomChat
               key={openRoom.id}
               room={openRoom}
+              addedAt={memberOf[openRoom.id]}
               sender={sender}
               isStaff={isStaff}
               isMod={modRole.isMod}

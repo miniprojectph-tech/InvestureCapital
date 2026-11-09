@@ -17,6 +17,7 @@ import {
   useRooms,
   visibleRooms,
   useRoomsUnread,
+  useMyRoomMemberships,
   UNREAD_CAP,
 } from "@/lib/community";
 
@@ -63,8 +64,9 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
   const { unread: system } = useNotifications(50);
   // admin-created rooms this person can enter
   const allRooms = useRooms();
-  const rooms = useMemo(() => visibleRooms(allRooms, { isAdmin: !!user?.isAdmin, isMod: mod.isMod, isTL: tl.isTL }), [allRooms, user?.isAdmin, mod.isMod, tl.isTL]);
-  const { total: extraRooms } = useRoomsUnread(rooms, !!uid);
+  const memberOf = useMyRoomMemberships(allRooms);
+  const rooms = useMemo(() => visibleRooms(allRooms, { isAdmin: !!user?.isAdmin, isMod: mod.isMod, isTL: tl.isTL, memberOf }), [allRooms, user?.isAdmin, mod.isMod, tl.isTL, memberOf]);
+  const { total: extraRooms } = useRoomsUnread(rooms, !!uid, memberOf);
 
   const value = useMemo<Unread>(() => {
     const community = room + extraRooms + adminThread + dms + teamDms + waiting;
