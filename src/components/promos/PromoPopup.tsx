@@ -16,6 +16,7 @@ import {
   promoMatchesAudience,
   shouldShowPromo,
   markPromoSeen,
+  slideKind,
   type Promo,
   type PromoSlide,
 } from "@/lib/promos";
@@ -139,34 +140,39 @@ function PromoMedia({ media }: { media: FaqMedia }) {
 }
 
 /**
- * Several pictures to swipe through: native horizontal scroll with snap (so a
- * finger swipe just works), arrows and keyboard on a computer, dots and a
- * "3 / 4" counter, and the slide labels as tabs. Every slide takes the shape of
- * the first picture, so the card never jumps in size while swiping.
+ * Several slides to swipe through: pictures, YouTube videos and uploaded videos,
+ * in any order. Native horizontal scroll with snap (so a finger swipe just
+ * works), arrows and keyboard on a computer, dots and a "3 / 4" counter, and the
+ * slide labels as tabs. Every slide takes the shape of the first picture (16:9
+ * when there are only videos), so the card never jumps in size while swiping.
+ * A video waits for a tap and stops when the member swipes away from it.
  */
 export function PromoCarousel({ slides }: { slides: PromoSlide[] }) {
   const track = useRef<HTMLDivElement>(null);
   const firstImg = useRef<HTMLImageElement>(null);
   const [index, setIndex] = useState(0);
-  const [ratio, setRatio] = useState<string>("4 / 5");
+  const [playing, setPlaying] = useState<number | null>(null);
+  const firstPicture = slides.findIndex((s) => slideKind(s) === "image");
+  const [ratio, setRatio] = useState<string>(firstPicture < 0 ? "16 / 9" : "4 / 5");
   const n = slides.length;
 
   // the first picture decides the card's shape; a cached picture may be loaded before onLoad can fire
   const shapeFrom = (im: HTMLImageElement | null) => { if (im?.naturalWidth && im.naturalHeight) setRatio(`${im.naturalWidth} / ${im.naturalHeight}`); };
   useEffect(() => { if (firstImg.current?.complete) shapeFrom(firstImg.current); }, [slides]);
 
-  // which slide is in view follows the scroll position
+  // which slide is in view follows the scroll position; leaving a video stops it
   function onScroll() {
     const el = track.current;
     if (!el || el.clientWidth === 0) return;
     const i = Math.round(el.scrollLeft / el.clientWidth);
-    if (i !== index && i >= 0 && i < n) setIndex(i);
+    if (i !== index && i >= 0 && i < n) { setIndex(i); setPlaying(null); }
   }
   function go(i: number) {
     const el = track.current;
     if (!el) return;
     const next = Math.max(0, Math.min(n - 1, i));
     el.scrollTo({ left: next * el.clientWidth, behavior: "smooth" });
+    if (next !== index) setPlaying(null);
     setIndex(next);
   }
 
@@ -180,20 +186,24 @@ export function PromoCarousel({ slides }: { slides: PromoSlide[] }) {
           tabIndex={0}
           role="group"
           aria-roledescription="carousel"
-          aria-label={`${n} pictures`}
+          aria-label={`${n} slides`}
           className="absolute inset-0 flex overflow-x-auto overflow-y-hidden snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden outline-none bg-black"
         >
           {slides.map((s, i) => (
-            <div key={s.url + i} className="w-full h-full shrink-0 snap-center snap-always flex items-center justify-center" aria-hidden={i !== index} aria-label={s.label || `Picture ${i + 1}`}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={s.url}
-                alt={s.label}
-                draggable={false}
-                ref={i === 0 ? firstImg : undefined}
-                onLoad={i === 0 ? (e) => shapeFrom(e.currentTarget) : undefined}
-                className="block w-full h-full object-contain select-none"
-              />
+            <div key={s.url + i} className="w-full h-full shrink-0 snap-center snap-always flex items-center justify-center" aria-hidden={i !== index} aria-label={s.label || `Slide ${i + 1}`}>
+              {slideKind(s) === "image" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={s.url}
+                  alt={s.label}
+                  draggable={false}
+                  ref={i === firstPicture ? firstImg : undefined}
+                  onLoad={i === firstPicture ? (e) => shapeFrom(e.currentTarget) : undefined}
+                  className="block w-full h-full object-contain select-none"
+                />
+              ) : (
+                <VideoSlide slide={s} playing={playing === i} onPlay={() => setPlaying(i)} />
+              )}
             </div>
           ))}
         </div>
@@ -201,12 +211,12 @@ export function PromoCarousel({ slides }: { slides: PromoSlide[] }) {
           <>
             <span className="absolute top-3 left-3 text-[10px] font-mono bg-black/60 text-white px-2 py-0.5 rounded-full pointer-events-none">{index + 1} / {n}</span>
             {index > 0 && (
-              <button type="button" onClick={() => go(index - 1)} aria-label="Previous picture" className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 text-white flex items-center justify-center hover:bg-black/80 ring-1 ring-white/15">
+              <button type="button" onClick={() => go(index - 1)} aria-label="Previous slide" className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 text-white flex items-center justify-center hover:bg-black/80 ring-1 ring-white/15">
                 <ChevronLeft className="w-4 h-4" />
               </button>
             )}
             {index < n - 1 && (
-              <button type="button" onClick={() => go(index + 1)} aria-label="Next picture" className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 text-white flex items-center justify-center hover:bg-black/80 ring-1 ring-white/15">
+              <button type="button" onClick={() => go(index + 1)} aria-label="Next slide" className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/55 text-white flex items-center justify-center hover:bg-black/80 ring-1 ring-white/15">
                 <ChevronRight className="w-4 h-4" />
               </button>
             )}
@@ -217,13 +227,51 @@ export function PromoCarousel({ slides }: { slides: PromoSlide[] }) {
         )}
       </div>
       {n > 1 && slides.some((s) => s.label.trim()) && (
-        <div className="flex gap-1.5 px-3 pt-2.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Jump to a picture">
+        <div className="flex gap-1.5 px-3 pt-2.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist" aria-label="Jump to a slide">
           {slides.map((s, i) => (
             <button key={i} type="button" role="tab" aria-selected={i === index} onClick={() => go(i)} className={cn("shrink-0 text-[10px] px-2.5 py-1 rounded-full transition", i === index ? "bg-gold text-gold-dark font-medium" : "bg-card-elev text-text-muted hover:text-text")}>
               {s.label.trim() || `${i + 1}`}
             </button>
           ))}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** A video slide: its thumbnail and a play button until tapped, then the player (16:9, centred). */
+function VideoSlide({ slide, playing, onPlay }: { slide: PromoSlide; playing: boolean; onPlay: () => void }) {
+  const yt = slideKind(slide) === "youtube" && slide.videoId ? slide.videoId : null;
+  const poster = yt ? `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` : slide.poster;
+  return (
+    <div className="relative w-full aspect-video max-h-full bg-black">
+      {playing ? (
+        yt ? (
+          <iframe
+            src={`https://www.youtube-nocookie.com/embed/${yt}?autoplay=1&playsinline=1`}
+            title={slide.label || "Video"}
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+            className="absolute inset-0 w-full h-full border-0"
+          />
+        ) : (
+          <video src={slide.url} poster={slide.poster} controls autoPlay playsInline className="absolute inset-0 w-full h-full bg-black" />
+        )
+      ) : (
+        <button type="button" onClick={onPlay} className="absolute inset-0 w-full h-full" aria-label={`Play ${slide.label || "video"}`}>
+          {poster ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={poster} alt="" draggable={false} className="w-full h-full object-cover opacity-90 select-none" />
+          ) : (
+            <span className="block w-full h-full bg-card-elev" />
+          )}
+          <span className="absolute inset-0 flex items-center justify-center">
+            <span className="w-16 h-16 rounded-full bg-black/60 border border-white/30 flex items-center justify-center">
+              <Play className="w-6 h-6 text-white ml-0.5" fill="currentColor" />
+            </span>
+          </span>
+          <span className="absolute bottom-2 left-2 text-[10px] bg-black/60 text-white px-1.5 py-0.5 rounded">Tap to play{yt ? " · YouTube" : slide.duration ? ` · ${formatDuration(slide.duration)}` : ""}</span>
+        </button>
       )}
     </div>
   );

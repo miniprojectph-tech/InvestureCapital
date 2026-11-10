@@ -20,8 +20,31 @@ export type PromoFrequency = "once" | "daily" | "always";
 /** all members · members with no placement yet · members with an active placement. */
 export type PromoAudience = "all" | "noPlacement" | "active";
 
-/** One picture of a swipeable set; the label becomes a tab members can tap. */
-export type PromoSlide = { url: string; label: string; path?: string };
+/**
+ * One slide of a swipeable set; the label becomes a tab members can tap.
+ * A slide is a picture (older slides have no `kind`), a YouTube video or an
+ * uploaded video, so one pop-up can mix them (a winner banner, then the video).
+ */
+export type PromoSlide = {
+  url: string;
+  label: string;
+  path?: string;
+  kind?: "image" | "video" | "youtube";
+  /** YouTube only. */
+  videoId?: string;
+  /** Uploaded video: its first frame. */
+  poster?: string;
+  w?: number;
+  h?: number;
+  duration?: number;
+};
+
+export const slideKind = (s: PromoSlide) => s.kind ?? "image";
+
+/** A picture / video / YouTube item (as uploaded or pasted) → a slide. */
+export function mediaToSlide(m: FaqMedia, label = ""): PromoSlide {
+  return { kind: m.kind, url: m.url, label, videoId: m.videoId, poster: m.poster, w: m.w, h: m.h, duration: m.duration };
+}
 
 export type Promo = {
   id: string;
@@ -180,7 +203,18 @@ export async function savePromos(items: Promo[], uid: string): Promise<void> {
     buttonLabel: p.buttonLabel.trim().slice(0, PROMO_MAX_BUTTON),
     buttonHref: p.buttonHref.trim().slice(0, 300),
     media: p.media ? stripUndefined({ ...p.media }) : null,
-    slides: (p.slides ?? []).slice(0, PROMO_MAX_SLIDES).map((s) => stripUndefined({ url: s.url, label: s.label.trim().slice(0, PROMO_MAX_SLIDE_LABEL), path: s.path })),
+    slides: (p.slides ?? []).slice(0, PROMO_MAX_SLIDES).map((s) => stripUndefined({
+      url: s.url,
+      label: s.label.trim().slice(0, PROMO_MAX_SLIDE_LABEL),
+      path: s.path,
+      // pictures keep the old shape (no kind), so older app versions still show them
+      kind: s.kind && s.kind !== "image" ? s.kind : undefined,
+      videoId: s.videoId,
+      poster: s.poster,
+      w: s.w,
+      h: s.h,
+      duration: s.duration,
+    })),
   }));
   await setDoc(doc(db, "content", "promos"), { items: clean, updatedAt: Date.now(), updatedBy: uid, serverUpdatedAt: serverTimestamp() });
 }

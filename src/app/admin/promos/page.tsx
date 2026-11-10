@@ -22,6 +22,8 @@ import {
   PROMO_MAX_BUTTON,
   PROMO_MAX_SLIDES,
   PROMO_MAX_SLIDE_LABEL,
+  mediaToSlide,
+  slideKind,
   type Promo,
   type PromoFrequency,
   type PromoAudience,
@@ -63,6 +65,9 @@ export default function AdminPromosPage() {
   const [slideProgress, setSlideProgress] = useState<string | null>(null);
   const slidesInput = useRef<HTMLInputElement>(null);
   const [ytUrl, setYtUrl] = useState<string | null>(null);
+  // YouTube link / uploaded video going into the swipe slides (not the single item)
+  const [slideYt, setSlideYt] = useState<string | null>(null);
+  const slideVidInput = useRef<HTMLInputElement>(null);
   const [faqPick, setFaqPick] = useState(false);
   const imgInput = useRef<HTMLInputElement>(null);
   const vidInput = useRef<HTMLInputElement>(null);
@@ -160,6 +165,40 @@ export default function AdminPromosPage() {
       setSlideProgress(null);
     }
   }
+  /** One uploaded video added as a slide. */
+  async function addVideoSlide(file: File | undefined) {
+    if (!file || !current || !user) return;
+    if ((current.slides?.length ?? 0) >= PROMO_MAX_SLIDES) return setMsg({ ok: false, text: `A pop-up can have at most ${PROMO_MAX_SLIDES} slides.` });
+    const { storage } = getFirebase();
+    if (!storage) return;
+    setUploading("slides");
+    setSlideProgress("Uploading video…");
+    setMsg(null);
+    try {
+      const m = await uploadFaqVideo(storage, user.uid, file);
+      patch({ slides: [...(current.slides ?? []), mediaToSlide(m)], media: null });
+    } catch (e) {
+      setMsg({ ok: false, text: describeStorageError(e) });
+    } finally {
+      setUploading(null);
+      setSlideProgress(null);
+    }
+  }
+  /** A YouTube link added as a slide. */
+  function addYoutubeSlide() {
+    if (slideYt === null || !current) return;
+    if ((current.slides?.length ?? 0) >= PROMO_MAX_SLIDES) return setMsg({ ok: false, text: `A pop-up can have at most ${PROMO_MAX_SLIDES} slides.` });
+    const m = youtubeMedia(slideYt);
+    if (!m) return setMsg({ ok: false, text: "That doesn't look like a YouTube link." });
+    patch({ slides: [...(current.slides ?? []), mediaToSlide(m)], media: null });
+    setSlideYt(null);
+  }
+  /** The single picture / video becomes the first slide, so more can be added after it. */
+  function mediaIntoSlides() {
+    if (!current?.media) return;
+    patch({ slides: [mediaToSlide(current.media)], media: null });
+  }
+
   function setSlide(i: number, change: Partial<{ label: string }>) {
     if (!current?.slides) return;
     patch({ slides: current.slides.map((sl, k) => (k === i ? { ...sl, ...change } : sl)) });
@@ -226,7 +265,7 @@ export default function AdminPromosPage() {
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] m-0 truncate">{p.name || p.title || "Untitled pop-up"}</p>
                   <p className="text-[10px] text-text-subtle m-0 mt-0.5 truncate">
-                    {p.slides && p.slides.length ? `${p.slides.length} pictures (swipe)` : p.media ? (p.media.kind === "image" ? "Picture" : "Video") : "Text only"} · {p.frequency === "once" ? "shown once" : p.frequency === "daily" ? "once a day" : "every visit"}
+                    {p.slides && p.slides.length ? `${p.slides.length} slides (swipe)` : p.media ? (p.media.kind === "image" ? "Picture" : "Video") : "Text only"} · {p.frequency === "once" ? "shown once" : p.frequency === "daily" ? "once a day" : "every visit"}
                   </p>
                 </div>
                 <span className={cn("text-[9px] px-2 py-0.5 rounded-full font-medium shrink-0", st.cls)}>{st.label}</span>
@@ -269,13 +308,14 @@ export default function AdminPromosPage() {
               {/* media */}
               <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-[11px] font-medium text-text">Picture, pictures to swipe, or video <span className="text-text-subtle font-normal">· one kind per pop-up</span></span>
+                  <span className="text-[11px] font-medium text-text">Picture, video, or slides to swipe <span className="text-text-subtle font-normal">· slides can mix pictures and videos</span></span>
                   <div className="flex flex-wrap gap-1.5">
                     <input ref={imgInput} type="file" accept="image/*" hidden onChange={(e) => { addFile("image", e.target.files?.[0]); e.target.value = ""; }} />
                     <input ref={vidInput} type="file" accept="video/mp4,video/webm,video/quicktime" hidden onChange={(e) => { addFile("video", e.target.files?.[0]); e.target.value = ""; }} />
                     <input ref={slidesInput} type="file" accept="image/*" multiple hidden onChange={(e) => { addSlides(e.target.files); e.target.value = ""; }} />
                     <MediaButton icon={ImageIcon} label="Picture" busy={uploading === "image"} disabled={!!uploading} onClick={() => imgInput.current?.click()} />
-                    <MediaButton icon={Images} label="Pictures (swipe)" busy={uploading === "slides"} disabled={!!uploading} onClick={() => slidesInput.current?.click()} />
+                    <input ref={slideVidInput} type="file" accept="video/mp4,video/webm,video/quicktime" hidden onChange={(e) => { addVideoSlide(e.target.files?.[0]); e.target.value = ""; }} />
+                    <MediaButton icon={Images} label="Slides (swipe)" busy={uploading === "slides"} disabled={!!uploading} onClick={() => slidesInput.current?.click()} />
                     <MediaButton icon={VideoIcon} label="Upload video" busy={uploading === "video"} disabled={!!uploading} onClick={() => vidInput.current?.click()} />
                     <MediaButton icon={Link2} label="YouTube link" disabled={!!uploading} onClick={() => { setYtUrl(""); setFaqPick(false); }} />
                     <MediaButton icon={HelpCircle} label="From FAQ" disabled={!!uploading || faqMedia.length === 0} onClick={() => { setFaqPick((v) => !v); setYtUrl(null); }} />
@@ -314,30 +354,45 @@ export default function AdminPromosPage() {
                     {current.slides.map((sl, i) => (
                       <div key={sl.url + i} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-canvas border border-border">
                         <span className="text-[10px] font-mono text-text-subtle w-4 text-center shrink-0">{i + 1}</span>
-                        <span className="w-12 h-12 rounded bg-card-elev overflow-hidden shrink-0 flex items-center justify-center">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={sl.url} alt="" className="w-full h-full object-cover" />
+                        <span className="relative w-12 h-12 rounded bg-card-elev overflow-hidden shrink-0 flex items-center justify-center">
+                          {(slideKind(sl) === "image" || sl.poster || sl.videoId) ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={slideKind(sl) === "image" ? sl.url : sl.videoId ? `https://i.ytimg.com/vi/${sl.videoId}/default.jpg` : sl.poster} alt="" className="w-full h-full object-cover" />
+                          ) : null}
+                          {slideKind(sl) !== "image" && <Play className="absolute w-4 h-4 text-white drop-shadow" fill="currentColor" />}
                         </span>
-                        <input
-                          className={cn(input, "flex-1 py-1.5")}
-                          value={sl.label}
-                          maxLength={PROMO_MAX_SLIDE_LABEL}
-                          placeholder={i === 0 ? "Label, e.g. Cover" : i === 1 ? "e.g. Mechanics" : "Label (optional)"}
-                          onChange={(e) => setSlide(i, { label: e.target.value })}
-                        />
+                        <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                          <input
+                            className={cn(input, "py-1.5")}
+                            value={sl.label}
+                            maxLength={PROMO_MAX_SLIDE_LABEL}
+                            placeholder={i === 0 ? "Label, e.g. Winner" : i === 1 ? "e.g. Video story" : "Label (optional)"}
+                            onChange={(e) => setSlide(i, { label: e.target.value })}
+                          />
+                          <span className="text-[9px] text-text-subtle truncate">{slideKind(sl) === "image" ? "Picture" : slideKind(sl) === "youtube" ? `YouTube · ${sl.url}` : `Uploaded video${sl.duration ? ` · ${formatDuration(sl.duration)}` : ""}`}</span>
+                        </div>
                         <div className="flex flex-col shrink-0">
                           <button type="button" onClick={() => moveSlide(i, -1)} disabled={i === 0} className="p-0.5 text-text-subtle hover:text-text disabled:opacity-25" aria-label="Move up"><ChevronUp className="w-3.5 h-3.5" /></button>
                           <button type="button" onClick={() => moveSlide(i, 1)} disabled={i === current.slides!.length - 1} className="p-0.5 text-text-subtle hover:text-text disabled:opacity-25" aria-label="Move down"><ChevronDown className="w-3.5 h-3.5" /></button>
                         </div>
-                        <button type="button" onClick={() => removeSlide(i)} className="p-1 text-text-subtle hover:text-red shrink-0" aria-label="Remove picture"><X className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={() => removeSlide(i)} className="p-1 text-text-subtle hover:text-red shrink-0" aria-label="Remove slide"><X className="w-3.5 h-3.5" /></button>
                       </div>
                     ))}
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-[10px] text-text-subtle m-0">Members swipe through these in this order; a label becomes a tab they can tap. Use pictures of the same shape. {current.slides.length} of {PROMO_MAX_SLIDES}.</p>
-                      {current.slides.length < PROMO_MAX_SLIDES && (
-                        <button type="button" onClick={() => slidesInput.current?.click()} disabled={!!uploading} className="text-[10px] text-gold hover:underline disabled:opacity-40 flex items-center gap-1"><Plus className="w-3 h-3" /> Add pictures</button>
-                      )}
-                    </div>
+                    <p className="text-[10px] text-text-subtle m-0">Members swipe through these in this order; a label becomes a tab they can tap. Videos wait for a tap and stop when they swipe away. Use pictures of the same shape. {current.slides.length} of {PROMO_MAX_SLIDES}.</p>
+                    {current.slides.length < PROMO_MAX_SLIDES && (
+                      <div className="flex flex-wrap gap-1.5">
+                        <MediaButton icon={Plus} label="Pictures" disabled={!!uploading} onClick={() => slidesInput.current?.click()} />
+                        <MediaButton icon={Link2} label="YouTube link" disabled={!!uploading} onClick={() => setSlideYt("")} />
+                        <MediaButton icon={VideoIcon} label="Upload video" busy={uploading === "slides" && slideProgress === "Uploading video…"} disabled={!!uploading} onClick={() => slideVidInput.current?.click()} />
+                      </div>
+                    )}
+                    {slideYt !== null && (
+                      <div className="flex gap-1.5">
+                        <input autoFocus className={input} value={slideYt} placeholder="Paste a YouTube link: https://youtu.be/…" onChange={(e) => setSlideYt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addYoutubeSlide(); if (e.key === "Escape") setSlideYt(null); }} />
+                        <button onClick={addYoutubeSlide} className="px-3 rounded-lg bg-gold text-gold-dark text-[11px] font-medium whitespace-nowrap">Add</button>
+                        <button onClick={() => setSlideYt(null)} className="px-2 rounded-lg border border-border text-text-muted" aria-label="Cancel"><X className="w-3.5 h-3.5" /></button>
+                      </div>
+                    )}
                   </div>
                 ) : current.media ? (
                   <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg bg-canvas border border-border">
@@ -351,10 +406,11 @@ export default function AdminPromosPage() {
                     <span className="flex-1 text-[11px] text-text-muted">
                       {current.media.kind === "image" ? "Picture" : current.media.kind === "youtube" ? "YouTube video" : `Uploaded video${current.media.duration ? ` · ${formatDuration(current.media.duration)}` : ""}`}
                     </span>
+                    <button onClick={mediaIntoSlides} className="text-[10px] text-gold hover:underline" title="Keep this and add more pictures or videos to swipe">Make it a slide</button>
                     <button onClick={() => patch({ media: null })} className="text-[10px] text-text-muted hover:text-red">Remove</button>
                   </div>
                 ) : (
-                  <p className="text-[10px] text-text-subtle m-0">None yet. “Pictures (swipe)” lets you pick several at once, up to {PROMO_MAX_SLIDES}. Uploads allow videos up to 40 MB and 2 minutes.</p>
+                  <p className="text-[10px] text-text-subtle m-0">None yet. “Slides (swipe)” starts with pictures (several at once); then add YouTube links or videos to the same swipe, up to {PROMO_MAX_SLIDES}. Uploads allow videos up to 40 MB and 2 minutes.</p>
                 )}
               </div>
 
