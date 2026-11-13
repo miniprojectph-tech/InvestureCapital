@@ -7,6 +7,9 @@ import { Avatar } from "@/components/Avatar";
 import { ChatView } from "@/components/community/ChatView";
 import { cn } from "@/lib/utils";
 import { useSettings, uploadLimitsFor } from "@/lib/settings";
+import { useNow } from "@/lib/compplan";
+import { useMemberStatuses, statusText } from "@/lib/activeStatus";
+import { StatusDot, statusTone } from "@/components/community/StatusDot";
 import {
   useLeaderDmThreads, useDm, isDmUnread, sendDm, markDmRead, deleteDmMessage, reactToDm, tlMembers, formatRelative,
   type TlMember, type ChatItem,
@@ -29,6 +32,10 @@ export function TeamLeaderPanel({ me, canSend }: { me: { uid: string; name: stri
   const [loadErr, setLoadErr] = useState<string | null>(null);
 
   const threads = useLeaderDmThreads(me.uid);
+  // active / away for the members this leader chats with (the rules allow only those)
+  const chatUids = useMemo(() => threads.map((t) => t.memberUid), [threads]);
+  const statuses = useMemberStatuses(chatUids);
+  const clock = useNow(30_000);
   const feed = useDm(selected ? me.uid : null, selected?.uid ?? null);
   const thread = useMemo(() => threads.find((t) => t.memberUid === selected?.uid) ?? null, [threads, selected]);
   const badge = useMemo(() => new Set([me.uid]), [me.uid]);
@@ -76,9 +83,10 @@ export function TeamLeaderPanel({ me, canSend }: { me: { uid: string; name: stri
             const un = isDmUnread(t, "tl");
             return (
               <button key={t.memberUid} onClick={() => setSelected(memberOf(t.memberUid, t.name, t.photo))} className={cn("w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-b border-border transition", selected?.uid === t.memberUid ? "bg-[#5CE0D2]/10" : "hover:bg-card-elev")}>
-                <Avatar src={t.photo} name={t.name} id={t.memberUid} size={32} />
+                <span className="relative shrink-0"><Avatar src={t.photo} name={t.name} id={t.memberUid} size={32} /><StatusDot status={statuses[t.memberUid]} /></span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2"><p className={cn("text-[12px] m-0 truncate text-text", un && "font-semibold")}>{t.name}</p><span className="text-[9px] text-text-subtle shrink-0">{formatRelative(t.lastAt)}</span></div>
+                  {statuses[t.memberUid] && <p className={cn("text-[9px] m-0 mt-0.5", statusTone(statuses[t.memberUid]))}>{statusText(statuses[t.memberUid], clock)}</p>}
                   <p className={cn("text-[10px] m-0 truncate mt-0.5", un ? "text-text-muted" : "text-text-subtle")}>{t.lastFrom === me.uid ? "You: " : ""}{t.lastText}</p>
                 </div>
                 {un && <span className="w-2 h-2 rounded-full bg-red shrink-0" />}
@@ -112,10 +120,14 @@ export function TeamLeaderPanel({ me, canSend }: { me: { uid: string; name: stri
             header={
               <div className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border shrink-0">
                 <button onClick={() => setSelected(null)} className="lg:hidden w-8 h-8 -ml-1 flex items-center justify-center text-blue" aria-label="Back"><ArrowLeft className="w-5 h-5" /></button>
-                <Avatar src={selected.photoURL} name={selected.name} id={selected.uid} size={36} />
+                <span className="relative shrink-0"><Avatar src={selected.photoURL} name={selected.name} id={selected.uid} size={36} /><StatusDot status={statuses[selected.uid]} /></span>
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-semibold m-0 truncate">{selected.name}</p>
-                  <p className="text-[10px] text-text-subtle m-0 truncate">{selected.joinedAt ? `Joined ${formatRelative(selected.joinedAt)} ago · ` : ""}{selected.placed ? "has placed" : "no placement yet"}</p>
+                  {statuses[selected.uid] ? (
+                    <p className={cn("text-[10px] m-0 truncate", statusTone(statuses[selected.uid]))}>{statusText(statuses[selected.uid], clock, true)}</p>
+                  ) : (
+                    <p className="text-[10px] text-text-subtle m-0 truncate">{selected.joinedAt ? `Joined ${formatRelative(selected.joinedAt)} ago · ` : ""}{selected.placed ? "has placed" : "no placement yet"}</p>
+                  )}
                 </div>
               </div>
             }

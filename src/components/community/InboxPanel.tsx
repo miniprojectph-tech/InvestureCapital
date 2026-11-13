@@ -6,6 +6,9 @@ import { Card } from "@/components/Card";
 import { ChatView } from "@/components/community/ChatView";
 import { cn } from "@/lib/utils";
 import { useSettings, uploadLimitsFor } from "@/lib/settings";
+import { useNow } from "@/lib/compplan";
+import { useAllMemberStatuses, statusText } from "@/lib/activeStatus";
+import { StatusDot, statusTone } from "@/components/community/StatusDot";
 import {
   useInboxList,
   useInbox,
@@ -44,10 +47,13 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
   const inboxCaps = uploadLimitsFor(settings, "inbox");
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [show, setShow] = useState<"all" | "unread" | "new">("all");
+  const [show, setShow] = useState<"all" | "unread" | "new" | "active">("all");
   const [now] = useState(() => Date.now());
 
   const threads = useInboxList(true);
+  // who is active / away right now (admins and inbox moderators may read it; the rules say so)
+  const statuses = useAllMemberStatuses(true);
+  const clock = useNow(30_000);
   const feed = useInbox(selected);
   const { messages, loading } = feed;
 
@@ -73,13 +79,15 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
     let list = sortInboxThreads(threads, now);
     if (show === "unread") list = list.filter(needsReply);
     if (show === "new") list = list.filter((t) => isNewMember(t, now));
+    if (show === "active") list = list.filter((t) => statuses[t.uid]?.state === "active");
     if (!q) return list;
     return list.filter((t) => t.name.toLowerCase().includes(q) || (t.email ?? "").toLowerCase().includes(q));
-  }, [threads, search, show, now]);
+  }, [threads, search, show, now, statuses]);
 
   // "Needs reply" = the member wrote last and nobody opened it. New members are counted separately, never as unread.
   const unreadCount = threads.filter(needsReply).length;
   const newCount = threads.filter((t) => isNewMember(t, now)).length;
+  const activeCount = threads.filter((t) => statuses[t.uid]?.state === "active").length;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[300px_1fr] gap-3">
@@ -100,7 +108,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
             </span>
           </div>
           <div className="flex gap-1 mb-2">
-            {([["all", "All"], ["unread", "Needs reply"], ["new", "New members"]] as const).map(([k, label]) => (
+            {([["all", "All"], ["unread", "Needs reply"], ["new", "New members"], ["active", `Active now${activeCount ? ` · ${activeCount}` : ""}`]] as const).map(([k, label]) => (
               <button key={k} type="button" onClick={() => setShow(k)} aria-pressed={show === k} className={cn("px-2.5 py-1 rounded-full text-[10px] font-medium border transition", show === k ? "bg-gold/15 border-gold/40 text-gold" : "bg-canvas border-border text-text-muted hover:text-text")}>
                 {label}
               </button>
@@ -118,7 +126,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
         </div>
         <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100dvh - var(--chat-offset, 235px) - 95px)", minHeight: 240 }}>
           {filtered.length === 0 ? (
-            <p className="text-[11px] text-text-subtle text-center py-8 m-0">{show === "new" ? `Nobody joined in the last ${NEW_MEMBER_DAYS} days.` : show === "unread" ? "Nothing waiting for a reply." : "No conversations yet."}</p>
+            <p className="text-[11px] text-text-subtle text-center py-8 m-0">{show === "new" ? `Nobody joined in the last ${NEW_MEMBER_DAYS} days.` : show === "unread" ? "Nothing waiting for a reply." : show === "active" ? "No one in your conversations is active right now." : "No conversations yet."}</p>
           ) : (
             filtered.map((t) => {
               const unread = needsReply(t);
@@ -133,8 +141,9 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                     active ? "bg-gold/10" : "hover:bg-card-elev",
                   )}
                 >
-                  <div className="w-8 h-8 rounded-full bg-blue/15 text-blue text-[10px] font-semibold flex items-center justify-center ring-1 ring-blue/20 shrink-0">
+                  <div className="relative w-8 h-8 rounded-full bg-blue/15 text-blue text-[10px] font-semibold flex items-center justify-center ring-1 ring-blue/20 shrink-0">
                     {initialsOf(t.name)}
+                    <StatusDot status={statuses[t.uid]} />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
@@ -144,6 +153,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                       </p>
                       <span className="text-[9px] text-text-subtle shrink-0">{fresh && t.joinedAt ? `Joined ${formatRelative(t.joinedAt)} ago` : formatRelative(t.lastAt)}</span>
                     </div>
+                    {statuses[t.uid] && <p className={cn("text-[9px] m-0 mt-0.5", statusTone(statuses[t.uid]))}>{statusText(statuses[t.uid], clock)}</p>}
                     <p className={cn("text-[10px] m-0 truncate mt-0.5", unread ? "text-text-muted" : "text-text-subtle")}>
                       {t.lastFrom === "admin" ? "You: " : ""}
                       {t.lastText}
@@ -167,10 +177,14 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                 <button onClick={() => setSelected(null)} className="lg:hidden w-8 h-8 -ml-1 flex items-center justify-center text-blue" aria-label="Back to inbox">
                   <ArrowLeft className="w-5 h-5" />
                 </button>
-                <div className="w-9 h-9 rounded-full bg-blue/15 text-blue text-[11px] font-extrabold flex items-center justify-center shrink-0">{initialsOf(current.name)}</div>
+                <div className="relative w-9 h-9 rounded-full bg-blue/15 text-blue text-[11px] font-extrabold flex items-center justify-center shrink-0">{initialsOf(current.name)}<StatusDot status={statuses[current.uid]} /></div>
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-semibold m-0 truncate">{current.name}</p>
-                  {current.email && <p className="text-[10px] text-text-subtle m-0 truncate">{current.email}</p>}
+                  {statuses[current.uid] ? (
+                    <p className={cn("text-[10px] m-0 truncate", statusTone(statuses[current.uid]))}>{statusText(statuses[current.uid], clock, true)}</p>
+                  ) : current.email ? (
+                    <p className="text-[10px] text-text-subtle m-0 truncate">{current.email}</p>
+                  ) : null}
                 </div>
                 {current.lastFrom !== "admin" && (
                   <button

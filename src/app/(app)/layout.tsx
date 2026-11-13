@@ -6,6 +6,7 @@ import { ChatFab } from "@/components/ChatFab";
 import { WelcomePopup } from "@/components/WelcomePopup";
 import { UnreadProvider } from "@/components/UnreadProvider";
 import { PushAutoRegister } from "@/components/PushAutoRegister";
+import { ActiveStatusReporter } from "@/components/ActiveStatusReporter";
 
 export default function InvestorAppLayout({
   children,
@@ -27,6 +28,8 @@ export default function InvestorAppLayout({
         <ChatFab />
         {/* Push: registers an allowed device by itself; otherwise asks on the first tap. */}
         <PushAutoRegister />
+        {/* "Active now / Away" for the team and the member's Team Leader (members never see it). */}
+        <ActiveStatusReporter />
       </UnreadProvider>
     </AuthGate>
   );

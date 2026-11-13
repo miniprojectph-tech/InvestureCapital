@@ -350,6 +350,40 @@
             ".validate": "newData.hasChildren(['at']) && newData.child('at').isNumber() && (!newData.hasChild('name') || (newData.child('name').isString() && newData.child('name').val().length <= 40)) && (!newData.hasChild('by') || newData.child('by').isString())"
           }
         }
+      },
+      "status": {
+        ".read": "auth != null && (root.child('admins').child(auth.uid).val() === true || root.child('chatMods').child(auth.uid).child('inbox').val() === true)",
+        "$uid": {
+          ".read": "auth != null && (auth.uid === $uid || (root.child('teamLeaders').child(auth.uid).exists() && root.child('community/dmIndex').child(auth.uid).child($uid).exists()))",
+          ".write": "auth != null && auth.uid === $uid",
+          "conns": {
+            "$conn": {
+              ".validate": "$conn.matches(/^[a-z0-9]{4,16}$/) && newData.hasChildren(['away', 'at']) && newData.child('away').isBoolean() && newData.child('at').isNumber()",
+              "$other": {
+                ".validate": "$other === 'away' || $other === 'at'"
+              }
+            }
+          },
+          "lastSeen": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": "$other === 'conns' || $other === 'lastSeen'"
+          }
+        }
+      },
+      "statusPrefs": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.uid === $uid",
+          ".validate": "newData.hasChildren(['hidden'])",
+          "hidden": {
+            ".validate": "newData.isBoolean()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
       }
     }
   }

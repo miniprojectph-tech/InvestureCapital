@@ -19,6 +19,7 @@ import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { InstallAppCard } from "@/components/InstallAppCard";
 import { NotificationPrefs } from "@/components/NotificationPrefs";
+import { ActiveStatusCard } from "@/components/ActiveStatusCard";
 import Link from "next/link";
 import { ChangePasswordModal } from "@/components/AccountSecurityModals";
 import { useAuth } from "@/lib/auth";
@@ -154,6 +155,7 @@ export default function ProfilePage() {
           </Card>
 
           <NotificationPrefs />
+          <ActiveStatusCard />
 
           <InstallAppCard />
 
