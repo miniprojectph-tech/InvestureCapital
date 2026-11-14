@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSettings, receiptLimitMB } from "@/lib/settings";
 import { ArrowRight, Check, Minus, Plus, Sparkles, Loader2, Lock } from "lucide-react";
 import { cn, formatPHP } from "@/lib/utils";
 import { ActivatePlanModal, type PaymentSubmission } from "./ActivatePlanModal";
@@ -16,6 +17,7 @@ const QUICK = [1000, 5000, 10000, 50000, 100000];
 export function PlacementCalculator() {
   const { cfg, loading } = useCompPlan();
   const { user, demoMode } = useAuth();
+  const { settings } = useSettings();
   const [amount, setAmount] = useState(1000);
   const [months, setMonths] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -46,7 +48,7 @@ export function PlacementCalculator() {
     let receiptUrl: string | undefined;
     let receiptPath: string | undefined;
     if (payment.receiptFile && storage) {
-      const uploaded = await uploadReceipt(storage, user.uid, payment.receiptFile);
+      const uploaded = await uploadReceipt(storage, user.uid, payment.receiptFile, receiptLimitMB(settings) * 1024 * 1024);
       receiptUrl = uploaded.url;
       receiptPath = uploaded.path;
     }

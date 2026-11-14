@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { Modal } from "./Modal";
 import { formatPHP, cn } from "@/lib/utils";
-import { useSettings, PAYMENT_METHOD_LABELS, type PaymentMethodId } from "@/lib/settings";
+import { useSettings, receiptLimitMB, PAYMENT_METHOD_LABELS, type PaymentMethodId } from "@/lib/settings";
 
 export type PaymentSubmission = {
   method: PaymentMethodId;
@@ -46,6 +46,7 @@ const methodIcons = {
 /** Off-platform payment flow: pick a method, send, attach reference + receipt. */
 export function ActivatePlanModal({ open, onClose, title, amount, summary, successText, onSubmit }: Props) {
   const { settings } = useSettings();
+  const receiptMB = receiptLimitMB(settings);
   const [stage, setStage] = useState<Stage>("form");
   const [error, setError] = useState<string | null>(null);
   const [method, setMethod] = useState<PaymentMethodId | null>(null);
@@ -96,8 +97,8 @@ export function ActivatePlanModal({ open, onClose, title, amount, summary, succe
       setError("Receipt must be an image");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Receipt too large (max 5 MB)");
+    if (file.size > receiptMB * 1024 * 1024) {
+      setError(`Receipt too large (max ${receiptMB} MB)`);
       return;
     }
     setError(null);
@@ -262,7 +263,7 @@ export function ActivatePlanModal({ open, onClose, title, amount, summary, succe
                   <Upload className="w-4 h-4" />
                   <span className="text-[12px]">Tap to attach your receipt or payment screenshot</span>
                 </div>
-                <p className="text-[9px] text-text-subtle text-center mt-1 m-0">PNG / JPG · max 5 MB · your request can&apos;t be submitted without it</p>
+                <p className="text-[9px] text-text-subtle text-center mt-1 m-0">PNG / JPG · max {receiptMB} MB · your request can&apos;t be submitted without it</p>
               </label>
             )}
           </div>

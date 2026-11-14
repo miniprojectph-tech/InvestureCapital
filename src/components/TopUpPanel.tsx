@@ -13,7 +13,7 @@ import { TopUpModal } from "./TopUpModal";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
 import { requestTopUp, useTopUps, type TopUpStatus } from "@/lib/topups";
-import { useSettings, PAYMENT_METHOD_LABELS, type PaymentMethodId } from "@/lib/settings";
+import { useSettings, receiptLimitMB, PAYMENT_METHOD_LABELS, type PaymentMethodId } from "@/lib/settings";
 import { uploadReceipt } from "@/lib/storage";
 import { formatPHP, cn } from "@/lib/utils";
 
@@ -46,7 +46,7 @@ export function TopUpPanel() {
     let receiptUrl: string | undefined;
     let receiptPath: string | undefined;
     if (args.receiptFile && storage) {
-      const uploaded = await uploadReceipt(storage, user.uid, args.receiptFile);
+      const uploaded = await uploadReceipt(storage, user.uid, args.receiptFile, receiptLimitMB(settings) * 1024 * 1024);
       receiptUrl = uploaded.url;
       receiptPath = uploaded.path;
     }

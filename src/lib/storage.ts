@@ -128,7 +128,8 @@ export async function uploadGameAsset(
   return { url, path };
 }
 
-const MAX_RECEIPT_BYTES = 5 * 1024 * 1024; // 5 MB — screenshots can be larger than QRs
+/** Default when the admin hasn't set one (Admin › Settings › Payment methods). */
+const MAX_RECEIPT_BYTES = 5 * 1024 * 1024;
 
 /**
  * Upload a top-up payment receipt under /receipts/{userId}/{timestamp}.{ext}.
@@ -137,13 +138,15 @@ const MAX_RECEIPT_BYTES = 5 * 1024 * 1024; // 5 MB — screenshots can be larger
 export async function uploadReceipt(
   storage: FirebaseStorage,
   userId: string,
-  file: File
+  file: File,
+  /** The admin-set limit (receiptLimitMB); the Storage rule enforces the same. */
+  maxBytes: number = MAX_RECEIPT_BYTES,
 ): Promise<UploadedQr> {
   if (!ACCEPTED_TYPES.includes(file.type)) {
     throw new Error("Receipt must be a PNG, JPG, WebP, or GIF image");
   }
-  if (file.size > MAX_RECEIPT_BYTES) {
-    throw new Error(`Receipt too large (max ${MAX_RECEIPT_BYTES / 1024 / 1024} MB)`);
+  if (file.size > maxBytes) {
+    throw new Error(`Receipt too large (max ${Math.round(maxBytes / 1024 / 1024)} MB)`);
   }
   const ext = (file.name.split(".").pop() || "png").toLowerCase();
   const path = `receipts/${userId}/${Date.now()}.${ext}`;

@@ -94,6 +94,15 @@ export function uploadLimitsFor(settings: PlatformSettings, chat: "room" | "inbo
   return cleanUploadLimits(settings.uploads?.[chat]);
 }
 
+/** Payment receipts (placements, top-ups, event slots): admin-set size limit in MB. */
+export const DEFAULT_RECEIPT_MB = 5;
+export const MAX_RECEIPT_MB = 50;
+/** The receipt limit in MB: a whole number within 1–50, 5 when unset or odd (the Storage rule says the same). */
+export function receiptLimitMB(settings: PlatformSettings): number {
+  const n = Number(settings.receiptMaxMB);
+  return Number.isInteger(n) && n >= 1 && n <= MAX_RECEIPT_MB ? n : DEFAULT_RECEIPT_MB;
+}
+
 /** The greeting a new member gets on first sign-in (pop-up + first message in their private chat). */
 export type WelcomeConfig = { enabled: boolean; text: string };
 export const DEFAULT_WELCOME_TEXT =
@@ -141,6 +150,8 @@ export type PlatformSettings = {
   community?: Partial<CommunityConfig>;
   /** Upload size / length caps for the Community Room and the admin chat. */
   uploads?: Partial<Record<"room" | "inbox", Partial<UploadLimits>>>;
+  /** Payment receipt size limit in MB (1–50; 5 when unset). */
+  receiptMaxMB?: number;
   /** Masterlist: how many recent months members may open, and whether month totals are shown. */
   masterlist?: { windowMonths?: number; showTotals?: boolean; archiveNote?: string };
   /** New-member welcome (pop-up + first private-chat message). */

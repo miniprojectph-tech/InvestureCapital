@@ -74,7 +74,7 @@ service firebase.storage {
     match /receipts/{userId}/{file} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow write: if isSignedIn() && request.auth.uid == userId
-        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.size <= receiptCapBytes()
         && request.resource.contentType.matches('image/.*');
       allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
@@ -108,6 +108,13 @@ service firebase.storage {
       return ('uploads' in settingsData() && settingsData().uploads is map && settingsData().uploads.get(chat, {}) is map)
         ? settingsData().uploads.get(chat, {})
         : {};
+    }
+    // Admin-set payment receipt limit: settings/platform.receiptMaxMB (1–50), 5 MB when unset.
+    function receiptCapBytes() {
+      return ('receiptMaxMB' in settingsData() && settingsData().receiptMaxMB is int
+          && settingsData().receiptMaxMB >= 1 && settingsData().receiptMaxMB <= 50)
+        ? settingsData().receiptMaxMB * 1024 * 1024
+        : 5 * 1024 * 1024;
     }
     function capBytes(chat, key) {
       return (uploadCfg(chat).get(key, 15) is number && uploadCfg(chat).get(key, 15) >= 1 && uploadCfg(chat).get(key, 15) <= 200)

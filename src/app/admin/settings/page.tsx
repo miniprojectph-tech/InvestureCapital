@@ -33,6 +33,8 @@ import {
   DEFAULT_PAYMENT_METHODS,
   DEFAULT_AI_TRADING,
   PAYMENT_METHOD_LABELS,
+  DEFAULT_RECEIPT_MB,
+  MAX_RECEIPT_MB,
   type PlatformSettings,
   type PaymentMethodConfig,
   type PaymentMethodId,
@@ -487,6 +489,32 @@ export default function AdminSettingsPage() {
               </div>
             );
           })}
+        </div>
+      </Card>
+      )}
+
+      {/* Payment receipts: how big a receipt picture members may attach (the Storage rule reads the same value) */}
+      {tab === "payments" && (
+      <Card className="mb-3">
+        <CardHeader title="Payment receipts" subtitle="Largest receipt picture a member can attach when placing capital, topping up or joining an event." />
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 text-[12px] text-text">
+            Size limit
+            <input
+              type="number"
+              min={1}
+              max={MAX_RECEIPT_MB}
+              step={1}
+              value={draft.receiptMaxMB ?? DEFAULT_RECEIPT_MB}
+              onChange={(e) => {
+                const n = Math.round(Number(e.target.value));
+                setDraft({ ...draft, receiptMaxMB: Number.isFinite(n) ? Math.max(1, Math.min(MAX_RECEIPT_MB, n)) : DEFAULT_RECEIPT_MB });
+              }}
+              className="w-20 bg-canvas border border-border rounded-md px-3 py-2 text-[12px] text-text font-mono outline-none focus:border-gold/40"
+            />
+            MB
+          </label>
+          <span className="text-[10px] text-text-subtle">1 to {MAX_RECEIPT_MB} MB · default {DEFAULT_RECEIPT_MB} MB. A phone screenshot is usually under 1 MB.</span>
         </div>
       </Card>
       )}

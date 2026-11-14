@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSettings, receiptLimitMB } from "@/lib/settings";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
@@ -285,6 +286,7 @@ export function SlotFlow({
   onAllDone: () => void;
 }) {
   const { user, demoMode } = useAuth();
+  const { settings } = useSettings();
 
   async function submitPayment(p: PaymentSubmission) {
     if (demoMode || !user || !pay) throw new Error("Sign in to join the event.");
@@ -292,7 +294,7 @@ export function SlotFlow({
     let receiptUrl: string | undefined;
     let receiptPath: string | undefined;
     if (p.receiptFile && storage) {
-      const up = await uploadReceipt(storage, user.uid, p.receiptFile);
+      const up = await uploadReceipt(storage, user.uid, p.receiptFile, receiptLimitMB(settings) * 1024 * 1024);
       receiptUrl = up.url;
       receiptPath = up.path;
     }

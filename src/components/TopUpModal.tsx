@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { Modal } from "./Modal";
 import { formatPHP, cn } from "@/lib/utils";
-import { useSettings, PAYMENT_METHOD_LABELS, type PaymentMethodId } from "@/lib/settings";
+import { useSettings, receiptLimitMB, PAYMENT_METHOD_LABELS, type PaymentMethodId } from "@/lib/settings";
 
 type Props = {
   open: boolean;
@@ -42,6 +42,7 @@ const presets = [1000, 5000, 10000, 50000];
 
 export function TopUpModal({ open, onClose, onSubmit }: Props) {
   const { settings } = useSettings();
+  const receiptMB = receiptLimitMB(settings);
   const [amount, setAmount] = useState(0);
   const [method, setMethod] = useState<PaymentMethodId | null>(null);
   const [refNum, setRefNum] = useState("");
@@ -94,8 +95,8 @@ export function TopUpModal({ open, onClose, onSubmit }: Props) {
       setError("Receipt must be an image");
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Receipt too large (max 5 MB)");
+    if (file.size > receiptMB * 1024 * 1024) {
+      setError(`Receipt too large (max ${receiptMB} MB)`);
       return;
     }
     setError(null);
@@ -333,7 +334,7 @@ export function TopUpModal({ open, onClose, onSubmit }: Props) {
                   <span className="text-[12px]">Tap to upload a screenshot</span>
                 </div>
                 <p className="text-[9px] text-text-subtle text-center mt-1 m-0">
-                  PNG / JPG · max 5 MB
+                  PNG / JPG · max {receiptMB} MB
                 </p>
               </label>
             )}
