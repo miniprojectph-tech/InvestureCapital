@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye, Users, Pencil, Gift, Wallet, Layers, Gamepad2, UserPlus, Tag, X, type LucideIcon } from "lucide-react";
+import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye, Users, Pencil, Gift, Wallet, Layers, Gamepad2, UserPlus, Tag, X, Ban, ShieldAlert, type LucideIcon } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
@@ -16,6 +16,8 @@ import { AccountTagsPanel } from "@/components/admin/AccountTagsPanel";
 import { TagPickerModal } from "@/components/admin/TagPickerModal";
 import { TagChips } from "@/components/admin/TagChips";
 import { useAccountTags } from "@/lib/accountTags";
+import { BanMemberModal } from "@/components/admin/BanMemberModal";
+import { useActiveBans, useOpenFlags, unbanMember, dismissFlag } from "@/lib/moderation";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
@@ -106,11 +108,20 @@ export default function AdminInvestorsPage() {
   const [tagFilter, setTagFilter] = useState(""); // "" = everyone, "none" = no tag, else a tag id
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [tagFor, setTagFor] = useState<{ uid: string; name: string }[] | null>(null);
+  // Bans and review flags (admin-only data)
+  const bans = useActiveBans();
+  const flags = useOpenFlags();
+  const banOf = useMemo(() => new Map(bans.map((b) => [b.uid, b])), [bans]);
+  const flagOf = useMemo(() => new Map(flags.map((f) => [f.uid, f])), [flags]);
+  const [banning, setBanning] = useState<{ uid: string; name: string; email: string } | null>(null);
+  const [modBusy, setModBusy] = useState<string | null>(null);
   const hasTag = useCallback((uid: string) => {
     if (!tagFilter) return true;
+    if (tagFilter === "banned") return banOf.has(uid);
+    if (tagFilter === "flagged") return flagOf.has(uid);
     const ids = (accountTags.links.get(uid) ?? []).filter((id) => accountTags.byId.has(id));
     return tagFilter === "none" ? ids.length === 0 : ids.includes(tagFilter);
-  }, [tagFilter, accountTags.links, accountTags.byId]);
+  }, [tagFilter, accountTags.links, accountTags.byId, banOf, flagOf]);
   const tagNames = (uid: string) => accountTags.tagsOf(uid).map((t) => t.name).join("; ");
 
   const { config } = useGameConfig();
@@ -358,7 +369,21 @@ export default function AdminInvestorsPage() {
     games: `${rows.length} accounts · game credits & points`,
     tags: `${accountTags.tags.length} tag${accountTags.tags.length === 1 ? "" : "s"} · only admins see them`,
   };
-  const activeTag = tagFilter && tagFilter !== "none" ? accountTags.byId.get(tagFilter) : undefined;
+  const activeTag = tagFilter && tagFilter !== "none" && tagFilter !== "banned" && tagFilter !== "flagged" ? accountTags.byId.get(tagFilter) : undefined;
+  async function unban(uid: string, name: string) {
+    if (!window.confirm(`Unban ${name}? They can sign in again, and the IP, payout and device blocks from this ban are lifted.`)) return;
+    setModBusy(uid); setAccountMsg(null);
+    try { await unbanMember(uid); setAccountMsg(`${name} is unbanned.`); }
+    catch (e) { setAccountMsg(e instanceof Error ? e.message.replace(/^.*?:\s*/, "") : "Could not unban."); }
+    finally { setModBusy(null); }
+  }
+  async function dismiss(uid: string, name: string) {
+    setModBusy(uid); setAccountMsg(null);
+    try { await dismissFlag(uid); setAccountMsg(`Flag on ${name} dismissed. Any withdrawal hold is released.`); }
+    catch (e) { setAccountMsg(e instanceof Error ? e.message.replace(/^.*?:\s*/, "") : "Could not dismiss."); }
+    finally { setModBusy(null); }
+  }
+  const untilText = (t: number | null) => (t ? `until ${new Date(t).toLocaleDateString("en-PH", { timeZone: "Asia/Manila", month: "short", day: "numeric" })}` : "permanent");
 
   return (
     <div>
@@ -380,7 +405,7 @@ export default function AdminInvestorsPage() {
                 className="bg-transparent text-[11px] outline-none flex-1 min-w-0 text-text placeholder:text-text-subtle"
               />
             </div>
-            {accountTags.tags.length > 0 && sortKey !== "tags" && (
+            {sortKey !== "tags" && (
               <select
                 value={tagFilter}
                 onChange={(e) => { setTagFilter(e.target.value); setPicked(new Set()); }}
@@ -388,7 +413,9 @@ export default function AdminInvestorsPage() {
                 className={cn("text-[11px] px-3 py-1.5 bg-card border rounded-full outline-none max-w-[170px] [color-scheme:dark]", tagFilter ? "border-gold/50 text-text" : "border-border text-text-muted")}
               >
                 <option value="">All accounts</option>
-                <option value="none">No tag</option>
+                <option value="banned">Banned ({bans.length})</option>
+                <option value="flagged">Flagged ({flags.length})</option>
+                {accountTags.tags.length > 0 && <option value="none">No tag</option>}
                 {accountTags.tags.map((t) => <option key={t.id} value={t.id}>{t.name} ({accountTags.counts.get(t.id) ?? 0})</option>)}
               </select>
             )}
@@ -418,7 +445,7 @@ export default function AdminInvestorsPage() {
       {/* A tag filter is on: say so on every list */}
       {tagFilter && sortKey !== "tags" && (
         <div className="mb-3 flex items-center gap-2 text-[11px] text-text-muted">
-          Showing {tagFilter === "none" ? "accounts with no tag" : <>accounts tagged {activeTag ? <TagChips tags={[activeTag]} /> : "…"}</>}
+          Showing {tagFilter === "banned" ? "banned accounts" : tagFilter === "flagged" ? "accounts flagged for review" : tagFilter === "none" ? "accounts with no tag" : <>accounts tagged {activeTag ? <TagChips tags={[activeTag]} /> : "…"}</>}
           <button onClick={() => { setTagFilter(""); setPicked(new Set()); }} className="inline-flex items-center gap-0.5 text-text-subtle hover:text-text"><X className="w-3 h-3" /> Show all</button>
         </div>
       )}
@@ -707,6 +734,16 @@ export default function AdminInvestorsPage() {
                         <button onClick={() => { setAccountMsg(null); setTagFor([{ uid: u.uid, name: u.name }]); }} className="p-0.5 text-text-subtle hover:text-gold shrink-0" aria-label={`Tags for ${u.name}`} title="Tags"><Tag className="w-3 h-3" /></button>
                       </span>
                       <TagChips tags={accountTags.tagsOf(u.uid)} className="mt-0.5 ml-[18px]" />
+                      {banOf.get(u.uid) && (
+                        <p className="m-0 mt-0.5 ml-[18px] text-[9px] text-red flex items-center gap-1 truncate" title={banOf.get(u.uid)!.reason || undefined}>
+                          <Ban className="w-2.5 h-2.5 shrink-0" /> Banned · {untilText(banOf.get(u.uid)!.until)}{banOf.get(u.uid)!.reason ? ` · ${banOf.get(u.uid)!.reason}` : ""}
+                        </p>
+                      )}
+                      {flagOf.get(u.uid) && (
+                        <p className="m-0 mt-0.5 ml-[18px] text-[9px] text-[#F5A524] flex items-center gap-1 truncate">
+                          <ShieldAlert className="w-2.5 h-2.5 shrink-0" /> Flagged: {flagOf.get(u.uid)!.reasons.join(", ")}{flagOf.get(u.uid)!.linkedName ? ` as banned ${flagOf.get(u.uid)!.linkedName}` : ""}
+                        </p>
+                      )}
                     </td>
                     <td className="py-2 px-1"><p className="m-0 text-[10px] text-text-muted truncate">{u.email}</p></td>
                     <td className="py-2 px-1 text-text-muted text-[10px]">
@@ -769,6 +806,16 @@ export default function AdminInvestorsPage() {
                           >
                             <KeyRound className="w-3 h-3" /> Reset password
                           </button>
+                          {flagOf.get(u.uid) && !banOf.get(u.uid) && (
+                            <button onClick={() => dismiss(u.uid, u.name)} disabled={modBusy === u.uid} className="text-[10px] px-2 py-1 rounded-md border border-[#F5A524]/40 text-[#F5A524] hover:bg-[#F5A524]/10 whitespace-nowrap disabled:opacity-50">Dismiss flag</button>
+                          )}
+                          {banOf.get(u.uid) ? (
+                            <button onClick={() => unban(u.uid, u.name)} disabled={modBusy === u.uid} className="text-[10px] px-2 py-1 rounded-md border border-border-strong text-text hover:bg-card-elev whitespace-nowrap disabled:opacity-50">Unban</button>
+                          ) : (
+                            <button onClick={() => { setAccountMsg(null); setBanning({ uid: u.uid, name: u.name, email: u.email }); }} className="text-[10px] px-2 py-1 rounded-md border border-red/45 text-red hover:bg-red/10 inline-flex items-center gap-1 whitespace-nowrap">
+                              <Ban className="w-3 h-3" /> Ban
+                            </button>
+                          )}
                           <button
                             onClick={() => { setAccountMsg(null); setDeleting({ uid: u.uid, name: u.name, email: u.email }); }}
                             className="text-[10px] px-2 py-1 rounded-md border border-red/30 text-red hover:bg-red/10 inline-flex items-center gap-1"
@@ -790,6 +837,7 @@ export default function AdminInvestorsPage() {
       )}
 
       <ResetPasswordModal member={resetting} onClose={() => setResetting(null)} />
+      <BanMemberModal member={banning} onClose={() => setBanning(null)} onDone={(m) => { setBanning(null); setAccountMsg(m); }} />
       <TagPickerModal
         members={tagFor}
         tags={accountTags.tags}

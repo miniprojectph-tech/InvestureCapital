@@ -94,6 +94,9 @@ export function uploadLimitsFor(settings: PlatformSettings, chat: "room" | "inbo
   return cleanUploadLimits(settings.uploads?.[chat]);
 }
 
+/** Admin › Settings › Security. The server reads the same values (functions/src/moderation.ts). */
+export type SecurityConfig = { blockThrowaway?: boolean; signupsPerIpPerDay?: number; botCheck?: boolean; bannedMessage?: string };
+
 /** Payment receipts (placements, top-ups, event slots): admin-set size limit in MB. */
 export const DEFAULT_RECEIPT_MB = 5;
 export const MAX_RECEIPT_MB = 50;
@@ -152,6 +155,8 @@ export type PlatformSettings = {
   uploads?: Partial<Record<"room" | "inbox", Partial<UploadLimits>>>;
   /** Payment receipt size limit in MB (1–50; 5 when unset). */
   receiptMaxMB?: number;
+  /** Sign-up protection and the banned-member message (Admin › Settings › Security). */
+  security?: SecurityConfig;
   /** Masterlist: how many recent months members may open, and whether month totals are shown. */
   masterlist?: { windowMonths?: number; showTotals?: boolean; archiveNote?: string };
   /** New-member welcome (pop-up + first private-chat message). */

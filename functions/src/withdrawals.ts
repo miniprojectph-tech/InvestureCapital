@@ -4,6 +4,7 @@ import { logger } from "firebase-functions";
 import { db } from "./init";
 import { FieldValue } from "firebase-admin/firestore";
 import { grantBonusSpins } from "./events";
+import { payoutKey, raiseFlag } from "./moderation";
 import { mergeWithdrawalSchedule, releaseDateFor, formatReleaseDate, type WithdrawalScheduleConfig } from "./withdrawalSchedule";
 
 type Withdrawal = {
@@ -69,10 +70,22 @@ export const requestWithdrawal = onCall(async (request) => {
   const userRef = db.collection("users").doc(uid);
   const wRef = db.collection("withdrawals").doc();
 
+  // A payout account that belongs to a banned member: flag this account for review and hold withdrawals.
+  const pre = (await userRef.get()).data() as { profile?: { name?: string; email?: string }; payoutMethod?: PayoutMethod } | undefined;
+  if (pre?.payoutMethod?.accountNumber) {
+    const b = (await db.collection("banned_payouts").doc(payoutKey(pre.payoutMethod.type ?? "", pre.payoutMethod.accountNumber)).get()).data() as { fromUid?: string } | undefined;
+    if (b && b.fromUid !== uid) {
+      await raiseFlag(uid, pre, ["banned payout account"], b.fromUid ?? "", true);
+      throw new HttpsError("failed-precondition", "Withdrawals are on hold for a quick review. Please message the admin.");
+    }
+  }
+
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
     if (!snap.exists) throw new HttpsError("not-found", "Account not found.");
-    const u = snap.data() as { profile?: { name?: string; email?: string }; balances?: { wallet?: number }; payoutMethod?: PayoutMethod };
+    const u = snap.data() as { profile?: { name?: string; email?: string }; balances?: { wallet?: number }; payoutMethod?: PayoutMethod; banned?: unknown; withdrawHold?: boolean };
+    if (u.banned) throw new HttpsError("permission-denied", "This account is suspended.");
+    if (u.withdrawHold === true) throw new HttpsError("failed-precondition", "Withdrawals are on hold for a quick review. Please message the admin.");
     const method = u.payoutMethod;
     if (!method || !method.type || !method.accountNumber) {
       throw new HttpsError("failed-precondition", "Set up your mode of payout first.");
@@ -191,9 +204,13 @@ export const adminDecideWithdrawal = onCall(async (request) => {
     const w = snap.data() as Withdrawal & { status?: string };
     if (w.status !== "pending") throw new HttpsError("failed-precondition", `This withdrawal was already ${w.status === "approved" ? "released" : w.status}.`);
     const now = Date.now();
+    const userRef = db.collection("users").doc(w.userId);
+    const u = await tx.get(userRef);
+    // a banned member's money stays put until an admin unbans them (rejecting still refunds the wallet)
+    if (decision === "approve" && u.exists && (u.data() as { banned?: unknown }).banned) {
+      throw new HttpsError("failed-precondition", "This member is banned. Reject the withdrawal, or unban them first.");
+    }
     if (decision === "reject") {
-      const userRef = db.collection("users").doc(w.userId);
-      const u = await tx.get(userRef);
       if (u.exists) tx.update(userRef, { "balances.wallet": FieldValue.increment(Number(w.amount) || 0) });
     }
     tx.update(wRef, { status: decision === "approve" ? "approved" : "rejected", processedAt: now, processedBy: adminUid, ...(note ? { note } : {}) });

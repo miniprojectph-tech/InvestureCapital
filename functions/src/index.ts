@@ -29,6 +29,9 @@ export { masterlistSync, adminMasterlistSave, adminMasterlistDelete, adminMaster
 // Admin only: delete a member's account (members can't delete their own).
 export { adminDeleteMember, adminResetMemberPassword, adminSetJoinedAt } from "./account";
 
+// Bans and sign-up protection.
+export { getBanNotice, checkSignup, recordSession, adminBanMember, adminUnbanMember, adminDismissFlag, adminLiftIpBan, liftExpiredBans } from "./moderation";
+
 // Admin: member directory export (Excel / CSV), audited.
 export { adminExportMembers } from "./members-export";
 

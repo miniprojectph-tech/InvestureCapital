@@ -19,7 +19,9 @@ import {
   Wallet,
   Sliders,
   Power,
+  ShieldCheck,
 } from "lucide-react";
+import { SecuritySettings } from "@/components/admin/SecuritySettings";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
@@ -51,12 +53,13 @@ import {
 } from "@/lib/withdrawalSchedule";
 
 
-type Tab = "general" | "payments" | "withdrawals" | "ai" | "state";
+type Tab = "general" | "payments" | "withdrawals" | "ai" | "security" | "state";
 const TABS: { id: Tab; label: string; icon: typeof Sliders }[] = [
   { id: "general", label: "General", icon: Sliders },
   { id: "payments", label: "Payment methods", icon: Wallet },
   { id: "withdrawals", label: "Withdrawals", icon: CalendarClock },
   { id: "ai", label: "AI Trading", icon: Bot },
+  { id: "security", label: "Security", icon: ShieldCheck },
   { id: "state", label: "Platform state", icon: Power },
 ];
 const TAB_IDS = TABS.map((t) => t.id);
@@ -242,6 +245,7 @@ export default function AdminSettingsPage() {
             t.id === "payments" ? `${(Object.values(draft.paymentMethods ?? DEFAULT_PAYMENT_METHODS).filter((m) => m.enabled).length)} of 3 on`
             : t.id === "withdrawals" ? (schedule.enabled && schedule.releaseDays.length ? schedule.releaseDays.slice().sort().map((d) => DAY_SHORT[d]).join(" · ") : "off")
             : t.id === "ai" ? (draft.aiTrading?.enabled ? "on" : "off")
+            : t.id === "security" ? (draft.security?.blockThrowaway === false ? "throwaway allowed" : "protected")
             : t.id === "state" ? (draft.maintenanceMode ? "maintenance" : "live")
             : null,
           hintTone: t.id === "state" ? (draft.maintenanceMode ? "warn" : "ok") : undefined,
@@ -777,6 +781,10 @@ export default function AdminSettingsPage() {
           </div>
         </div>
       </Card>
+      )}
+
+      {tab === "security" && (
+        <SecuritySettings value={draft.security ?? {}} onChange={(v) => setDraft({ ...draft, security: { ...v, bannedMessage: (v.bannedMessage ?? "").slice(0, 300) } })} />
       )}
 
       {tab === "state" && (

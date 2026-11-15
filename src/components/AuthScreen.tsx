@@ -17,6 +17,10 @@ import {
   Gift,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { getBanNotice, checkSignup, banNoticeText, DEFAULT_BANNED_MESSAGE } from "@/lib/moderation";
+
+/** The Firebase error code, if any. */
+const codeOf = (err: unknown) => (typeof err === "object" && err !== null && "code" in err ? String((err as { code: unknown }).code) : "");
 
 type Mode = "signin" | "signup";
 
@@ -36,6 +40,24 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
   const [googleBusy, setGoogleBusy] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
+
+  // A banned account: the admin's message (and end date for a temporary ban), never a technical error.
+  const [suspended, setSuspended] = useState<string | null>(null);
+  async function showSuspended(forEmail: string) {
+    try {
+      const n = await getBanNotice(forEmail);
+      setSuspended(banNoticeText(n.banned ? n : { message: DEFAULT_BANNED_MESSAGE }));
+    } catch {
+      setSuspended(DEFAULT_BANNED_MESSAGE);
+    }
+  }
+  // signed out by a ban while using the app
+  useEffect(() => {
+    try {
+      const e = sessionStorage.getItem("investure.bannedEmail");
+      if (e) { sessionStorage.removeItem("investure.bannedEmail"); void showSuspended(e); }
+    } catch { /* ignore */ }
+  }, []);
 
   const isSignup = mode === "signup";
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -77,6 +99,10 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
           : "";
       // User dismissed the popup — not an error worth showing.
       if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+        return;
+      }
+      if (code === "auth/user-disabled") {
+        setSuspended(DEFAULT_BANNED_MESSAGE);
         return;
       }
       const msg = err instanceof Error ? err.message : "Google sign-in failed";
@@ -123,10 +149,15 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
         setError("The two passwords don't match. Please type the same password in both boxes.");
         return;
       }
-      if (isSignup) await signUp(name, email, password, referralCode ?? undefined);
-      else await signIn(email, password, remember);
+      if (isSignup) {
+        // temporary-inbox emails are refused (admin switch); asked before any account is made
+        const check = await checkSignup(email).catch(() => ({ ok: true as boolean, message: undefined as string | undefined }));
+        if (!check.ok) { setError(check.message ?? "Please use a different email address."); return; }
+        await signUp(name, email, password, referralCode ?? undefined);
+      } else await signIn(email, password, remember);
       router.push("/dashboard");
     } catch (err) {
+      if (codeOf(err) === "auth/user-disabled") { await showSuspended(email); return; }
       const msg = err instanceof Error ? err.message : "Something went wrong";
       setError(msg.replace("Firebase: ", "").replace(/\(auth\/[^)]+\)\.?$/, "").trim());
     } finally {
@@ -386,6 +417,12 @@ export function AuthScreen({ defaultMode = "signin" }: { defaultMode?: Mode }) {
               </div>
             )}
 
+            {suspended && (
+              <div role="alert" className="mb-3 rounded-xl border border-red/40 bg-red/10 px-4 py-3 text-[13px] text-white flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red" />
+                <span><span className="block font-semibold">Account suspended</span>{suspended}</span>
+              </div>
+            )}
             {error && (
               <div className="flex items-start gap-2 px-3 py-2 bg-red/15 border border-red/30 rounded-lg text-[11px] text-red">
                 <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />

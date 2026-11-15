@@ -414,6 +414,14 @@ service cloud.firestore {
         && request.resource.data.tags.size() <= 20;
     }
 
+    // === Bans and sign-up protection (written by Cloud Functions; admins read) ===
+    match /bans/{uid} { allow read: if isAdmin(); allow write: if false; }
+    match /banned_ips/{key} { allow read: if isAdmin(); allow write: if false; }
+    match /banned_payouts/{key} { allow read: if isAdmin(); allow write: if false; }
+    match /banned_devices/{key} { allow read: if isAdmin(); allow write: if false; }
+    match /sessions/{uid} { allow read: if isAdmin(); allow write: if false; }
+    match /account_flags/{uid} { allow read: if isAdmin(); allow write: if false; }
+
     // Default deny
     match /{document=**} {
       allow read, write: if false;

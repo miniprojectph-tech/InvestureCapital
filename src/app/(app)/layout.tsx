@@ -7,6 +7,7 @@ import { WelcomePopup } from "@/components/WelcomePopup";
 import { UnreadProvider } from "@/components/UnreadProvider";
 import { PushAutoRegister } from "@/components/PushAutoRegister";
 import { ActiveStatusReporter } from "@/components/ActiveStatusReporter";
+import { AccountGuard } from "@/components/AccountGuard";
 
 export default function InvestorAppLayout({
   children,
@@ -30,6 +31,8 @@ export default function InvestorAppLayout({
         <PushAutoRegister />
         {/* "Active now / Away" for the team and the member's Team Leader (members never see it). */}
         <ActiveStatusReporter />
+        {/* Bans: signs a banned account out at once; daily session note for linked-account flags. */}
+        <AccountGuard />
       </UnreadProvider>
     </AuthGate>
   );

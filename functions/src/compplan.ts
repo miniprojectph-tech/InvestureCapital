@@ -570,6 +570,11 @@ export async function processPlacementsForUser(
     const user = snap.data() as UserDoc;
     const placements = user.placements ?? [];
     if (placements.length === 0) return none;
+    // Banned with "freeze": payouts wait. The schedule is time-based, so anything due is
+    // credited on the first run after an admin unbans them.
+    if ((user as { banned?: { money?: string } }).banned?.money === "freeze") {
+      return { ...none, active: placements.length, activeIds: placements.map((p) => p.id) };
+    }
 
     const writes: Write[] = [];
     const patches = new UserPatches();
