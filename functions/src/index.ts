@@ -53,6 +53,8 @@ export {
   tickTestClocks,
 } from "./compplan";
 export { getReferralStats } from "./referral-stats";
+// Admin: add to / remove from a member's wallet with a typed tag (audited, member sees it).
+export { adminAdjustWallet } from "./wallet-adjust";
 export { onWithdrawalWritten, requestWithdrawal, adminDecideWithdrawal, adminDeleteWithdrawal } from "./withdrawals";
 export { adminSaveEvent, adminSetEventStatus, adminAddEventSlots, claimEventSlots, onPlanRequestWritten, spinWheel, onUserCreatedForEvents } from "./events";
 

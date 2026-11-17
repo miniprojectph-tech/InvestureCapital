@@ -26,7 +26,9 @@ const typeIcon: Record<string, { icon: LucideIcon; bg: string; color: string }> 
   reinvest: { icon: RefreshCw, bg: "bg-gold/15", color: "text-gold" },
   deposit: { icon: ArrowDownToLine, bg: "bg-green/15", color: "text-green" },
   "game-points": { icon: Gamepad2, bg: "bg-gold/15", color: "text-gold" },
+  "wallet-adjustment": { icon: ArrowDownRight, bg: "bg-green/15", color: "text-green" },
 };
+const ADJUST_OUT_ICON = { icon: ArrowUpRight, bg: "bg-red/15", color: "text-red" };
 
 const DEFAULT_ICON = { icon: RefreshCw, bg: "bg-white/5", color: "text-text-muted" };
 
@@ -57,7 +59,7 @@ export function ActivityFeed() {
           </p>
         )}
         {visible.map((ev, i) => {
-          const t = typeIcon[ev.type] ?? DEFAULT_ICON;
+          const t = ev.type === "wallet-adjustment" && ev.amountKind === "out" ? ADJUST_OUT_ICON : typeIcon[ev.type] ?? DEFAULT_ICON;
           const Icon = t.icon;
           return (
             <div

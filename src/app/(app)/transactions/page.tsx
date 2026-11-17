@@ -53,6 +53,7 @@ const typeMeta: Record<string, Meta> = {
   withdrawal: { label: "Withdrawal", icon: ArrowUpRight, color: "text-text-muted", bg: "bg-white/5" },
   deposit: { label: "Top up", icon: ArrowDownToLine, color: "text-green", bg: "bg-green/15" },
   "game-points": { label: "Game points", icon: Gamepad2, color: "text-gold", bg: "bg-gold/15" },
+  "wallet-adjustment": { label: "Adjustment", icon: ArrowDownRight, color: "text-green", bg: "bg-green/15" },
   // Legacy (old plan system)
   "plan-earning": { label: "Daily income", icon: ArrowDownRight, color: "text-green", bg: "bg-green/15" },
   "vault-growth": { label: "Vault growth", icon: TrendingUp, color: "text-vault", bg: "bg-vault/15" },
@@ -66,6 +67,10 @@ const DEFAULT_META: Meta = {
   color: "text-text-muted",
   bg: "bg-white/5",
 };
+/** An admin adjustment that took money out of the wallet. */
+const ADJUST_OUT_META: Meta = { label: "Adjustment", icon: ArrowUpRight, color: "text-red", bg: "bg-red/15" };
+const metaOf = (r: { type: string; amountKind?: string }): Meta =>
+  r.type === "wallet-adjustment" && r.amountKind === "out" ? ADJUST_OUT_META : typeMeta[r.type] ?? DEFAULT_META;
 
 // Event types that represent earnings (profit), not returned capital or deposits.
 const INCOME_TYPES = new Set(["payout", "locked-bonus", "referral-commission", "fast-start", "leadership", "plan-earning", "vault-growth"]);
@@ -279,7 +284,7 @@ export default function TransactionsPage() {
               </tr>
             )}
             {rows.map((row) => {
-              const meta = typeMeta[row.type] ?? DEFAULT_META;
+              const meta = metaOf(row);
               const Icon = meta.icon;
               return (
                 <tr key={row.id} className="border-t border-border">

@@ -298,6 +298,11 @@ export function adminChangePlacementTerm(args: { userId: string; placementId: st
   return adminCall<typeof args, { ok: boolean; termMonths: number; cycles: number; lockedBonus: number; endsAt: number; rewritten: number }>("adminChangePlacementTerm", args);
 }
 
+/** Add to / remove from a member's wallet with a tag. A removal may leave the wallet below zero. */
+export function adminAdjustWallet(args: { userId: string; direction: "add" | "remove"; amount: number; tag: string; message?: string; notify: boolean; note?: string }) {
+  return adminCall<typeof args, { ok: boolean; walletBefore: number; walletAfter: number }>("adminAdjustWallet", args);
+}
+
 /** Wipe one member's economy (and reverse what their placements paid to uplines). */
 export function adminResetMember(userId: string) {
   return adminCall<{ userId: string }, { ok: boolean; reversedCommissions: number }>("adminResetMember", { userId });

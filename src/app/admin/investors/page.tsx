@@ -17,6 +17,8 @@ import { TagPickerModal } from "@/components/admin/TagPickerModal";
 import { TagChips } from "@/components/admin/TagChips";
 import { useAccountTags } from "@/lib/accountTags";
 import { BanMemberModal } from "@/components/admin/BanMemberModal";
+import { WalletAdjustModal, type WalletTarget } from "@/components/admin/WalletAdjustModal";
+import { WalletAdjustmentsLog } from "@/components/admin/WalletAdjustmentsLog";
 import { useActiveBans, useOpenFlags, unbanMember, dismissFlag } from "@/lib/moderation";
 import { formatPHP, cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -115,6 +117,11 @@ export default function AdminInvestorsPage() {
   const flagOf = useMemo(() => new Map(flags.map((f) => [f.uid, f])), [flags]);
   const [banning, setBanning] = useState<{ uid: string; name: string; email: string } | null>(null);
   const [modBusy, setModBusy] = useState<string | null>(null);
+  // Wallet tab: balances list vs the adjustments log, and the Adjust dialog
+  const [walletView, setWalletView] = useState<"balances" | "adjustments">("balances");
+  const [adjusting, setAdjusting] = useState<WalletTarget | null>(null);
+  const [walletMsg, setWalletMsg] = useState<string | null>(null);
+  const [adjustReload, setAdjustReload] = useState(0);
   const hasTag = useCallback((uid: string) => {
     if (!tagFilter) return true;
     if (tagFilter === "banned") return banOf.has(uid);
@@ -601,18 +608,41 @@ export default function AdminInvestorsPage() {
 
       {/* ── Wallet tab ── */}
       {sortKey === "wallet" && (
+        <div className="mb-3 flex items-center gap-1.5">
+          {(["balances", "adjustments"] as const).map((v) => (
+            <button key={v} onClick={() => setWalletView(v)} aria-pressed={walletView === v}
+              className={cn("text-[11px] px-3 py-1.5 rounded-full border transition", walletView === v ? "bg-gold/15 border-border-gold text-gold font-medium" : "bg-card border-border text-text-muted hover:text-text")}>
+              {v === "balances" ? "Balances" : "Adjustments"}
+            </button>
+          ))}
+        </div>
+      )}
+      {sortKey === "wallet" && walletMsg && (
+        <div className="mb-3 flex items-center gap-2 px-3 py-2 rounded-lg text-[11px] bg-green/10 border border-green/30 text-green">
+          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> {walletMsg}
+          <button onClick={() => setWalletMsg(null)} aria-label="Dismiss" className="ml-auto text-green/70 hover:text-green"><X className="w-3 h-3" /></button>
+        </div>
+      )}
+      {sortKey === "wallet" && walletView === "adjustments" && <WalletAdjustmentsLog search={query} reloadKey={adjustReload} />}
+      <WalletAdjustModal
+        target={adjusting}
+        onClose={() => setAdjusting(null)}
+        onDone={(m) => { setAdjusting(null); setWalletMsg(m); setAdjustReload((n) => n + 1); void reloadInvestors(); }}
+      />
+      {sortKey === "wallet" && walletView === "balances" && (
         <Card>
-          <CardHeader title={`Wallet overview (${filtered.length})`} subtitle="Wallet balances, deployed capital, and total portfolio" />
+          <CardHeader title={`Wallet overview (${filtered.length})`} subtitle="Wallet balances, deployed capital, and total portfolio. Adjust adds to or removes from a wallet with a tag." />
           <ResponsiveTable>
-            <table className="w-full text-[11px] table-fixed min-w-[780px]">
+            <table className="w-full text-[11px] table-fixed min-w-[860px]">
               <colgroup>
                 <col style={{ width: "14%" }} />
-                <col style={{ width: "18%" }} />
+                <col style={{ width: "17%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "12%" }} />
                 <col style={{ width: "13%" }} />
+                <col style={{ width: "9%" }} />
+                <col style={{ width: "10%" }} />
                 <col style={{ width: "13%" }} />
-                <col style={{ width: "14%" }} />
-                <col style={{ width: "10%" }} />
-                <col style={{ width: "10%" }} />
               </colgroup>
               <thead>
                 <tr className="text-text-subtle text-left">
@@ -623,6 +653,7 @@ export default function AdminInvestorsPage() {
                   <th className="font-normal py-2 px-1 text-right">Total Portfolio</th>
                   <th className="font-normal py-2 px-1 text-right">Active Plans</th>
                   <th className="font-normal py-2 px-1 text-right">Role</th>
+                  <th className="font-normal py-2 px-1 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -632,7 +663,7 @@ export default function AdminInvestorsPage() {
                     <tr key={u.uid} className="border-t border-border hover:bg-card-elev/50 transition">
                       <td className="py-2 px-1"><p className="m-0 text-[11px] truncate font-medium">{u.name}</p><TagChips tags={accountTags.tagsOf(u.uid)} className="mt-0.5" /></td>
                       <td className="py-2 px-1"><p className="m-0 text-[10px] text-text-muted truncate">{u.email}</p></td>
-                      <td className="py-2 px-1 text-right font-mono">{formatPHP(u.wallet, { short: true })}</td>
+                      <td className={cn("py-2 px-1 text-right font-mono", u.wallet < 0 && "text-red")}>{formatPHP(u.wallet, { short: true })}</td>
                       <td className="py-2 px-1 text-right font-mono text-green">{formatPHP(u.deployed, { short: true })}</td>
                       <td className="py-2 px-1 text-right font-mono font-medium">{formatPHP(total, { short: true })}</td>
                       <td className="py-2 px-1 text-right font-mono">{u.activePlansCount}</td>
@@ -643,11 +674,17 @@ export default function AdminInvestorsPage() {
                           <span className="text-[9px] bg-green/15 text-green px-1.5 py-0.5 rounded-md">Investor</span>
                         )}
                       </td>
+                      <td className="py-2 px-1 text-right">
+                        <button onClick={() => { setWalletMsg(null); setAdjusting({ uid: u.uid, name: u.name, wallet: u.wallet }); }}
+                          className="text-[10px] px-2 py-1 rounded-md border border-green/40 text-green hover:bg-green/10 inline-flex items-center gap-1">
+                          <Wallet className="w-3 h-3" /> Adjust
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={7} className="text-center text-text-subtle py-8">No investors match your search.</td></tr>
+                  <tr><td colSpan={8} className="text-center text-text-subtle py-8">No investors match your search.</td></tr>
                 )}
               </tbody>
             </table>

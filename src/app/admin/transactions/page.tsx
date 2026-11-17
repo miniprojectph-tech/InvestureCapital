@@ -47,6 +47,7 @@ const typeMeta: Record<
   reinvest: { label: "Reinvest", icon: RefreshCw, color: "text-gold", bg: "bg-gold/15" },
   "game-points": { label: "Game points", icon: Gamepad2, color: "text-gold", bg: "bg-gold/15" },
   deposit: { label: "Top up", icon: ChevronRight, color: "text-green", bg: "bg-green/15" },
+  "wallet-adjustment": { label: "Adjustment", icon: ArrowDownRight, color: "text-blue", bg: "bg-blue/15" },
 };
 
 function metaFor(type: string) {
