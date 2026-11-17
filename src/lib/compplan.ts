@@ -34,6 +34,8 @@ export type Placement = {
   startedAt: number;
   /** Kept the first time an admin edits the start date. */
   originalStartedAt?: number;
+  /** Kept the first time an admin upgrades the term. */
+  originalTermMonths?: number;
   /** Virtual time added by the test clock / fast-forward (never moves startedAt). */
   clockAdvanceMs?: number;
   cyclesPaid: number;
@@ -289,6 +291,11 @@ export function adminAdvancePlacement(args: { userId: string; placementId: strin
 /** Change a placement's true start date — the schedule and every history date follow. */
 export function adminSetPlacementStart(args: { userId: string; placementId: string; startedAt: number }) {
   return adminCall<typeof args, PayoutRun & { redated: number; oldStart: number }>("adminSetPlacementStart", args);
+}
+
+/** Upgrade an active placement to a longer term (same amount and start; payouts, end date and Locked-In Bonus change). */
+export function adminChangePlacementTerm(args: { userId: string; placementId: string; termMonths: number; notify: boolean; note?: string }) {
+  return adminCall<typeof args, { ok: boolean; termMonths: number; cycles: number; lockedBonus: number; endsAt: number; rewritten: number }>("adminChangePlacementTerm", args);
 }
 
 /** Wipe one member's economy (and reverse what their placements paid to uplines). */

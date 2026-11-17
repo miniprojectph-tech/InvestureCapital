@@ -52,6 +52,7 @@ export type Placement = {
   lockedBonus: number; // total, already multiplied by units
   startedAt: number; // true start date (admin-editable)
   originalStartedAt?: number; // kept the first time startedAt is edited
+  originalTermMonths?: number; // kept the first time an admin upgrades the term
   clockAdvanceMs?: number; // virtual time from test clock / fast-forward
   cyclesPaid: number;
   totalPaid: number; // cycle income paid so far (excludes capital/bonus)
@@ -906,6 +907,128 @@ export const adminSetPlacementStart = onCall(async (request) => {
   const cfg = await loadCompPlan();
   const r = await processPlacementsForUser(userId, cfg, Date.now());
   return { ok: true, redated: ops.length, oldStart: info.oldStart, ...r };
+});
+
+/**
+ * Upgrade an ACTIVE placement to a longer term (e.g. 3 → 6 months). Same amount,
+ * same start date, same payout size: only the number of payouts, the end date and
+ * the Locked-In Bonus change (the sponsor's Leadership Bonus follows, since it is
+ * worked out from the Locked-In Bonus when the plan ends). Referral and Fast-Start
+ * commissions depend on the amount only and stay exactly as paid.
+ * Everything that names the term is rewritten — the member's history and notices,
+ * the payment request — and the member gets a bell notice when `notify` is set.
+ */
+export const adminChangePlacementTerm = onCall(async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const adminUid = request.auth.uid;
+  await assertAdmin(adminUid);
+  const { userId, placementId, termMonths, note, notify: tell } = (request.data ?? {}) as {
+    userId?: string; placementId?: string; termMonths?: number; note?: string; notify?: boolean;
+  };
+  if (!userId || !placementId) throw new HttpsError("invalid-argument", "userId and placementId are required.");
+  const cfg = await loadCompPlan();
+  const term = cfg.terms.find((t) => t.months === termMonths);
+  if (!term) throw new HttpsError("invalid-argument", "Choose a valid term.");
+  const now = Date.now();
+  const cleanNote = typeof note === "string" ? note.trim().slice(0, 300) : "";
+
+  const info = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef(userId));
+    if (!snap.exists) throw new HttpsError("not-found", "Member not found.");
+    const u = snap.data() as UserDoc;
+    const active = u.placements ?? [];
+    const p = active.find((x) => x.id === placementId);
+    if (!p) {
+      const done = (u.completedPlacements ?? []).some((x) => x.id === placementId);
+      throw new HttpsError("failed-precondition", done ? "This plan has finished, so its term can't change." : "Placement not found.");
+    }
+    if (term.months <= p.termMonths) throw new HttpsError("failed-precondition", `A plan can only move to a longer term. ${p.id} is already ${p.termMonths} months.`);
+    const reqRef = p.requestId ? db.collection("plan_requests").doc(p.requestId) : null;
+    const reqSnap = reqRef ? await tx.get(reqRef) : null;
+
+    const cycles = Math.max(1, Math.round((term.months * cfg.monthDays) / p.cycleDays));
+    if (cycles <= (p.cyclesPaid ?? 0)) throw new HttpsError("failed-precondition", "That term is not longer than what has already been paid.");
+    const lockedBonus = p.units * term.lockedBonusPerUnit;
+    const next: Placement = { ...p, termMonths: term.months, cycles, lockedBonus, originalTermMonths: p.originalTermMonths ?? p.termMonths };
+    tx.update(userRef(userId), { placements: active.map((x) => (x.id === placementId ? next : x)) });
+
+    if (reqRef && reqSnap?.exists) {
+      const planName = reqSnap.data()?.planName;
+      tx.update(reqRef, {
+        termMonths: term.months,
+        ...(typeof planName === "string" ? { planName: planName.replace(/^\d+-month/, `${term.months}-month`) } : {}),
+      });
+    }
+
+    const endsAt = p.startedAt + cycles * cycleMsOf(p);
+    const fmt = (ms: number) => new Date(ms).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" });
+    const perCycle = perCycleOf(p);
+    if (tell) {
+      tx.set(notificationRef(userId), {
+        type: "placement",
+        title: `${p.id} is now a ${term.months}-month plan`,
+        body: `${peso(perCycle)} every ${p.cycleDays} days for ${cycles} payouts, until ${fmt(endsAt)}.${lockedBonus > 0 ? ` Locked-In Bonus ${peso(lockedBonus)} on the final payout.` : ""}`,
+        planId: p.id,
+        at: now,
+        read: false,
+      });
+    }
+    // The term shows on the Masterlist.
+    tx.set(db.doc("masterlist_meta/state"), { dirty: true, dirtyAt: now }, { merge: true });
+    // Internal record only — never the member's history.
+    tx.set(db.collection("admin_audit").doc(), {
+      type: "placement_term_changed",
+      uid: userId,
+      userName: u.profile?.name ?? "",
+      placementId,
+      oldTermMonths: p.termMonths,
+      newTermMonths: term.months,
+      oldCycles: p.cycles,
+      newCycles: cycles,
+      oldLockedBonus: p.lockedBonus,
+      newLockedBonus: lockedBonus,
+      notified: !!tell,
+      ...(cleanNote ? { note: cleanNote } : {}),
+      title: `${placementId} term changed`,
+      subtitle: `${p.termMonths} → ${term.months} months · Locked-In Bonus ${peso(p.lockedBonus)} → ${peso(lockedBonus)} by admin`,
+      by: adminUid,
+      at: now,
+    });
+    return { oldMonths: p.termMonths, oldCycles: p.cycles, oldLocked: p.lockedBonus, cycles, lockedBonus, endsAt };
+  });
+
+  // Rewrite every member-facing line that names the old term, payout count or bonus.
+  const retitle = (s: unknown): string | undefined => {
+    if (typeof s !== "string") return undefined;
+    let t = s
+      .replace(` out of ${info.oldCycles} payouts`, ` out of ${info.cycles} payouts`)
+      .replace(new RegExp(`\\b${info.oldMonths}-month term`), `${term.months}-month term`)
+      .replace(new RegExp(`\\b${info.oldMonths}-month placement`), `${term.months}-month placement`)
+      .replace(` ${info.oldCycles} payouts of `, ` ${info.cycles} payouts of `)
+      .replace(`for ${info.oldCycles} payouts`, `for ${info.cycles} payouts`)
+      .replace(new RegExp(`(payout \\d+) of ${info.oldCycles}\\.$`), `$1 of ${info.cycles}.`);
+    if (info.oldLocked > 0) t = t.replace(`Locked-In Bonus ${peso(info.oldLocked)}`, `Locked-In Bonus ${peso(info.lockedBonus)}`);
+    else if (info.lockedBonus > 0 && /^₱[\d,.]+ every \d+ days for \d+ payouts.*\.$/.test(t) && !t.includes("Locked-In")) {
+      t = `${t.slice(0, -1)} · Locked-In Bonus ${peso(info.lockedBonus)} on the final payout.`;
+    }
+    return t === s ? undefined : t;
+  };
+  const ops: Array<(b: FirebaseFirestore.WriteBatch) => void> = [];
+  for (const coll of ["activity", "notifications"] as const) {
+    const docs = await userRef(userId).collection(coll).where("planId", "==", placementId).get();
+    for (const d of docs.docs) {
+      const data = d.data();
+      const patch: Record<string, string> = {};
+      for (const f of ["title", "subtitle", "body"]) {
+        const t = retitle(data[f]);
+        if (t !== undefined) patch[f] = t;
+      }
+      if (Object.keys(patch).length) ops.push((b) => b.update(d.ref, patch));
+    }
+  }
+  await commitInChunks(ops);
+
+  return { ok: true, termMonths: term.months, cycles: info.cycles, lockedBonus: info.lockedBonus, endsAt: info.endsAt, rewritten: ops.length };
 });
 
 /**

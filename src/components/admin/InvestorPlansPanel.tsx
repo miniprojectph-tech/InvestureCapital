@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Zap, Loader2, SkipForward, FastForward, CalendarClock, RotateCcw, CheckCircle2, AlertCircle, Clock, X, Check } from "lucide-react";
+import { ChevronDown, ChevronRight, Zap, Loader2, SkipForward, FastForward, CalendarClock, CalendarPlus, RotateCcw, CheckCircle2, AlertCircle, Clock, X, Check } from "lucide-react";
 import { Card, CardHeader } from "@/components/Card";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { formatPHP, cn } from "@/lib/utils";
@@ -21,9 +21,11 @@ import {
   adminSetTestClock,
   placementClock,
   peso,
+  useCompPlan,
   TEST_CLOCK_LABEL,
   type TestClockSpeed,
 } from "@/lib/compplan";
+import { ChangeTermModal, type TermTarget } from "@/components/admin/ChangeTermModal";
 
 const fmtDate = (ms: number) => new Date(ms).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" });
 const fmtTime = (ms: number) => new Date(ms).toLocaleTimeString("en-PH", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Manila" });
@@ -45,6 +47,9 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [editing, setEditing] = useState<{ key: string; date: string } | null>(null);
+  const [termTarget, setTermTarget] = useState<TermTarget | null>(null);
+  const { cfg } = useCompPlan();
+  const longestTerm = Math.max(0, ...cfg.terms.map((t) => t.months));
 
   const load = useCallback(async () => {
     const { db } = getFirebase();
@@ -99,6 +104,7 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
     });
 
   return (
+    <>
     <Card>
       <CardHeader
         title={`Plan activity (${investors.length})`}
@@ -285,6 +291,15 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
                                               disabled={busy !== null}
                                               onClick={() => run(`done-${key}`, async () => { const r = await adminAdvancePlacement({ userId: u.uid, placementId: p.id, mode: "complete" }); return `${p.id}: ${r.payouts} payout${r.payouts === 1 ? "" : "s"} credited, capital${p.lockedBonus > 0 ? " + Locked-In Bonus" : ""} returned.`; })}
                                             />
+                                            {p.termMonths < longestTerm && (
+                                              <button
+                                                onClick={() => { setMsg(null); setTermTarget({ userId: u.uid, userName: u.name, hasSponsor: !!u.referredByUserId, placement: p }); }}
+                                                disabled={busy !== null}
+                                                className="text-[10px] px-2 py-1 rounded-md bg-green/10 border border-green/40 text-green hover:bg-green/20 inline-flex items-center gap-1 disabled:opacity-50 whitespace-nowrap"
+                                              >
+                                                <CalendarPlus className="w-3 h-3" /> Change term
+                                              </button>
+                                            )}
                                           </>
                                         )}
                                         <ToolButton icon={CalendarClock} label="Edit start date" disabled={busy !== null} onClick={() => setEditing({ key, date: toDateInput(p.startedAt) })} />
@@ -323,8 +338,15 @@ export function InvestorPlansPanel({ investors, onChanged }: { investors: Invest
       <p className="text-[9px] text-text-subtle m-0 mt-3 leading-relaxed">
         <span className="text-gold">Test clock</span> is set per plan (Fast / Medium on the plan row): only that plan runs on accelerated time and credits real payouts through the normal engine, while the member&apos;s other plans keep the real calendar; it switches off by itself once that plan&apos;s final payout (capital back) is credited.
         Fast-forward and the test clock never change a placement&apos;s start date — history is always dated by the schedule. <span className="text-text-muted">Edit start date</span> moves the whole schedule, and every history date of that placement follows.
+        {" "}<span className="text-green">Change term</span> moves an active plan to a longer term: same amount and start date, more payouts and a new Locked-In Bonus.
       </p>
     </Card>
+    <ChangeTermModal
+      target={termTarget}
+      onClose={() => setTermTarget(null)}
+      onDone={(text) => { setTermTarget(null); setMsg({ ok: true, text }); load(); onChanged(); }}
+    />
+    </>
   );
 }
 

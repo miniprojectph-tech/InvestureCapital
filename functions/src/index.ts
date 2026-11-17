@@ -44,6 +44,7 @@ export {
   activatePlacement,
   adminAdvancePlacement,
   adminSetPlacementStart,
+  adminChangePlacementTerm,
   adminResetMember,
   adminPaySkippedCommission,
   adminResetEconomy,
