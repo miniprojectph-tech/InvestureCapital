@@ -313,7 +313,7 @@ function TestTools({ cfg, demoMode }: { cfg: CompPlanConfig; demoMode: boolean }
   useEffect(() => {
     const { db } = getFirebase();
     if (!db || demoMode) return;
-    listInvestors(db, 500).then(setInvestors).catch(() => {});
+    listInvestors(db).then(setInvestors).catch(() => {});
   }, [demoMode]);
 
   const matches = useMemo(() => {

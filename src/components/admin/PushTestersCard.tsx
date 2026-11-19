@@ -28,7 +28,7 @@ export function PushTestersCard({ uid: adminUid }: { uid: string }) {
   useEffect(() => {
     const { db } = getFirebase();
     if (!db) return;
-    listInvestors(db, 1000).then(setMembers).catch(() => {});
+    listInvestors(db).then(setMembers).catch(() => {});
   }, []);
   const byUid = useMemo(() => new Map(members.map((m) => [m.uid, m])), [members]);
 

@@ -64,7 +64,7 @@ export default function AdminDashboard() {
         return;
       }
       try {
-        const list = await listInvestors(db, 200);
+        const list = await listInvestors(db);
         if (cancelled) return;
         setRows(list);
         setAgg(computeAggregate(list));

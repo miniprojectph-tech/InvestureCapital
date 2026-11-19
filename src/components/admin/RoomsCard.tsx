@@ -57,7 +57,7 @@ export function RoomsCard({ uid }: { uid: string }) {
     if (people) return;
     const { db } = getFirebase();
     if (!db) return;
-    setPeople(await listInvestors(db, 2000).catch(() => []));
+    setPeople(await listInvestors(db).catch(() => []));
   }
   const resetMembers = () => { setAdds([]); setDrops(new Set()); setQ(""); };
   const [busy, setBusy] = useState(false);

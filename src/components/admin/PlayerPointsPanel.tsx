@@ -48,7 +48,7 @@ export function PlayerPointsPanel() {
     if (!db) { setLoading(false); return; }
     if (spinner) setLoading(true);
     try {
-      const [investors, game, stats] = await Promise.all([listInvestors(db, 1000), loadPlayerGameDocs(db), loadGameStats(db)]);
+      const [investors, game, stats] = await Promise.all([listInvestors(db), loadPlayerGameDocs(db), loadGameStats(db)]);
       const rows: Player[] = investors.map((i) => ({ uid: i.uid, name: i.name, email: i.email, points: game.state.get(i.uid)?.points ?? 0, stats: stats.get(i.uid) }));
       rows.sort((a, b) => b.points - a.points);
       setPlayers(rows); setDocs(game); setToday(new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 10)); setErr(null);

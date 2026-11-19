@@ -124,7 +124,7 @@ export function DragonSpireAdmin() {
   useEffect(() => {
     const { db } = getFirebase();
     if (!db || demoMode) return;
-    listInvestors(db, 1000).then(setInvestors).catch(() => {});
+    listInvestors(db).then(setInvestors).catch(() => {});
   }, [demoMode]);
   const nameOf = (uid: string) => investors.find((i) => i.uid === uid)?.name ?? uid.slice(0, 8) + "…";
   const testerSet = useMemo(() => new Set(slot.testers), [slot.testers]);

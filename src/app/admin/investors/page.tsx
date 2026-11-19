@@ -278,7 +278,7 @@ export default function AdminInvestorsPage() {
       const { db } = getFirebase();
       if (!db) { setLoading(false); return; }
       try {
-        const list = await listInvestors(db, 500);
+        const list = await listInvestors(db);
         if (!cancelled) { setRows(list); setLoading(false); }
       } catch {
         if (!cancelled) { setRows([]); setLoading(false); }

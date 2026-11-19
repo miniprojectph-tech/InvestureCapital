@@ -91,7 +91,7 @@ export default function AdminTransactionsPage() {
       try {
         // Load investors + activity in parallel
         const [people, rows] = await Promise.all([
-          listInvestors(db, 500).catch(() => [] as InvestorRow[]),
+          listInvestors(db).catch(() => [] as InvestorRow[]),
           fetchAllActivity(db, FETCH_CAP),
         ]);
         if (!cancelled) {

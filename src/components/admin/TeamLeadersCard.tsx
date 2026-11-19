@@ -26,7 +26,7 @@ export function TeamLeadersCard({ enabled, demoMode, adminUid }: { enabled: bool
   useEffect(() => {
     const { db } = getFirebase();
     if (!db || demoMode) return;
-    listInvestors(db, 1000).then(setInvestors).catch(() => {});
+    listInvestors(db).then(setInvestors).catch(() => {});
   }, [demoMode]);
 
   const ids = useMemo(() => new Set(leaders.map((l) => l.uid)), [leaders]);

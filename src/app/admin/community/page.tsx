@@ -614,7 +614,7 @@ function ModeratorsCard({ enabled, demoMode }: { enabled: boolean; demoMode: boo
   useEffect(() => {
     const { db } = getFirebase();
     if (!db || demoMode) return;
-    listInvestors(db, 500).then(setInvestors).catch(() => {});
+    listInvestors(db).then(setInvestors).catch(() => {});
   }, [demoMode]);
 
   const modIds = useMemo(() => new Set(mods.map((m) => m.uid)), [mods]);

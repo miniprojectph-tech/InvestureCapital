@@ -3,6 +3,7 @@
 import {
   collection,
   collectionGroup,
+  getCountFromServer,
   getDocs,
   limit,
   orderBy,
@@ -11,6 +12,8 @@ import {
   where,
   type Firestore,
   type QueryDocumentSnapshot,
+  type Query,
+  type QuerySnapshot,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
 import { getFirebase } from "./firebase";
@@ -43,11 +46,32 @@ export type AdminAggregate = {
   totalActivePlans: number;
 };
 
-/** Fetch up to `max` investors, newest first. Requires admin role per Firestore rules. */
-export async function listInvestors(db: Firestore, max = 100): Promise<InvestorRow[]> {
-  const q = query(collection(db, "users"), orderBy("profile.joinedAt", "desc"), limit(max));
-  const snap = await getDocs(q);
-  return snap.docs.map((d) => {
+/**
+ * Every investor, newest first, read in pages of 500 so no member is ever left
+ * out (a fixed cap once hid the oldest 203 of 703 accounts from admin search).
+ * Accounts with no join date are added at the end. Requires admin role.
+ */
+export async function listInvestors(db: Firestore): Promise<InvestorRow[]> {
+  const PAGE = 500;
+  const docs: QueryDocumentSnapshot[] = [];
+  let after: QueryDocumentSnapshot | null = null;
+  for (;;) {
+    const q: Query = after
+      ? query(collection(db, "users"), orderBy("profile.joinedAt", "desc"), startAfter(after), limit(PAGE))
+      : query(collection(db, "users"), orderBy("profile.joinedAt", "desc"), limit(PAGE));
+    const snap: QuerySnapshot = await getDocs(q);
+    docs.push(...snap.docs);
+    if (snap.docs.length < PAGE) break;
+    after = snap.docs[snap.docs.length - 1];
+  }
+  // orderBy skips records without profile.joinedAt — fetch the full set only if some are missing.
+  const seen = new Set(docs.map((d) => d.id));
+  const total = await getCountFromServer(collection(db, "users")).then((c) => c.data().count).catch(() => docs.length);
+  if (total > docs.length) {
+    const all = await getDocs(collection(db, "users"));
+    for (const d of all.docs) if (!seen.has(d.id)) docs.push(d);
+  }
+  return docs.map((d) => {
     const data = d.data() as UserState;
     const placements = data.placements ?? [];
     const completed = data.completedPlacements ?? [];
