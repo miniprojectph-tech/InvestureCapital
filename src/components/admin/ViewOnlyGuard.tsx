@@ -13,9 +13,16 @@ import { EyeOff } from "lucide-react";
  * box or an export. Blocking is the default, so a control nobody thought about
  * is simply inert rather than accidentally live.
  *
+ * A link to one of `screens` ("/referrals", "/plans", …) is never followed — it
+ * would open the admin's OWN page. It is handed to `onOpenScreen`, which shows
+ * that screen of the member being viewed. Every other link stays inert.
+ *
  * Scrolling and selecting text are untouched.
  */
-export function ViewOnlyGuard({ children }: { children: React.ReactNode }) {
+// Member routes that only redirect to another screen.
+const SCREEN_ALIAS: Record<string, string> = { activity: "transactions" };
+
+export function ViewOnlyGuard<K extends string>({ screens, onOpenScreen, children }: { screens: readonly K[]; onOpenScreen: (screen: K) => void; children: React.ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   const [nudge, setNudge] = useState(false);
 
@@ -28,6 +35,13 @@ export function ViewOnlyGuard({ children }: { children: React.ReactNode }) {
     const pressable = (target: EventTarget | null) =>
       target instanceof Element && !!target.closest("a, button, input, select, textarea, label, summary, [role='button'], [role='tab'], [role='link']");
 
+    const screenLinkedFrom = (target: EventTarget | null): K | undefined => {
+      const href = target instanceof Element ? target.closest("a[href]")?.getAttribute("href") : null;
+      // only same-app paths of exactly one segment: "/referrals", "/plans?x=1"
+      const name = href?.match(/^\/([a-z-]+)\/?(?:[?#].*)?$/)?.[1];
+      return name ? screens.find((s) => s === (SCREEN_ALIAS[name] ?? name)) : undefined;
+    };
+
     // Stopped outright (the page never hears about them, and the browser doesn't act on them).
     // EVERY click is stopped, not just clicks on buttons: a page can make any element clickable,
     // and an element nobody thought about must be inert, not live.
@@ -39,6 +53,13 @@ export function ViewOnlyGuard({ children }: { children: React.ReactNode }) {
       }
       e.preventDefault();
       e.stopPropagation();
+      if (e.type === "click" || (e.type === "keydown" && (e as KeyboardEvent).key === "Enter")) {
+        const screen = screenLinkedFrom(e.target);
+        if (screen) {
+          onOpenScreen(screen);
+          return;
+        }
+      }
       if ((e.type === "click" && pressable(e.target)) || e.type === "submit") {
         setNudge(true);
         if (t) clearTimeout(t);
@@ -62,7 +83,7 @@ export function ViewOnlyGuard({ children }: { children: React.ReactNode }) {
       for (const type of hidden) el.removeEventListener(type, hide, true);
       if (t) clearTimeout(t);
     };
-  }, []);
+  }, [screens, onOpenScreen]);
 
   return (
     <div ref={ref} className="relative">

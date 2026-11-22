@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
@@ -46,6 +46,12 @@ export default function AdminMemberViewPage() {
   const [picBusy, setPicBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useHashTab<ScreenKey>(SCREEN_KEYS, "dashboard");
+  const topRef = useRef<HTMLDivElement>(null);
+  // A link inside the member's screen: show that screen of THIS member, from the top.
+  const openScreen = useCallback((k: ScreenKey) => {
+    setTab(k);
+    topRef.current?.scrollIntoView({ block: "start" });
+  }, [setTab]);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +96,7 @@ export default function AdminMemberViewPage() {
 
   return (
     <div>
+      <div ref={topRef} />
       {/* The admin's own bar: always clear that this is someone else's account, and view-only. */}
       <div className="sticky top-0 z-30 -mx-1 px-1 pb-2 bg-canvas">
         <div className="rounded-xl border border-[#F5C66B]/40 bg-[#F5C66B]/10 px-3 py-2.5 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -133,7 +140,7 @@ export default function AdminMemberViewPage() {
         loading()
       ) : (
         <ViewAsContext.Provider value={view}>
-          <ViewOnlyGuard>
+          <ViewOnlyGuard screens={SCREEN_KEYS} onOpenScreen={openScreen}>
             {/* key: switching member or screen starts that screen fresh */}
             <Screen key={`${uid}:${tab}`} />
           </ViewOnlyGuard>

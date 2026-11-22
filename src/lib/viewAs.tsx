@@ -13,7 +13,8 @@ import { createContext, useContext } from "react";
  *      referral code) check this context and only read.
  *   3. The screen wrapper (ViewOnlyGuard) swallows every click, key press and
  *      form submit except the few local controls marked `data-viewas-ok`
- *      (filters, search, export).
+ *      (filters, search, export). A link to another member screen isn't
+ *      followed; it switches the viewer to that screen of the same member.
  *
  * The admin stays signed in as themselves the whole time, so nothing here can
  * act with the member's permissions.
