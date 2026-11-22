@@ -480,8 +480,12 @@ export function useReferralStats(userId?: string) {
 
 // ===== Commission ledger =====
 
-/** Commissions and bonuses paid (or skipped) TO the signed-in user. */
-export function useMyCommissions(max = 100) {
+/**
+ * Every commission and bonus paid (or skipped) TO the signed-in user. No limit:
+ * the pages add these up, and a capped query without orderBy returns an arbitrary
+ * subset, so the totals would be silently wrong.
+ */
+export function useMyCommissions() {
   const { user } = useAuth();
   const [rows, setRows] = useState<Commission[]>([]);
   useEffect(() => {
@@ -489,7 +493,7 @@ export function useMyCommissions(max = 100) {
     const { db } = getFirebase();
     if (!db) return;
     // Single-field filter + client sort avoids needing a composite index.
-    const q = query(collection(db, "commissions"), where("toUserId", "==", user.uid), limit(max));
+    const q = query(collection(db, "commissions"), where("toUserId", "==", user.uid));
     return onSnapshot(q, (snap) => {
       setRows(
         snap.docs
@@ -497,7 +501,7 @@ export function useMyCommissions(max = 100) {
           .sort((a, b) => b.createdAt - a.createdAt),
       );
     });
-  }, [user, max]);
+  }, [user]);
   return rows;
 }
 

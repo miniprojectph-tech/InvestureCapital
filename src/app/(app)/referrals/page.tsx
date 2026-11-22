@@ -18,7 +18,7 @@ export default function ReferralsPage() {
   const { cfg } = useCompPlan();
   const { link, loading: codeLoading } = useReferralCode();
   const { stats, loading: statsLoading, error, refresh } = useReferralStats();
-  const commissions = useMyCommissions(200);
+  const commissions = useMyCommissions();
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
   const needsActive = earningsRequiringActive(cfg);

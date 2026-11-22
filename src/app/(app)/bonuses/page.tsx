@@ -19,7 +19,7 @@ function finalPayoutAt(p: Placement): number {
 export default function BonusesPage() {
   const { cfg } = useCompPlan();
   const { state, loading } = useUserState();
-  const commissions = useMyCommissions(200);
+  const commissions = useMyCommissions();
   const now = useNow(60_000);
 
   const paid = useMemo(() => commissions.filter((c) => c.status === "paid"), [commissions]);
