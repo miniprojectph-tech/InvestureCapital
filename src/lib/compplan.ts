@@ -111,6 +111,8 @@ export type Commission = {
   status: "paid" | "skipped";
   reason?: string | null;
   createdAt: number;
+  /** Time from the placement's start to this record; for Leadership, the term length. */
+  schedOffsetMs?: number;
 };
 
 /** The live, admin-editable compensation plan (defaults until settings load). */
@@ -488,21 +490,32 @@ export function useReferralStats(userId?: string) {
 export function useMyCommissions() {
   const { user } = useAuth();
   const [rows, setRows] = useState<Commission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   useEffect(() => {
     if (!user) return;
     const { db } = getFirebase();
     if (!db) return;
     // Single-field filter + client sort avoids needing a composite index.
     const q = query(collection(db, "commissions"), where("toUserId", "==", user.uid));
-    return onSnapshot(q, (snap) => {
-      setRows(
-        snap.docs
-          .map((d) => ({ id: d.id, ...(d.data() as Omit<Commission, "id">) }))
-          .sort((a, b) => b.createdAt - a.createdAt),
-      );
-    });
+    return onSnapshot(
+      q,
+      (snap) => {
+        setRows(
+          snap.docs
+            .map((d) => ({ id: d.id, ...(d.data() as Omit<Commission, "id">) }))
+            .sort((a, b) => b.createdAt - a.createdAt),
+        );
+        setLoading(false);
+        setError(false);
+      },
+      () => {
+        setLoading(false);
+        setError(true);
+      },
+    );
   }, [user]);
-  return rows;
+  return { rows, loading, error };
 }
 
 /** Admin: the newest commission/bonus records across all members. */

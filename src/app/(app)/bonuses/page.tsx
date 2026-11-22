@@ -7,7 +7,8 @@ import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
 import { formatPHP, cn } from "@/lib/utils";
 import { useUserState } from "@/lib/useUserState";
-import { useCompPlan, useMyCommissions, useNow, formatCountdown, upcomingBonuses, peso, type Placement } from "@/lib/compplan";
+import { LeadershipBonusCard, leadershipSummary, UPCOMING } from "@/components/LeadershipBonusCard";
+import { useCompPlan, useMyCommissions, useReferralStats, useNow, formatCountdown, upcomingBonuses, peso, type Placement } from "@/lib/compplan";
 
 const DAY_MS = 86_400_000;
 
@@ -19,12 +20,15 @@ function finalPayoutAt(p: Placement): number {
 export default function BonusesPage() {
   const { cfg } = useCompPlan();
   const { state, loading } = useUserState();
-  const commissions = useMyCommissions();
+  const { rows: commissions, loading: recordsLoading, error: recordsError } = useMyCommissions();
+  const { stats, loading: statsLoading, refresh } = useReferralStats();
   const now = useNow(60_000);
 
   const paid = useMemo(() => commissions.filter((c) => c.status === "paid"), [commissions]);
   const fastStartTotal = paid.filter((c) => c.type === "fastStart").reduce((s, c) => s + c.amount, 0);
-  const leadershipTotal = paid.filter((c) => c.type === "leadership").reduce((s, c) => s + c.amount, 0);
+  const leadership = useMemo(() => leadershipSummary(commissions, stats), [commissions, stats]);
+  // Until the records arrive, an amount would read as ₱0.00 paid.
+  const recordsReady = !recordsLoading && !recordsError;
 
   if (loading || !state) {
     return (
@@ -47,8 +51,21 @@ export default function BonusesPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
         <Tile icon={Lock} label="Locked-In due" value={formatPHP(due)} tone="vault" sub={`${active.length} placement${active.length === 1 ? "" : "s"}`} />
         <Tile icon={CheckCircle2} label="Locked-In paid" value={formatPHP(lockedPaid)} tone="green" />
-        <Tile icon={Zap} label="Fast-Start paid" value={formatPHP(fastStartTotal)} tone="vault" />
-        <Tile icon={Award} label="Leadership paid" value={formatPHP(leadershipTotal)} tone="gold" />
+        <Tile icon={Zap} label="Fast-Start paid" value={recordsReady ? formatPHP(fastStartTotal) : "—"} tone="vault" />
+        <Tile
+          icon={Award}
+          label="Leadership paid"
+          value={recordsReady ? formatPHP(leadership.completedTotal) : "—"}
+          tone="gold"
+          sub={
+            recordsReady && (
+              <>
+                {leadership.completed.length} completed
+                {leadership.upcomingTotal > 0 && <> · <span className={UPCOMING}>{formatPHP(leadership.upcomingTotal)} upcoming</span></>}
+              </>
+            )
+          }
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr] gap-3">
@@ -104,7 +121,7 @@ export default function BonusesPage() {
         </Card>
 
         {/* Referral bonuses */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 min-w-0">
           <Card>
             <CardHeader title="Fast-Start Bonus" subtitle={`${cfg.fastStartDirects} direct referrals with the tier minimum placed`} right={<Zap className="w-4 h-4 text-vault" />} />
             <div className="flex flex-col gap-1.5">
@@ -121,19 +138,16 @@ export default function BonusesPage() {
             <Link href="/referrals" className="mt-3 inline-flex items-center gap-1 text-[11px] text-gold hover:underline">See your progress <ArrowRight className="w-3 h-3" /></Link>
           </Card>
 
-          <Card>
-            <CardHeader title="Leadership Bonus" subtitle={`${cfg.leadershipPct}% of each direct referral's Locked-In Bonus, paid when their term completes`} right={<Award className="w-4 h-4 text-gold" />} />
-            <div className="flex flex-col gap-1.5">
-              {bonusTerms.map((t) => (
-                <div key={t.months} className="flex items-center justify-between text-[11px] px-3 py-2 bg-canvas border border-border rounded-lg">
-                  <span className="text-text-muted">Direct completes {t.months} mo per ₱{cfg.increment.toLocaleString()}</span>
-                  <span className="font-mono text-gold">+{formatPHP((t.lockedBonusPerUnit * cfg.leadershipPct) / 100)}</span>
-                </div>
-              ))}
-            </div>
-            <p className="text-[9px] text-text-subtle m-0 mt-2">Funded separately — never deducted from your referral&apos;s bonus.</p>
-            <Link href="/referrals" className="mt-2 inline-flex items-center gap-1 text-[11px] text-gold hover:underline">View your directs <ArrowRight className="w-3 h-3" /></Link>
-          </Card>
+          <LeadershipBonusCard
+            cfg={cfg}
+            summary={leadership}
+            stats={stats}
+            statsLoading={statsLoading}
+            onRetry={refresh}
+            recordsLoading={recordsLoading}
+            recordsError={recordsError}
+            now={now}
+          />
         </div>
       </div>
 
@@ -144,7 +158,7 @@ export default function BonusesPage() {
   );
 }
 
-function Tile({ icon: Icon, label, value, sub, tone }: { icon: typeof Lock; label: string; value: string; sub?: string; tone: "green" | "gold" | "vault" }) {
+function Tile({ icon: Icon, label, value, sub, tone }: { icon: typeof Lock; label: string; value: string; sub?: React.ReactNode; tone: "green" | "gold" | "vault" }) {
   const color = tone === "green" ? "text-green" : tone === "gold" ? "text-gold" : "text-vault";
   return (
     <Card>
