@@ -20,7 +20,8 @@ import { PAYMENT_METHOD_LABELS, type PaymentMethodId } from "./settings";
 import type { UserState } from "./userState";
 import { activatePlacement, type ActivatePlacementResult } from "./compplan";
 
-export type PlanRequestStatus = "pending" | "approved" | "rejected";
+/** "cancelled" = approved, then the placement was cancelled by an admin (e.g. approved twice). */
+export type PlanRequestStatus = "pending" | "approved" | "rejected" | "cancelled";
 
 /** A member's request to place capital (paid off-platform, admin verifies the receipt). */
 export type PlanRequest = {
@@ -41,6 +42,9 @@ export type PlanRequest = {
   processedAt?: number;
   processedBy?: string;
   note?: string;
+  cancelledAt?: number;
+  /** Admin-only reason. */
+  cancelReason?: string;
   /** Set by activatePlacement on approval. */
   placementId?: string;
   /** Event-slot purchase (created by claimEventSlots): the reservation this request carries. */

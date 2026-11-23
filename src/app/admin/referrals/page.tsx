@@ -117,6 +117,7 @@ export default function AdminReferralsPage() {
                       {r.type === "level" ? `Level ${r.level}` : TYPE_LABEL[r.type]}
                     </span>
                     {r.status === "skipped" && <p className="text-[9px] text-red m-0 mt-1">Skipped: {r.reason}</p>}
+                    {r.status === "reversed" && <p className="text-[9px] text-text-muted m-0 mt-1">Reversed: plan cancelled</p>}
                   </td>
                   <td className="py-2 text-text">{r.toUserName}</td>
                   <td className="py-2 text-text-muted">{r.fromUserName}</td>

@@ -1469,3 +1469,275 @@ export const adminSetUpline = onCall(async (request) => {
     return { ok: true, previous, uplineName, lines, total };
   });
 });
+
+// ============================================================================
+// Admin: cancel ONE active placement (e.g. the same payment approved twice)
+// ============================================================================
+
+type CancelArgs = {
+  userId?: string;
+  placementId?: string;
+  /** false/absent = preview only: work out every amount, change nothing. */
+  confirm?: boolean;
+  /** Must equal placementId when confirming. */
+  confirmId?: string;
+  /** "remove" = as if it never happened · "reverse" = keep history, add one "Placement reversed" line each. */
+  history?: "remove" | "reverse";
+  /** "full" = take everything, a wallet may go below zero · "available" = take only what is in the wallet. */
+  shortfall?: "full" | "available";
+  notifyMember?: boolean;
+  notifyUplines?: boolean;
+  reason?: string;
+};
+
+type CancelLine = {
+  uid: string;
+  name: string;
+  /** "member" for the plan's owner, else what this person was paid ("Level 2", "Fast-Start"). */
+  role: string;
+  /** Net wallet change if taken in full: negative = taken back, positive = returned (wallet reinvest). */
+  due: number;
+  wallet: number;
+  /** What actually moves with the chosen shortfall rule. */
+  change: number;
+  writtenOff: number;
+};
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Undoes everything one ACTIVE placement caused, in one transaction:
+ *   member   the plan goes (no more payouts, no capital or Locked-In Bonus at the
+ *            end, so no Leadership Bonus either); payouts already credited are
+ *            taken back; a wallet reinvest gets its capital back.
+ *   uplines  six-level commissions and any Fast-Start Bonus it paid are taken back
+ *            (the Fast-Start tier is re-opened, as adminResetMember does).
+ *   records  commissions deleted or marked "reversed"; the request is marked
+ *            "cancelled"; event slots released; test clock dropped; Masterlist
+ *            rebuilt; admin_audit gets the reason. History is either removed or
+ *            kept with one "Placement reversed" adjustment line per person.
+ * The same code runs as a preview (confirm false) so the admin sees the exact
+ * amounts first. A finished plan can't be cancelled: it already returned capital.
+ */
+export const adminCancelPlacement = onCall({ timeoutSeconds: 120 }, async (request) => {
+  if (!request.auth) throw new HttpsError("unauthenticated", "Sign in required.");
+  const adminUid = request.auth.uid;
+  await assertAdmin(adminUid);
+  const a = (request.data ?? {}) as CancelArgs;
+  const userId = typeof a.userId === "string" ? a.userId : "";
+  const placementId = typeof a.placementId === "string" ? a.placementId : "";
+  if (!userId || !placementId) throw new HttpsError("invalid-argument", "userId and placementId are required.");
+  const confirm = a.confirm === true;
+  const history = a.history === "reverse" ? "reverse" : "remove";
+  const shortfall = a.shortfall === "available" ? "available" : "full";
+  const reason = typeof a.reason === "string" ? a.reason.replace(/\s+/g, " ").trim().slice(0, 300) : "";
+  if (confirm) {
+    if (a.confirmId?.trim().toUpperCase() !== placementId) throw new HttpsError("invalid-argument", `Type ${placementId} to confirm.`);
+    if (reason.length < 3) throw new HttpsError("invalid-argument", "Write a reason.");
+  }
+  const now = Date.now();
+
+  const out = await db.runTransaction(async (tx) => {
+    // ---------- reads ----------
+    const memberSnap = await tx.get(userRef(userId));
+    if (!memberSnap.exists) throw new HttpsError("not-found", "Member not found.");
+    const member = memberSnap.data() as UserDoc;
+    const p = (member.placements ?? []).find((x) => x.id === placementId);
+    if (!p) {
+      const done = (member.completedPlacements ?? []).some((x) => x.id === placementId);
+      throw new HttpsError(
+        "failed-precondition",
+        done ? `${placementId} has finished and returned its capital, so it can't be cancelled here.` : `${placementId} is not an active plan of this member. It may already be cancelled.`,
+      );
+    }
+    const memberName = displayName(member, userId);
+
+    const commSnap = await tx.get(db.collection("commissions").where("placementId", "==", placementId));
+    const comms = commSnap.docs
+      .map((d) => ({ ref: d.ref, ...(d.data() as { type: string; level?: number; tier?: number; toUserId: string; fromUserId?: string; amount: number; status: string }) }))
+      .filter((c) => c.fromUserId === userId && c.type !== "leadership");
+
+    const others = [...new Set(comms.map((c) => c.toUserId))].filter((u) => u !== userId);
+    const otherSnaps = await Promise.all(others.map((u) => tx.get(userRef(u))));
+    const docs = new Map<string, UserDoc | null>([[userId, member]]);
+    others.forEach((u, i) => docs.set(u, otherSnaps[i].exists ? (otherSnaps[i].data() as UserDoc) : null));
+
+    const reqRef = p.requestId ? db.collection("plan_requests").doc(p.requestId) : null;
+    const reqSnap = reqRef ? await tx.get(reqRef) : null;
+
+    let claim: { ref: DocumentReference; slots: number; status: string } | null = null;
+    if (p.event?.id) {
+      const cs = await tx.get(db.collection("events").doc(p.event.id).collection("claims").where("placementId", "==", placementId).limit(1));
+      if (!cs.empty) {
+        const c = cs.docs[0].data() as EventClaim;
+        claim = { ref: cs.docs[0].ref, slots: c.slots ?? p.event.slots, status: c.status };
+      }
+    }
+    const clockRef = db.collection("test_clocks").doc(userId);
+    const clockSnap = await tx.get(clockRef);
+
+    // What each person's history holds for this plan (removed only with history "remove").
+    const owners = [userId, ...others.filter((u) => docs.get(u))];
+    const actSnaps = await Promise.all(owners.map((u) => tx.get(userRef(u).collection("activity").where("planId", "==", placementId))));
+
+    // ---------- compute ----------
+    const lines = new Map<string, CancelLine>();
+    const line = (uid: string, role: string) => {
+      let l = lines.get(uid);
+      if (!l) {
+        const d = docs.get(uid);
+        l = { uid, name: displayName(d ?? undefined, uid), role, due: 0, wallet: round2(Number(d?.balances?.wallet ?? 0) || 0), change: 0, writtenOff: 0 };
+        lines.set(uid, l);
+      } else if (!l.role.includes(role)) l.role += ` + ${role}`;
+      return l;
+    };
+    const m = line(userId, "member");
+    m.due -= p.totalPaid ?? 0;
+    if (p.source === "wallet") m.due += p.capital; // it was paid from the wallet: give it back
+    const fastStartTiers = new Map<string, string[]>();
+    for (const c of comms) {
+      if (c.status !== "paid" || !(c.amount > 0) || !docs.get(c.toUserId)) continue;
+      line(c.toUserId, c.type === "level" ? `Level ${c.level}` : "Fast-Start").due -= c.amount;
+      if (c.type === "fastStart" && c.tier !== undefined) fastStartTiers.set(c.toUserId, [...(fastStartTiers.get(c.toUserId) ?? []), String(c.tier)]);
+    }
+    for (const l of lines.values()) {
+      l.due = round2(l.due);
+      l.change = round2(l.due >= 0 || shortfall === "full" ? l.due : -Math.min(-l.due, Math.max(0, l.wallet)));
+      l.writtenOff = round2(l.change - l.due);
+    }
+    const all = [...lines.values()];
+    const preview = {
+      placement: {
+        id: p.id, capital: p.capital, termMonths: p.termMonths, startedAt: p.startedAt, cyclesPaid: p.cyclesPaid, cycles: p.cycles,
+        totalPaid: p.totalPaid ?? 0, source: p.source ?? null, event: p.event?.name ?? null,
+      },
+      memberName,
+      request: reqSnap?.exists
+        ? { id: reqSnap.id, method: String(reqSnap.data()?.methodLabel ?? ""), reference: String(reqSnap.data()?.referenceNumber ?? ""), createdAt: Number(reqSnap.data()?.createdAt) || 0 }
+        : null,
+      lines: all,
+      takenBack: round2(all.reduce((s, l) => s + Math.min(0, l.change), 0)),
+      returned: round2(all.reduce((s, l) => s + Math.max(0, l.change), 0)),
+      writtenOff: round2(all.reduce((s, l) => s + l.writtenOff, 0)),
+      historyRows: actSnaps.reduce((s, x) => s + x.size, 0),
+      skippedRecords: comms.filter((c) => c.status !== "paid").length,
+    };
+    if (!confirm) return { ...preview, owners };
+
+    // ---------- writes ----------
+    const writes: Write[] = [];
+    const patches = new UserPatches();
+    patches.set(userId, { placements: (member.placements ?? []).filter((x) => x.id !== placementId) });
+    for (const l of all) if (l.change !== 0) patches.credit(l.uid, l.change);
+    for (const [uid, tiers] of fastStartTiers) for (const t of tiers) patches.set(uid, { [`fastStart.paidTiers.${t}`]: FieldValue.delete() });
+
+    for (const c of comms) {
+      if (history === "remove") tx.delete(c.ref);
+      else tx.update(c.ref, { status: "reversed", reason: "Placement cancelled", reversedAt: now, reversedBy: adminUid, previousStatus: c.status });
+    }
+    if (history === "remove") {
+      for (const s of actSnaps) for (const d of s.docs) tx.delete(d.ref);
+    } else {
+      for (const l of all) {
+        if (l.change === 0) continue;
+        writes.push({
+          ref: activityRef(l.uid),
+          data: {
+            type: "wallet-adjustment",
+            title: "Placement reversed",
+            subtitle: l.uid === userId ? `${placementId} was cancelled` : `${placementId} from ${memberName} was cancelled`,
+            amount: Math.abs(l.change),
+            amountKind: l.change < 0 ? "out" : "in",
+            tag: "Placement reversed",
+            at: FieldValue.serverTimestamp(),
+          },
+        });
+      }
+    }
+
+    const moneyText = (l: CancelLine) =>
+      l.change < 0 ? `${peso(-l.change)} was taken back from your wallet.` : l.change > 0 ? `${peso(l.change)} was returned to your wallet.` : "";
+    if (a.notifyMember) {
+      notify(writes, userId, now, {
+        type: "placement",
+        title: `${placementId} was cancelled`,
+        body: `This plan has stopped and will not pay out. ${moneyText(m)}`.trim(),
+        ...(m.change ? { amount: Math.abs(m.change) } : {}),
+      });
+    }
+    if (a.notifyUplines) {
+      for (const l of all) {
+        if (l.uid === userId || l.change === 0) continue;
+        notify(writes, l.uid, now, {
+          type: "commission",
+          title: `${placementId} from ${memberName} was cancelled`,
+          body: `The commission from this plan was reversed. ${moneyText(l)}`.trim(),
+          amount: Math.abs(l.change),
+        });
+      }
+    }
+
+    if (reqRef && reqSnap?.exists) tx.update(reqRef, { status: "cancelled", cancelledAt: now, cancelledBy: adminUid, cancelReason: reason });
+    if (claim && claim.status === "active" && p.event?.id) {
+      tx.update(claim.ref, { status: "released", releasedAt: now, cancelledPlacement: true });
+      tx.update(db.collection("events").doc(p.event.id), { "slot.taken": FieldValue.increment(-claim.slots) });
+    }
+    if (clockSnap.exists) {
+      const clocks = { ...((clockSnap.data() as TestClock).clocks ?? {}) };
+      if (clocks[placementId]) {
+        delete clocks[placementId];
+        if (Object.keys(clocks).length === 0) tx.delete(clockRef);
+        else tx.update(clockRef, { clocks });
+      }
+    }
+    tx.set(db.doc("masterlist_meta/state"), { dirty: true, dirtyAt: now }, { merge: true });
+    const people = all.filter((l) => l.change < 0).length;
+    tx.set(db.collection("admin_audit").doc(), {
+      type: "placement_cancelled",
+      uid: userId,
+      userName: memberName,
+      placementId,
+      capital: p.capital,
+      termMonths: p.termMonths,
+      requestId: p.requestId ?? null,
+      history,
+      shortfall,
+      lines: all,
+      takenBack: preview.takenBack,
+      returned: preview.returned,
+      writtenOff: preview.writtenOff,
+      notifiedMember: !!a.notifyMember,
+      notifiedUplines: !!a.notifyUplines,
+      reason,
+      title: `${placementId} cancelled for ${memberName}`,
+      subtitle: `${peso(-preview.takenBack)} taken back from ${people} ${people === 1 ? "person" : "people"}${preview.writtenOff ? ` · ${peso(preview.writtenOff)} written off` : ""} · ${reason}`,
+      by: adminUid,
+      at: now,
+    });
+
+    patches.flush(tx);
+    for (const w of writes) tx.set(w.ref, w.data);
+    return { ...preview, owners };
+  });
+
+  const { owners, ...result } = out;
+  if (!confirm) return { ok: true, preview: true, ...result };
+
+  // Bell notices tied to the plan go too when its history is removed (outside the
+  // transaction: there can be one per day of the plan). The cancel notices carry no planId.
+  let notificationsRemoved = 0;
+  if (history === "remove") {
+    const ops: Array<(b: FirebaseFirestore.WriteBatch) => void> = [];
+    for (const uid of owners) {
+      const s = await userRef(uid).collection("notifications").where("planId", "==", placementId).get();
+      for (const d of s.docs) ops.push((b) => b.delete(d.ref));
+    }
+    notificationsRemoved = ops.length;
+    try {
+      await commitInChunks(ops);
+    } catch (err) {
+      logger.error("cancel placement: notification cleanup failed", err);
+    }
+  }
+  return { ok: true, preview: false, ...result, notificationsRemoved };
+});

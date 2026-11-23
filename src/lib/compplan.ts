@@ -108,7 +108,8 @@ export type Commission = {
   multiplier?: number;
   eventName?: string;
   amount: number;
-  status: "paid" | "skipped";
+  /** "reversed" = the placement behind it was cancelled by an admin. */
+  status: "paid" | "skipped" | "reversed";
   reason?: string | null;
   createdAt: number;
   /** Time from the placement's start to this record; for Leadership, the term length. */
@@ -298,6 +299,28 @@ export function adminSetPlacementStart(args: { userId: string; placementId: stri
 /** Upgrade an active placement to a longer term (same amount and start; payouts, end date and Locked-In Bonus change). */
 export function adminChangePlacementTerm(args: { userId: string; placementId: string; termMonths: number; notify: boolean; note?: string }) {
   return adminCall<typeof args, { ok: boolean; termMonths: number; cycles: number; lockedBonus: number; endsAt: number; rewritten: number }>("adminChangePlacementTerm", args);
+}
+
+export type CancelPlacementLine = { uid: string; name: string; role: string; due: number; wallet: number; change: number; writtenOff: number };
+export type CancelPlacementResult = {
+  ok: boolean;
+  preview: boolean;
+  placement: { id: string; capital: number; termMonths: number; startedAt: number; cyclesPaid: number; cycles: number; totalPaid: number; source: "wallet" | null; event: string | null };
+  memberName: string;
+  request: { id: string; method: string; reference: string; createdAt: number } | null;
+  lines: CancelPlacementLine[];
+  takenBack: number;
+  returned: number;
+  writtenOff: number;
+  historyRows: number;
+  skippedRecords: number;
+  notificationsRemoved?: number;
+};
+export type CancelPlacementOptions = { history: "remove" | "reverse"; shortfall: "full" | "available"; notifyMember: boolean; notifyUplines: boolean };
+
+/** Admin: preview (confirm false) or cancel one active placement and reverse what it paid. */
+export function adminCancelPlacement(args: { userId: string; placementId: string; confirm?: boolean; confirmId?: string; reason?: string } & Partial<CancelPlacementOptions>) {
+  return adminCall<typeof args, CancelPlacementResult>("adminCancelPlacement", args);
 }
 
 /** Add to / remove from a member's wallet with a tag. A removal may leave the wallet below zero. */

@@ -25,7 +25,7 @@ export type PlacedRow = {
   method: string;
   reference?: string;
   event?: string;
-  status: "active" | "completed" | "";
+  status: "active" | "completed" | "cancelled" | "";
   approvedBy: string;
   request?: PlanRequest;
 };
@@ -53,7 +53,7 @@ export function buildPlacedRows(approved: PlanRequest[], placements: PlacementRo
       method: r.methodLabel,
       reference: r.referenceNumber,
       event: r.event?.name,
-      status: p ? p.status : "",
+      status: r.status === "cancelled" ? "cancelled" : p ? p.status : "",
       approvedBy: r.processedBy ? nameOf(r.processedBy) : "",
       request: r,
     });

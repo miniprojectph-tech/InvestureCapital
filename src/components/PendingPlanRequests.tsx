@@ -11,6 +11,7 @@ const statusMeta: Record<
   pending: { label: "Pending", color: "text-vault", bg: "bg-vault/15", icon: Clock },
   approved: { label: "Approved", color: "text-green", bg: "bg-green/15", icon: CheckCircle2 },
   rejected: { label: "Rejected", color: "text-red", bg: "bg-red/15", icon: XCircle },
+  cancelled: { label: "Cancelled", color: "text-text-muted", bg: "bg-white/5", icon: XCircle },
 };
 
 export function PendingPlanRequests() {

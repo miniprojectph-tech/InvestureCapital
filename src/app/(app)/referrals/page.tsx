@@ -209,6 +209,7 @@ export default function ReferralsPage() {
                           : ` · ${c.pct}% of ${formatPHP(c.placementAmount ?? 0, { short: true })}`
                         : ""}
                       {c.status === "skipped" && <span className="text-red"> · not paid: {c.reason}</span>}
+                      {c.status === "reversed" && <span className="text-text-muted"> · reversed, the plan was cancelled</span>}
                     </p>
                   </div>
                   <span className={cn("text-[11px] font-mono shrink-0", c.status === "paid" ? "text-green" : "text-text-subtle line-through")}>+{formatPHP(c.amount)}</span>

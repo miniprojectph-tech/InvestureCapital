@@ -23,6 +23,7 @@ const statusMeta = {
   pending: { label: "Pending", icon: Clock, color: "text-vault", bg: "bg-vault/15" },
   approved: { label: "Approved", icon: Check, color: "text-green", bg: "bg-green/15" },
   rejected: { label: "Rejected", icon: X, color: "text-red", bg: "bg-red/15" },
+  cancelled: { label: "Cancelled", icon: X, color: "text-text-muted", bg: "bg-white/5" },
 };
 const STATUS_TABS: PlanRequestStatus[] = ["pending", "approved", "rejected"];
 
@@ -47,6 +48,7 @@ export default function AdminPlanRequestsPage() {
       pending: rows.filter((r) => r.status === "pending").length,
       approved: rows.filter((r) => r.status === "approved").length,
       rejected: rows.filter((r) => r.status === "rejected").length,
+      cancelled: rows.filter((r) => r.status === "cancelled").length,
     }),
     [rows],
   );
@@ -123,7 +125,7 @@ export default function AdminPlanRequestsPage() {
 
       {/* Approved: every placement that went live — paid in or reinvested from the wallet */}
       {tab === "approved" && (
-        <PlacedPanel approved={rows.filter((r) => r.status === "approved")} requestsLoading={loading} onViewReceipt={setViewReceipt} />
+        <PlacedPanel approved={rows.filter((r) => r.status === "approved" || r.status === "cancelled")} requestsLoading={loading} onViewReceipt={setViewReceipt} />
       )}
 
       {tab !== "approved" && (

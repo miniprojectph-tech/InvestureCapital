@@ -59,9 +59,11 @@ export function PlacedView({ all, loading, loadError, onViewReceipt }: { all: Pl
   const shown = useMemo(() => (source === "all" ? inRange : inRange.filter((r) => r.source === source)), [inRange, source]);
 
   const sum = (list: PlacedRow[]) => ({ amount: list.reduce((s, r) => s + r.amount, 0), n: list.length });
-  const paid = sum(inRange.filter((r) => r.source === "paid"));
-  const wallet = sum(inRange.filter((r) => r.source === "wallet"));
-  const total = sum(inRange);
+  // A cancelled placement stays listed (marked) but never counts as money placed.
+  const counted = inRange.filter((r) => r.status !== "cancelled");
+  const paid = sum(counted.filter((r) => r.source === "paid"));
+  const wallet = sum(counted.filter((r) => r.source === "wallet"));
+  const total = sum(counted);
   const share = total.amount > 0 ? Math.round((wallet.amount / total.amount) * 100) : 0;
   const rangeText = range === "custom" ? (from || to ? `${from || "start"} to ${to || "today"}` : "custom dates") : RANGE_LABEL[range].toLowerCase();
 
@@ -157,12 +159,14 @@ export function PlacedView({ all, loading, loadError, onViewReceipt }: { all: Pl
                       <span className="truncate">{r.userName}</span>
                       <span className={cn("text-[9px] px-1.5 py-px rounded-full", isWallet ? "bg-[#F5C66B]/15 text-[#F5C66B]" : "bg-green/15 text-green")}>{isWallet ? "Wallet reinvest" : r.request ? "Paid in" : "Manual"}</span>
                       {r.event && <span className="text-[9px] px-1.5 py-px rounded-full bg-vault/15 text-vault">Event slot</span>}
+                      {r.status === "cancelled" && <span className="text-[9px] px-1.5 py-px rounded-full bg-red/15 text-red" title={r.request?.cancelReason}>Cancelled</span>}
                     </p>
                     <p className="text-[10px] text-text-subtle m-0 mt-0.5 truncate">
                       {r.placementId && <span className="font-mono">{r.placementId} · </span>}
                       {r.termMonths ? `${r.termMonths} month${r.termMonths === 1 ? "" : "s"} · ` : ""}{fmtWhen(r.at)}
                       {r.status ? ` · ${r.status}` : ""} · {r.method}
                       {r.reference ? ` · ref ${r.reference}` : ""}
+                      {r.status === "cancelled" && r.request?.cancelReason ? ` · ${r.request.cancelReason}` : ""}
                     </p>
                   </div>
                   {r.request && (
@@ -175,7 +179,7 @@ export function PlacedView({ all, loading, loadError, onViewReceipt }: { all: Pl
                       )}
                     </button>
                   )}
-                  <p className={cn("text-[13px] font-mono m-0 shrink-0 text-right min-w-[90px]", isWallet ? "text-[#F5C66B]" : "text-green")}>{formatPHP(r.amount)}</p>
+                  <p className={cn("text-[13px] font-mono m-0 shrink-0 text-right min-w-[90px]", r.status === "cancelled" ? "text-text-subtle line-through" : isWallet ? "text-[#F5C66B]" : "text-green")}>{formatPHP(r.amount)}</p>
                 </div>
               );
             })}
