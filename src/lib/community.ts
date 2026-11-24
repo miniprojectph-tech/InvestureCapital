@@ -783,6 +783,8 @@ export function useInboxList(enabled: boolean): InboxMeta[] {
   return list;
 }
 
+/** Only the automatic welcome so far: the member hasn't written and the team hasn't either. */
+export const isWelcomeOnly = (meta: InboxMeta): boolean => meta.newMember === true && meta.lastFrom === "admin";
 /** The member wrote last and nobody on the team has opened it since. */
 export const needsReply = (meta: InboxMeta): boolean => isInboxUnread(meta, "admin");
 /** The welcome opened the thread, nobody has replied yet, and they joined within the last week. */

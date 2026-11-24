@@ -10,6 +10,7 @@ import { useSettings, uploadLimitsFor } from "@/lib/settings";
 import { useNow } from "@/lib/compplan";
 import { useMemberStatuses, statusText } from "@/lib/activeStatus";
 import { StatusDot, statusTone } from "@/components/community/StatusDot";
+import { SeenMark } from "@/components/community/SeenMark";
 import {
   useLeaderDmThreads, useDm, isDmUnread, sendDm, markDmRead, deleteDmMessage, reactToDm, tlMembers, formatRelative,
   type TlMember, type ChatItem,
@@ -88,6 +89,7 @@ export function TeamLeaderPanel({ me, canSend }: { me: { uid: string; name: stri
                   <div className="flex items-center justify-between gap-2"><p className={cn("text-[12px] m-0 truncate text-text", un && "font-semibold")}>{t.name}</p><span className="text-[9px] text-text-subtle shrink-0">{formatRelative(t.lastAt)}</span></div>
                   {statuses[t.memberUid] && <p className={cn("text-[9px] m-0 mt-0.5", statusTone(statuses[t.memberUid]))}>{statusText(statuses[t.memberUid], clock)}</p>}
                   <p className={cn("text-[10px] m-0 truncate mt-0.5", un ? "text-text-muted" : "text-text-subtle")}>{t.lastFrom === me.uid ? "You: " : ""}{t.lastText}</p>
+                  {t.lastFrom === me.uid && <p className="text-[9px] m-0 mt-0.5"><SeenMark lastAt={t.lastAt} readAt={t.memberReadAt} /></p>}
                 </div>
                 {un && <span className="w-2 h-2 rounded-full bg-red shrink-0" />}
               </button>
@@ -122,7 +124,10 @@ export function TeamLeaderPanel({ me, canSend }: { me: { uid: string; name: stri
                 <button onClick={() => setSelected(null)} className="lg:hidden w-8 h-8 -ml-1 flex items-center justify-center text-blue" aria-label="Back"><ArrowLeft className="w-5 h-5" /></button>
                 <span className="relative shrink-0"><Avatar src={selected.photoURL} name={selected.name} id={selected.uid} size={36} /><StatusDot status={statuses[selected.uid]} /></span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold m-0 truncate">{selected.name}</p>
+                  <p className="text-[13px] font-semibold m-0 truncate flex items-center gap-2">
+                    <span className="truncate">{selected.name}</span>
+                    {thread && thread.lastFrom === me.uid && <SeenMark lastAt={thread.lastAt} readAt={thread.memberReadAt} now={clock} className="text-[10px] font-normal shrink-0" />}
+                  </p>
                   {statuses[selected.uid] ? (
                     <p className={cn("text-[10px] m-0 truncate", statusTone(statuses[selected.uid]))}>{statusText(statuses[selected.uid], clock, true)}</p>
                   ) : (

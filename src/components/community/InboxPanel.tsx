@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Inbox, Search, MessageCircle, MailWarning } from "lucide-react";
 import { Card } from "@/components/Card";
 import { ChatView } from "@/components/community/ChatView";
@@ -9,6 +9,7 @@ import { useSettings, uploadLimitsFor } from "@/lib/settings";
 import { useNow } from "@/lib/compplan";
 import { useAllMemberStatuses, statusText } from "@/lib/activeStatus";
 import { StatusDot, statusTone } from "@/components/community/StatusDot";
+import { SeenMark } from "@/components/community/SeenMark";
 import { getFirebase } from "@/lib/firebase";
 import { listInvestors } from "@/lib/adminQueries";
 import {
@@ -17,6 +18,7 @@ import {
   isInboxUnread,
   needsReply,
   isNewMember,
+  isWelcomeOnly,
   sortInboxThreads,
   markInboxUnread,
   NEW_MEMBER_DAYS,
@@ -65,6 +67,15 @@ function useMemberDirectory(enabled: boolean): Map<string, Member> {
   return dir;
 }
 
+const PAGE = 80;
+const DAY_MS = 86_400_000;
+const manilaDay = (ms: number) => Math.floor((ms + 8 * 3_600_000) / DAY_MS);
+/** Divider label for a conversation in the list. */
+function groupOf(at: number, now: number): string {
+  const d = manilaDay(now) - manilaDay(at);
+  return d <= 0 ? "Today" : d === 1 ? "Yesterday" : d < 7 ? "This week" : "Older";
+}
+
 function initialsOf(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "?";
 }
@@ -74,7 +85,9 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
   const inboxCaps = uploadLimitsFor(settings, "inbox");
   const [selected, setSelected] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [show, setShow] = useState<"all" | "unread" | "new" | "active">("all");
+  const [show, setShowRaw] = useState<"conversations" | "unread" | "new" | "active">("conversations");
+  const [limit, setLimit] = useState(PAGE);
+  const setShow = (k: typeof show) => { setShowRaw(k); setLimit(PAGE); };
   const [now] = useState(() => Date.now());
 
   const saved = useInboxList(true);
@@ -117,27 +130,33 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
     if (t) setSelected(t);
   }, []);
 
+  const q = search.trim().toLowerCase();
+  const searching = q.length > 0;
+  // A welcome nobody answered sits in New members for a week, never in Conversations.
+  // Everything else is a conversation and stays one: answered threads are kept, unanswered ones pinned on top.
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    let list = sortInboxThreads(threads, now);
-    if (show === "unread") list = list.filter(needsReply);
-    if (show === "new") list = list.filter((t) => isNewMember(t, now));
-    if (show === "active") list = list.filter((t) => statuses[t.uid]?.state === "active");
-    if (!q) return list;
-    return list.filter((t) => [t.name, t.savedName, t.email].some((s) => (s ?? "").toLowerCase().includes(q)));
-  }, [threads, search, show, now, statuses]);
+    const byLast = (a: { lastAt: number }, b: { lastAt: number }) => b.lastAt - a.lastAt;
+    if (searching) return sortInboxThreads(threads, now).filter((t) => [t.name, t.savedName, t.email].some((s) => (s ?? "").toLowerCase().includes(q)));
+    if (show === "unread") return threads.filter(needsReply).sort(byLast);
+    if (show === "new") return threads.filter((t) => isWelcomeOnly(t) && isNewMember(t, now)).sort((a, b) => (b.joinedAt ?? b.lastAt) - (a.joinedAt ?? a.lastAt));
+    if (show === "active") return sortInboxThreads(threads, now).filter((t) => statuses[t.uid]?.state === "active");
+    const conv = threads.filter((t) => !isWelcomeOnly(t));
+    return [...conv.filter(needsReply).sort(byLast), ...conv.filter((t) => !needsReply(t)).sort(byLast)];
+  }, [threads, searching, q, show, now, statuses]);
+  const pinned = !searching && show === "conversations" ? filtered.filter(needsReply).length : 0;
+  const visible = filtered.slice(0, pinned + limit);
+  const labelOf = (t: InboxMeta) => (!searching && show === "conversations" ? (needsReply(t) ? "Needs reply" : groupOf(t.lastAt, clock)) : null);
 
   // Searching also finds members you have never messaged.
   const others = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (show !== "all" || q.length < 2) return [];
+    if (q.length < 2) return [];
     const has = new Set(threads.map((t) => t.uid));
     return [...directory.values()].filter((m) => !has.has(m.uid) && (m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q))).slice(0, 20);
-  }, [search, show, threads, directory]);
+  }, [q, threads, directory]);
 
   // "Needs reply" = the member wrote last and nobody opened it. New members are counted separately, never as unread.
   const unreadCount = threads.filter(needsReply).length;
-  const newCount = threads.filter((t) => isNewMember(t, now)).length;
+  const newCount = threads.filter((t) => isWelcomeOnly(t) && isNewMember(t, now)).length;
   const activeCount = threads.filter((t) => statuses[t.uid]?.state === "active").length;
 
   return (
@@ -158,8 +177,8 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
               )}
             </span>
           </div>
-          <div className="flex gap-1 mb-2">
-            {([["all", "All"], ["unread", "Needs reply"], ["new", "New members"], ["active", `Active now${activeCount ? ` · ${activeCount}` : ""}`]] as const).map(([k, label]) => (
+          <div className="flex flex-wrap gap-1 mb-2">
+            {([["conversations", "Conversations"], ["unread", `Needs reply${unreadCount ? ` · ${unreadCount}` : ""}`], ["new", `New members${newCount ? ` · ${newCount}` : ""}`], ["active", `Active now${activeCount ? ` · ${activeCount}` : ""}`]] as const).map(([k, label]) => (
               <button key={k} type="button" onClick={() => setShow(k)} aria-pressed={show === k} className={cn("px-2.5 py-1 rounded-full text-[10px] font-medium border transition", show === k ? "bg-gold/15 border-gold/40 text-gold" : "bg-canvas border-border text-text-muted hover:text-text")}>
                 {label}
               </button>
@@ -177,19 +196,22 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
         </div>
         <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100dvh - var(--chat-offset, 235px) - 95px)", minHeight: 240 }}>
           {filtered.length === 0 && others.length === 0 ? (
-            <p className="text-[11px] text-text-subtle text-center py-8 m-0">{show === "new" ? `Nobody joined in the last ${NEW_MEMBER_DAYS} days.` : show === "unread" ? "Nothing waiting for a reply." : show === "active" ? "No one in your conversations is active right now." : "No conversations yet."}</p>
+            <p className="text-[11px] text-text-subtle text-center py-8 m-0 px-4">{searching ? "No member matches." : show === "new" ? `No unanswered welcomes from the last ${NEW_MEMBER_DAYS} days.` : show === "unread" ? "Nothing waiting for a reply." : show === "active" ? "No one in your conversations is active right now." : "No conversations yet."}</p>
           ) : (
-            filtered.map((t) => {
+            visible.map((t, i) => {
               const unread = needsReply(t);
-              const fresh = isNewMember(t, now);
+              const fresh = isWelcomeOnly(t) && isNewMember(t, now);
               const active = t.uid === selected;
+              const label = labelOf(t);
+              const showLabel = !!label && (i === 0 || labelOf(visible[i - 1]) !== label);
               return (
+                <Fragment key={t.uid}>
+                {showLabel && <p className={cn("text-[9px] uppercase tracking-wider m-0 px-3 pt-3 pb-1", label === "Needs reply" ? "text-red" : "text-text-subtle")}>{label}</p>}
                 <button
-                  key={t.uid}
                   onClick={() => setSelected(t.uid)}
                   className={cn(
                     "w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-b border-border transition",
-                    active ? "bg-gold/10" : "hover:bg-card-elev",
+                    active ? "bg-gold/10" : unread ? "bg-red/[0.06] shadow-[inset_3px_0_0_#FF6B6B] hover:bg-red/10" : "hover:bg-card-elev",
                   )}
                 >
                   <div className="relative w-8 h-8 rounded-full bg-blue/15 text-blue text-[10px] font-semibold flex items-center justify-center ring-1 ring-blue/20 shrink-0">
@@ -209,11 +231,22 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                       {t.lastFrom === "admin" ? "You: " : ""}
                       {t.lastText}
                     </p>
+                    {!isWelcomeOnly(t) && (t.lastFrom === "admin" ? (
+                      <p className="text-[9px] m-0 mt-0.5"><SeenMark lastAt={t.lastAt} readAt={t.userReadAt} /></p>
+                    ) : !unread ? (
+                      <p className="text-[9px] text-text-subtle m-0 mt-0.5">Member wrote last · read by the team</p>
+                    ) : null)}
                   </div>
                   {unread && <span className="w-2 h-2 rounded-full bg-red shrink-0" />}
                 </button>
+                </Fragment>
               );
             })
+          )}
+          {filtered.length > visible.length && (
+            <button type="button" onClick={() => setLimit((n) => n + PAGE)} className="w-full py-2.5 text-[11px] text-gold hover:underline border-b border-border">
+              Show older conversations · {filtered.length - visible.length} more
+            </button>
           )}
           {others.length > 0 && (
             <>
@@ -251,7 +284,10 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                 </button>
                 <div className="relative w-9 h-9 rounded-full bg-blue/15 text-blue text-[11px] font-extrabold flex items-center justify-center shrink-0">{initialsOf(current.name)}<StatusDot status={statuses[current.uid]} /></div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold m-0 truncate">{current.name}</p>
+                  <p className="text-[13px] font-semibold m-0 truncate flex items-center gap-2">
+                    <span className="truncate">{current.name}</span>
+                    {!isNewThread && current.lastFrom === "admin" && !isWelcomeOnly(current) && <SeenMark lastAt={current.lastAt} readAt={current.userReadAt} now={clock} className="text-[10px] font-normal shrink-0" />}
+                  </p>
                   {statuses[current.uid] ? (
                     <p className={cn("text-[10px] m-0 truncate", statusTone(statuses[current.uid]))}>{statusText(statuses[current.uid], clock, true)}</p>
                   ) : current.email ? (
