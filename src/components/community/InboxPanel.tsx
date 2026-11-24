@@ -9,6 +9,8 @@ import { useSettings, uploadLimitsFor } from "@/lib/settings";
 import { useNow } from "@/lib/compplan";
 import { useAllMemberStatuses, statusText } from "@/lib/activeStatus";
 import { StatusDot, statusTone } from "@/components/community/StatusDot";
+import { getFirebase } from "@/lib/firebase";
+import { listInvestors } from "@/lib/adminQueries";
 import {
   useInboxList,
   useInbox,
@@ -26,6 +28,7 @@ import {
   useTypingSignal,
   useTypingNames,
   type ChatItem,
+  type InboxMeta,
   type Sender,
 } from "@/lib/community";
 
@@ -37,6 +40,30 @@ type Props = {
   /** Optional slot rendered beside the thread title (e.g. a link to Investors). */
   threadAside?: React.ReactNode;
 };
+
+type Member = { uid: string; name: string; email: string };
+
+/**
+ * Every member's CURRENT name and email (admins only; moderators can't read the
+ * member records and keep the names saved on each conversation). A conversation
+ * keeps the name it started with, which is often an old name or the email prefix.
+ */
+function useMemberDirectory(enabled: boolean): Map<string, Member> {
+  const [dir, setDir] = useState<Map<string, Member>>(new Map());
+  useEffect(() => {
+    const { db } = getFirebase();
+    if (!enabled || !db) return;
+    let cancelled = false;
+    listInvestors(db)
+      .then((rows) => {
+        if (cancelled) return;
+        setDir(new Map(rows.filter((r) => !r.isAdmin).map((r) => [r.uid, { uid: r.uid, name: r.name && r.name !== "—" ? r.name : "", email: r.email }])));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [enabled]);
+  return dir;
+}
 
 function initialsOf(name: string) {
   return name.trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "?";
@@ -50,14 +77,30 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
   const [show, setShow] = useState<"all" | "unread" | "new" | "active">("all");
   const [now] = useState(() => Date.now());
 
-  const threads = useInboxList(true);
+  const saved = useInboxList(true);
+  const directory = useMemberDirectory(!!staff.isAdmin);
+  // Conversations under the member's current name; the saved name still matches a search.
+  const threads = useMemo(
+    () => saved.map((t) => {
+      const m = directory.get(t.uid);
+      return { ...t, savedName: t.name, name: m?.name || t.name || m?.email.split("@")[0] || "Member", email: m?.email || t.email };
+    }),
+    [saved, directory],
+  );
   // who is active / away right now (admins and inbox moderators may read it; the rules say so)
   const statuses = useAllMemberStatuses(true);
   const clock = useNow(30_000);
   const feed = useInbox(selected);
   const { messages, loading } = feed;
 
-  const current = useMemo(() => threads.find((t) => t.uid === selected) ?? null, [threads, selected]);
+  // A member with no conversation yet opens an empty one; the first message starts it.
+  const current = useMemo((): (InboxMeta & { savedName?: string }) | null => {
+    const t = threads.find((x) => x.uid === selected);
+    if (t) return t;
+    const m = selected ? directory.get(selected) : undefined;
+    return m ? { uid: m.uid, name: m.name || m.email.split("@")[0] || "Member", email: m.email, lastAt: 0, lastText: "", lastFrom: "" } : null;
+  }, [threads, selected, directory]);
+  const isNewThread = !!current && current.lastAt === 0;
   const currentUnread = isInboxUnread(current, "admin");
   const typingScope = useMemo(() => (selected ? { thread: selected } : null), [selected]);
   const typing = useTypingSignal(typingScope, "admin", staff.name);
@@ -81,8 +124,16 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
     if (show === "new") list = list.filter((t) => isNewMember(t, now));
     if (show === "active") list = list.filter((t) => statuses[t.uid]?.state === "active");
     if (!q) return list;
-    return list.filter((t) => t.name.toLowerCase().includes(q) || (t.email ?? "").toLowerCase().includes(q));
+    return list.filter((t) => [t.name, t.savedName, t.email].some((s) => (s ?? "").toLowerCase().includes(q)));
   }, [threads, search, show, now, statuses]);
+
+  // Searching also finds members you have never messaged.
+  const others = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (show !== "all" || q.length < 2) return [];
+    const has = new Set(threads.map((t) => t.uid));
+    return [...directory.values()].filter((m) => !has.has(m.uid) && (m.name.toLowerCase().includes(q) || m.email.toLowerCase().includes(q))).slice(0, 20);
+  }, [search, show, threads, directory]);
 
   // "Needs reply" = the member wrote last and nobody opened it. New members are counted separately, never as unread.
   const unreadCount = threads.filter(needsReply).length;
@@ -125,7 +176,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto" style={{ maxHeight: "calc(100dvh - var(--chat-offset, 235px) - 95px)", minHeight: 240 }}>
-          {filtered.length === 0 ? (
+          {filtered.length === 0 && others.length === 0 ? (
             <p className="text-[11px] text-text-subtle text-center py-8 m-0">{show === "new" ? `Nobody joined in the last ${NEW_MEMBER_DAYS} days.` : show === "unread" ? "Nothing waiting for a reply." : show === "active" ? "No one in your conversations is active right now." : "No conversations yet."}</p>
           ) : (
             filtered.map((t) => {
@@ -163,6 +214,27 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                 </button>
               );
             })
+          )}
+          {others.length > 0 && (
+            <>
+              <p className="text-[9px] uppercase tracking-wider text-text-subtle m-0 px-3 pt-3 pb-1">No conversation yet</p>
+              {others.map((m) => (
+                <button
+                  key={m.uid}
+                  onClick={() => setSelected(m.uid)}
+                  className={cn("w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-b border-border transition", m.uid === selected ? "bg-gold/10" : "hover:bg-card-elev")}
+                >
+                  <div className="relative w-8 h-8 rounded-full bg-card-elev text-text-muted text-[10px] font-semibold flex items-center justify-center shrink-0">
+                    {initialsOf(m.name || m.email)}
+                    <StatusDot status={statuses[m.uid]} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[12px] m-0 truncate text-text">{m.name || m.email.split("@")[0]}</p>
+                    <p className="text-[10px] m-0 truncate mt-0.5 text-text-subtle">{m.email} · Start a conversation</p>
+                  </div>
+                </button>
+              ))}
+            </>
           )}
         </div>
       </Card>
@@ -207,7 +279,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
             maxImageBytes={inboxCaps.imageMB * 1024 * 1024}
             maxVideoBytes={inboxCaps.videoMB * 1024 * 1024}
             maxVideoSeconds={inboxCaps.videoSeconds}
-            emptyText="No messages in this conversation yet."
+            emptyText={isNewThread ? `No messages yet. Your first message starts a conversation with ${current.name}.` : "No messages in this conversation yet."}
             canSend={canSend}
             sendDisabledReason="Moderator access is still syncing…"
             allowVideo
@@ -220,7 +292,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
             typingNames={typingNames}
             onTyping={typing.ping}
             onTypingStop={typing.stop}
-            onSend={(p) => sendInboxMessage(selected, staff, p)}
+            onSend={(p) => sendInboxMessage(selected, staff, p, isNewThread ? { name: current.name, email: current.email } : undefined)}
             onReact={(m: ChatItem, emoji) => reactToInboxMessage(selected, m.id, staff.uid, emoji)}
             onDelete={(m: ChatItem) => deleteInboxMessage(selected, m.id)}
           />

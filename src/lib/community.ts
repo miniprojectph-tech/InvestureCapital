@@ -789,7 +789,7 @@ export const needsReply = (meta: InboxMeta): boolean => isInboxUnread(meta, "adm
 export const NEW_MEMBER_DAYS = 7;
 export const isNewMember = (meta: InboxMeta, now = Date.now()): boolean => meta.newMember === true && (meta.joinedAt ?? meta.lastAt) > now - NEW_MEMBER_DAYS * 86_400_000;
 /** Needs-reply first, then new members, then everything else — each newest first. */
-export function sortInboxThreads(list: InboxMeta[], now = Date.now()): InboxMeta[] {
+export function sortInboxThreads<T extends InboxMeta>(list: T[], now = Date.now()): T[] {
   const rank = (t: InboxMeta) => (needsReply(t) ? 0 : isNewMember(t, now) ? 1 : 2);
   return list.slice().sort((a, b) => rank(a) - rank(b) || b.lastAt - a.lastAt);
 }
@@ -1086,7 +1086,12 @@ export async function sendInboxMessage(
     [`${metaBase}/lastText`]: previewText(payload),
     [`${metaBase}/lastFrom`]: from,
   };
-  // The member owns the thread's display name; staff replies never overwrite it.
+  // The member owns the thread's display name; staff replies never overwrite it,
+  // except to name a conversation the team starts (threadOwner is passed only then).
+  if (staff && threadOwner) {
+    upd[`${metaBase}/name`] = threadOwner.name.slice(0, 40);
+    if (threadOwner.email) upd[`${metaBase}/email`] = threadOwner.email;
+  }
   if (!staff) {
     upd[`${metaBase}/name`] = sender.name.slice(0, 40);
     if (threadOwner?.email) upd[`${metaBase}/email`] = threadOwner.email;
