@@ -14,6 +14,9 @@ import { Avatar } from "@/components/Avatar";
 import { TeamLeaderPanel } from "@/components/community/TeamLeaderPanel";
 import { useAuth } from "@/lib/auth";
 import { useSettings, uploadLimitsFor } from "@/lib/settings";
+import { SantaFlyby, SantaChip } from "@/components/christmas/SantaFlyby";
+import { cleanChristmas, christmasActive, flybyDueToday, markFlybyShown } from "@/lib/christmas";
+import { useNow } from "@/lib/compplan";
 import {
   useCommunityRoom,
   usePinnedMessage,
@@ -169,6 +172,18 @@ export default function CommunityPage() {
   // What this person may post in the room (admin toggles; the rules enforce the same).
   const perms = useCommunityPermissions();
   const { settings } = useSettings();
+  // Christmas: Santa flies across once a Manila day when the Community Room opens; the header chip replays him.
+  const xmas = useMemo(() => cleanChristmas(settings.christmas), [settings.christmas]);
+  const clock = useNow(60_000);
+  const xmasOn = christmasActive(xmas, !!user?.isAdmin, clock);
+  const [santaPlay, setSantaPlay] = useState(0);
+  const roomOnScreen = showingChat && tab === "room";
+  useEffect(() => {
+    if (!xmasOn || !roomOnScreen || !flybyDueToday()) return;
+    markFlybyShown();
+    const t = window.setTimeout(() => setSantaPlay((n) => n + 1), 700);
+    return () => window.clearTimeout(t);
+  }, [xmasOn, roomOnScreen]);
   const roomCaps = uploadLimitsFor(settings, "room");
   const inboxCaps = uploadLimitsFor(settings, "inbox");
   // Team Leaders may always send pictures, video and links in the room (the rules say the same)
@@ -287,6 +302,7 @@ export default function CommunityPage() {
         <p className="text-[14px] font-bold m-0 truncate">Community Room</p>
         <p className="text-[11px] text-text-muted m-0">{online !== null ? `${online.toLocaleString()} active now` : "Everyone at Investure"}</p>
       </div>
+      {xmasOn && <SantaChip cfg={xmas} onClick={() => setSantaPlay((n) => n + 1)} />}
     </div>
   );
 
@@ -391,6 +407,7 @@ export default function CommunityPage() {
   return (
     <div style={{ "--chat-offset": `${235 + pushH}px` } as React.CSSProperties}>
       <TopHeader title="Community" subtitle="Chat with everyone, or message the admin directly" />
+      {xmasOn && <SantaFlyby cfg={xmas} play={santaPlay} />}
 
       {demoMode && (
         <p className="text-[11px] text-text-muted bg-card border border-border rounded-lg px-3 py-2 mb-3 m-0">

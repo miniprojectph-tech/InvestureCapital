@@ -88,6 +88,7 @@ export const adminNav: NavGroup[] = [
       { label: "Transactions", href: "/admin/transactions", icon: "receipt" },
       { label: "Reinvestments", href: "/admin/reinvestments", icon: "refresh" },
       { label: "Community chat", href: "/admin/community", icon: "chat" },
+      { label: "Christmas", href: "/admin/christmas", icon: "gift" },
       { label: "Member menu", href: "/admin/menu", icon: "dashboard" },
     ],
   },

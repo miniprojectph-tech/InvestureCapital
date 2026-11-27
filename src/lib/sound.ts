@@ -21,7 +21,8 @@ export type SoundName =
   | "slot/jackpot-mini" | "slot/jackpot-minor" | "slot/jackpot-major" | "slot/jackpot-grand" | "slot/ambience"
   | "color/chip-place" | "color/chip-other" | "color/countdown-tick" | "color/bets-closed"
   | "color/dice-rattle" | "color/dice-land-1" | "color/dice-land-2" | "color/dice-land-3"
-  | "color/win-1" | "color/win-2" | "color/win-3" | "color/lose" | "color/jackpot-siren" | "color/rank-up" | "color/ambience";
+  | "color/win-1" | "color/win-2" | "color/win-3" | "color/lose" | "color/jackpot-siren" | "color/rank-up" | "color/ambience"
+  | "xmas/sleigh-bells" | "xmas/card";
 
 type Opts = { volume?: number; rate?: number };
 const LS_KEY = "investure:sound";
@@ -131,6 +132,16 @@ const R: Partial<Record<SoundName, Recipe>> = {
   "color/win-3": (c, d, t) => { fanfare(c, d, t, 3); return 2.5; },
   "color/lose": (c, d, t) => { osc(c, d, { type: "triangle", f: 440, f1: 420, t0: t, dur: 0.25, g: 0.15 }); osc(c, d, { type: "triangle", f: 330, f1: 300, t0: t + 0.25, dur: 0.35, g: 0.15 }); return 0.6; },
   "color/jackpot-siren": (c, d, t) => { for (let i = 0; i < 4; i++) { osc(c, d, { f: 600, f1: 1200, t0: t + i * 0.6, dur: 0.3, a: 0.02, g: 0.18 }); osc(c, d, { f: 1200, f1: 600, t0: t + i * 0.6 + 0.3, dur: 0.3, a: 0.02, g: 0.18 }); } for (let i = 0; i < 6; i++) bell(c, d, { f: N([0, 4, 7, 12, 16, 19][i], 1046), t0: t + 0.1 + i * 0.3, dur: 0.6, g: 0.14 }); coins(c, d, t + 1.0, 2.5, 30); return 4.0; },
+  // Christmas: the sample at /sounds/xmas/sleigh-bells.mp3 replaces this synth version
+  "xmas/sleigh-bells": (c, d, t) => {
+    const fr = [2350, 3150, 4300, 5600, 7200];
+    for (let s = 0; s < 30; s++) {
+      const tt = t + s * 0.1 + Math.random() * 0.03, g = 0.11 * (1 - Math.abs(s - 15) / 18);
+      for (let k = 0; k < 3; k++) osc(c, d, { f: fr[(s + k * 2) % 5] * (0.97 + Math.random() * 0.06), t0: tt, dur: 0.22, a: 0.004, g });
+    }
+    return 3.2;
+  },
+  "xmas/card": (c, d, t) => { bell(c, d, { f: 1568, t0: t, dur: 0.6, g: 0.16 }); bell(c, d, { f: 2093, t0: t + 0.09, dur: 0.6, g: 0.16 }); bell(c, d, { f: 2637, t0: t + 0.18, dur: 0.8, g: 0.18 }); return 1.0; },
   "color/rank-up": (c, d, t) => { bell(c, d, { f: 659, t0: t, dur: 0.3, g: 0.18 }); bell(c, d, { f: 784, t0: t + 0.1, dur: 0.3, g: 0.18 }); bell(c, d, { f: 1046, t0: t + 0.2, dur: 0.5, g: 0.22 }); return 0.7; },
 };
 for (let i = 1; i <= 5; i++) R[`slot/reel-stop-${i}` as SoundName] = (c, d, t) => { const k = 1 + 0.12 * (i - 1); noise(c, d, { t0: t, dur: 0.025, g: 0.25, f: 1200 }); osc(c, d, { f: 150 * k, f1: 90 * k, t0: t, dur: 0.12, g: 0.35 }); bell(c, d, { f: 1200 * k, t0: t + 0.01, dur: i === 5 ? 0.35 : 0.18, g: i === 5 ? 0.14 : 0.08 }); return 0.25; };

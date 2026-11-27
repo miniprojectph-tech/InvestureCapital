@@ -1,5 +1,6 @@
 "use client";
 
+import type { ChristmasConfig } from "./christmas";
 import { useEffect, useState } from "react";
 import { doc, onSnapshot, setDoc, type Firestore } from "firebase/firestore";
 import { getFirebase } from "./firebase";
@@ -165,6 +166,8 @@ export type PlatformSettings = {
   menu?: { groups?: { items?: string[] }[]; hidden?: string[] };
   /** Push notifications: community digest timing, quiet hours, per-kind switches. */
   push?: Partial<PushConfig>;
+  /** Christmas season in the Community Room (Santa flyby + countdown). */
+  christmas?: Partial<ChristmasConfig>;
   updatedAt?: number;
   updatedBy?: string;
 };

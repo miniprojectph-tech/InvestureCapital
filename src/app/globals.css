@@ -299,3 +299,8 @@ body {
   height: 32px !important;
   font-size: 12px !important;
 }
+
+/* Christmas: Santa flyby (components/christmas/SantaFlyby) */
+@keyframes xmas-nose { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.25); } }
+@keyframes xmas-flip { 0% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
+@keyframes xmas-card-in { 0% { opacity: 0; transform: scale(.6); } 100% { opacity: 1; transform: scale(1); } }
