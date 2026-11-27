@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { getSound } from "@/lib/sound";
@@ -50,8 +50,12 @@ export function SantaChip({ cfg, onClick }: { cfg: ChristmasConfig; onClick: () 
   );
 }
 
-/** Mount while the season is on; bump `play` (1, 2, 3…) to send Santa across. */
-export function SantaFlyby({ cfg, play }: { cfg: ChristmasConfig; play: number }) {
+/**
+ * Mount while the season is on; bump `play` (1, 2, 3…) to send Santa across.
+ * `children` (the letter board) shows inside the card; with `stay` the card
+ * waits for the member instead of closing itself.
+ */
+export function SantaFlyby({ cfg, play, children, stay = false }: { cfg: ChristmasConfig; play: number; children?: ReactNode; stay?: boolean }) {
   // true only in the browser (the portal needs document.body)
   const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
   const [card, setCard] = useState<Countdown | null>(null);
@@ -96,11 +100,11 @@ export function SantaFlyby({ cfg, play }: { cfg: ChristmasConfig; play: number }
   // auto-close
   useEffect(() => {
     if (!card) return;
-    const t = window.setTimeout(() => setCard(null), CARD_MS);
+    const t = stay ? 0 : window.setTimeout(() => setCard(null), CARD_MS);
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setCard(null); };
     window.addEventListener("keydown", onKey);
     return () => { window.clearTimeout(t); window.removeEventListener("keydown", onKey); };
-  }, [card]);
+  }, [card, stay]);
 
   // one flight per bump of `play`
   useEffect(() => {
@@ -183,11 +187,11 @@ export function SantaFlyby({ cfg, play }: { cfg: ChristmasConfig; play: number }
       </div>
 
       {text && (
-        <div className="absolute inset-x-0 top-[22%] flex justify-center px-5">
+        <div className={children ? "absolute inset-x-0 top-[12%] bottom-4 flex justify-center items-start px-4" : "absolute inset-x-0 top-[22%] flex justify-center px-5"}>
           <div
             role="dialog"
             aria-label="Christmas countdown"
-            className="pointer-events-auto relative w-full max-w-[320px] rounded-2xl border border-border bg-card px-4 py-5 text-center shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-[xmas-card-in_0.45s_cubic-bezier(.2,1.4,.4,1)]"
+            className="pointer-events-auto relative w-full max-w-[340px] max-h-full overflow-y-auto rounded-2xl border border-border bg-card px-4 py-5 text-center shadow-[0_20px_50px_rgba(0,0,0,0.5)] animate-[xmas-card-in_0.45s_cubic-bezier(.2,1.4,.4,1)]"
           >
             <button type="button" onClick={() => setCard(null)} aria-label="Close" className="absolute right-2 top-2 w-8 h-8 flex items-center justify-center rounded-full text-text-muted hover:text-text">
               <X className="w-4 h-4" />
@@ -198,6 +202,7 @@ export function SantaFlyby({ cfg, play }: { cfg: ChristmasConfig; play: number }
               {text.unit && <span className="text-[15px] text-text-muted">{text.unit}</span>}
             </p>
             <p className="m-0 mt-1.5 text-[13px] text-text-muted">{text.sub}</p>
+            {children}
             <button type="button" onClick={() => setCard(null)} className="mt-4 w-full h-10 rounded-xl bg-gold text-gold-dark text-[14px] font-semibold hover:brightness-110 transition">
               Got it
             </button>

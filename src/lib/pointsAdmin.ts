@@ -89,18 +89,19 @@ export type LedgerLine = {
   id: string; userId: string; type: string; amount: number; delta?: number; balanceAfter?: number | null;
   description: string; createdAt: number; roomCode?: string; matchId?: string | null; roundId?: string; pot?: string; game?: string; test?: boolean;
 };
-export type LedgerSource = "slot" | "tongits" | "color" | "reef" | "event" | "reward" | "admin" | "other";
+export type LedgerSource = "slot" | "tongits" | "color" | "reef" | "event" | "christmas" | "reward" | "admin" | "other";
 export function ledgerSource(type: string): LedgerSource {
   if (type.startsWith("slot_")) return "slot";
   if (type.startsWith("challenge_")) return "tongits";
   if (type.startsWith("color_")) return "color";
   if (type.startsWith("reef_")) return "reef";
   if (type === "spin_won") return "event";
+  if (type === "christmas_gift") return "christmas";
   if (type === "reward_redeem") return "reward";
   if (type === "admin_set") return "admin";
   return "other";
 }
-export const SOURCE_LABEL: Record<LedgerSource, string> = { slot: "Dragon Spire", tongits: "Tongits", color: "Color Game", reef: "Reef", event: "Event spin", reward: "Reward", admin: "Admin", other: "Other" };
+export const SOURCE_LABEL: Record<LedgerSource, string> = { slot: "Dragon Spire", tongits: "Tongits", color: "Color Game", reef: "Reef", event: "Event spin", christmas: "Christmas", reward: "Reward", admin: "Admin", other: "Other" };
 /** Signed movement. Lines written before the ledger carried `delta` get their sign from the type. */
 export function ledgerDelta(l: LedgerLine): number {
   if (typeof l.delta === "number") return l.delta;

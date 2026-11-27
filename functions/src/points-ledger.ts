@@ -22,6 +22,7 @@ export type LedgerType =
   | "color_bet" | "color_refund" | "color_win"
   | "reef_catch" | "reef_quest" | "reef_weekly"
   | "spin_won"
+  | "christmas_gift"
   | "reward_redeem"
   | "admin_set";
 

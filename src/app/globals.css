@@ -304,3 +304,4 @@ body {
 @keyframes xmas-nose { 0%, 100% { opacity: .35; transform: scale(.8); } 50% { opacity: 1; transform: scale(1.25); } }
 @keyframes xmas-flip { 0% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
 @keyframes xmas-card-in { 0% { opacity: 0; transform: scale(.6); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes xmas-pop { 0% { transform: scale(.3) rotateY(180deg); } 60% { transform: scale(1.2); } 100% { transform: scale(1); } }

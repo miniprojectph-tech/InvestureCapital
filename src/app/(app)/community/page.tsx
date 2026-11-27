@@ -15,7 +15,11 @@ import { TeamLeaderPanel } from "@/components/community/TeamLeaderPanel";
 import { useAuth } from "@/lib/auth";
 import { useSettings, uploadLimitsFor } from "@/lib/settings";
 import { SantaFlyby, SantaChip } from "@/components/christmas/SantaFlyby";
-import { cleanChristmas, christmasActive, flybyDueToday, markFlybyShown } from "@/lib/christmas";
+import { LetterPanel } from "@/components/christmas/LetterPanel";
+import {
+  cleanChristmas, christmasActive, flybyDueToday, markFlybyShown, lettersOpen, redeemOpen, manilaDate,
+  useXmasPlayer, useMyXmasGifts, xmasCollect, type CollectResult,
+} from "@/lib/christmas";
 import { useNow } from "@/lib/compplan";
 import {
   useCommunityRoom,
@@ -176,14 +180,41 @@ export default function CommunityPage() {
   const xmas = useMemo(() => cleanChristmas(settings.christmas), [settings.christmas]);
   const clock = useNow(60_000);
   const xmasOn = christmasActive(xmas, !!user?.isAdmin, clock);
+  // CHRISTMAS letters: one a day while Santa flies; trading and redeeming stay open until redeemUntil
+  const lettersOn = lettersOpen(xmas, !!user?.isAdmin, clock);
+  const canRedeem = redeemOpen(xmas, !!user?.isAdmin, clock);
+  const showXmas = xmasOn || canRedeem;
+  const xmasToday = manilaDate(clock);
+  const { player: xmasPlayer, loaded: xmasLoaded } = useXmasPlayer(user?.uid, showXmas && xmas.letters);
+  const xmasGifts = useMyXmasGifts(user?.uid, showXmas && xmas.letters);
+  const [collect, setCollect] = useState<CollectResult | null>(null);
   const [santaPlay, setSantaPlay] = useState(0);
+  const flownRef = useRef(false);
+  const askedRef = useRef<string | null>(null);
   const roomOnScreen = showingChat && tab === "room";
   useEffect(() => {
     if (!xmasOn || !roomOnScreen || !flybyDueToday()) return;
     markFlybyShown();
+    flownRef.current = true;
     const t = window.setTimeout(() => setSantaPlay((n) => n + 1), 700);
     return () => window.clearTimeout(t);
   }, [xmasOn, roomOnScreen]);
+  // today's letter: asked once per day per visit, only when the board doesn't have it yet
+  useEffect(() => {
+    if (!lettersOn || !roomOnScreen || demoMode || !xmasLoaded) return;
+    if (xmasPlayer?.lastDay === xmasToday || askedRef.current === xmasToday) return;
+    askedRef.current = xmasToday;
+    xmasCollect().then((r) => {
+      setCollect(r);
+      if (r.status === "new" && !flownRef.current) { flownRef.current = true; markFlybyShown(); setSantaPlay((n) => n + 1); }
+    }).catch(() => { askedRef.current = null; });
+  }, [lettersOn, roomOnScreen, demoMode, xmasLoaded, xmasPlayer?.lastDay, xmasToday]);
+  // what the card says about today's letter: just received, already collected, or (after the season) closed
+  const collectView: CollectResult | null =
+    collect?.status === "new" && collect.player.lastDay === xmasToday ? collect
+    : !lettersOn ? (xmasPlayer ? { ok: true, status: "closed", double: false, player: xmasPlayer } : null)
+    : xmasPlayer?.lastDay === xmasToday ? { ok: true, status: "already", double: false, player: xmasPlayer }
+    : collect;
   const roomCaps = uploadLimitsFor(settings, "room");
   const inboxCaps = uploadLimitsFor(settings, "inbox");
   // Team Leaders may always send pictures, video and links in the room (the rules say the same)
@@ -302,7 +333,7 @@ export default function CommunityPage() {
         <p className="text-[14px] font-bold m-0 truncate">Community Room</p>
         <p className="text-[11px] text-text-muted m-0">{online !== null ? `${online.toLocaleString()} active now` : "Everyone at Investure"}</p>
       </div>
-      {xmasOn && <SantaChip cfg={xmas} onClick={() => setSantaPlay((n) => n + 1)} />}
+      {showXmas && <SantaChip cfg={xmas} onClick={() => setSantaPlay((n) => n + 1)} />}
     </div>
   );
 
@@ -407,7 +438,11 @@ export default function CommunityPage() {
   return (
     <div style={{ "--chat-offset": `${235 + pushH}px` } as React.CSSProperties}>
       <TopHeader title="Community" subtitle="Chat with everyone, or message the admin directly" />
-      {xmasOn && <SantaFlyby cfg={xmas} play={santaPlay} />}
+      {showXmas && (
+        <SantaFlyby cfg={xmas} play={santaPlay} stay={xmas.letters}>
+          {xmas.letters && (lettersOn || xmasPlayer) && <LetterPanel player={xmasPlayer} collect={collectView} canRedeem={canRedeem} gifts={xmasGifts} today={xmasToday} />}
+        </SantaFlyby>
+      )}
 
       {demoMode && (
         <p className="text-[11px] text-text-muted bg-card border border-border rounded-lg px-3 py-2 mb-3 m-0">
