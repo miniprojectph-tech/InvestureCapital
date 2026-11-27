@@ -16,6 +16,7 @@ import {
   Landmark,
   Smartphone,
   ArrowRight,
+  Send,
 } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { Card, CardHeader } from "@/components/Card";
@@ -25,7 +26,7 @@ import { formatPHP, cn } from "@/lib/utils";
 import { useUserState } from "@/lib/useUserState";
 import { useAuth } from "@/lib/auth";
 import { getFirebase } from "@/lib/firebase";
-import { requestWithdrawal, useWithdrawals } from "@/lib/withdrawals";
+import { requestWithdrawal, useWithdrawals, releasedAtOf, type WithdrawalStatus } from "@/lib/withdrawals";
 import {
   savePayoutMethod,
   formatPayoutDestination,
@@ -42,11 +43,15 @@ import {
   relativeReleaseLabel,
 } from "@/lib/withdrawalSchedule";
 
-type Filter = "all" | "approved" | "pending" | "rejected";
+/** "active" = asked or approved, not sent yet. */
+type Filter = "all" | "released" | "active" | "rejected";
+const FILTER_LABEL: Record<Filter, string> = { all: "All", released: "Released", active: "In progress", rejected: "Rejected" };
+const isActive = (s: WithdrawalStatus) => s === "pending" || s === "approved";
 
-const statusMeta = {
-  approved: { label: "Released", icon: CheckCircle2, color: "text-green", bg: "bg-green/15", bar: "bg-green" },
+const statusMeta: Record<WithdrawalStatus, { label: string; icon: typeof Clock; color: string; bg: string; bar: string }> = {
   pending: { label: "Scheduled", icon: Clock, color: "text-vault", bg: "bg-vault/15", bar: "bg-vault" },
+  approved: { label: "Being processed", icon: Send, color: "text-blue", bg: "bg-blue/15", bar: "bg-blue" },
+  released: { label: "Released", icon: CheckCircle2, color: "text-green", bg: "bg-green/15", bar: "bg-green" },
   rejected: { label: "Rejected", icon: XCircle, color: "text-red", bg: "bg-red/15", bar: "bg-red" },
 };
 
@@ -107,10 +112,10 @@ export default function WithdrawalsPage() {
   }
 
   const wallet = state.balances.wallet;
-  const filtered = filter === "all" ? history : history.filter((h) => h.status === filter);
-  const totalApproved = history.filter((h) => h.status === "approved").reduce((s, h) => s + h.amount, 0);
-  const totalPending = history.filter((h) => h.status === "pending").reduce((s, h) => s + h.amount, 0);
-  const pendingCount = history.filter((h) => h.status === "pending").length;
+  const filtered = filter === "all" ? history : history.filter((h) => (filter === "active" ? isActive(h.status) : h.status === filter));
+  const totalApproved = history.filter((h) => h.status === "released").reduce((s, h) => s + h.amount, 0);
+  const totalPending = history.filter((h) => isActive(h.status)).reduce((s, h) => s + h.amount, 0);
+  const pendingCount = history.filter((h) => isActive(h.status)).length;
   const tint = payoutMethod ? methodTint[payoutMethod.type] : null;
   const MethodIcon = tint?.icon ?? Wallet;
 
@@ -159,7 +164,7 @@ export default function WithdrawalsPage() {
 
           <div className="grid grid-cols-2 gap-2 mt-4">
             <div className="bg-canvas/60 border border-border rounded-xl px-3 py-2.5">
-              <p className="text-[9px] text-text-subtle uppercase tracking-wide m-0">In escrow · {pendingCount} pending</p>
+              <p className="text-[9px] text-text-subtle uppercase tracking-wide m-0">In escrow · {pendingCount} in progress</p>
               <p className="text-[15px] font-mono text-vault m-0 mt-0.5 tabular-nums">{formatPHP(totalPending)}</p>
             </div>
             <div className="bg-canvas/60 border border-border rounded-xl px-3 py-2.5">
@@ -288,7 +293,7 @@ export default function WithdrawalsPage() {
           title={`Withdrawal history (${filtered.length})`}
           right={
             <div className="flex gap-1">
-              {(["all", "approved", "pending", "rejected"] as Filter[]).map((f) => (
+              {(["all", "released", "active", "rejected"] as Filter[]).map((f) => (
                 <button
                   key={f}
                   data-viewas-ok
@@ -298,7 +303,7 @@ export default function WithdrawalsPage() {
                     filter === f ? "bg-gold/15 text-gold font-medium" : "text-text-subtle hover:text-text"
                   )}
                 >
-                  {f === "approved" ? "Released" : f}
+                  {FILTER_LABEL[f]}
                 </button>
               ))}
             </div>
@@ -328,10 +333,11 @@ export default function WithdrawalsPage() {
         )}
 
         {filtered.map((row, i) => {
-          const meta = statusMeta[row.status];
+          const meta = statusMeta[row.status] ?? statusMeta.pending;
           const Icon = meta.icon;
           // Older requests (before the schedule existed) get a date from the current schedule.
-          const releaseAt = row.status === "pending" ? (row.scheduledReleaseAt ?? releaseDateFor(row.createdAt, schedule)) : null;
+          const releaseAt = isActive(row.status) ? (row.scheduledReleaseAt ?? releaseDateFor(row.createdAt, schedule)) : null;
+          const sentAt = row.status === "released" ? releasedAtOf(row) : undefined;
           return (
             <div key={row.id} className={cn("flex items-center gap-3 py-3", i < filtered.length - 1 && "border-b border-border")}>
               <div className={cn("w-9 h-9 rounded-xl flex items-center justify-center shrink-0", meta.bg)}>
@@ -349,11 +355,11 @@ export default function WithdrawalsPage() {
                   </span>
                   {releaseAt != null && (
                     <span className="flex items-center gap-1 text-gold">
-                      <CalendarClock className="w-3 h-3" /> Releases {formatReleaseDate(releaseAt)} · {relativeReleaseLabel(releaseAt)}
+                      <CalendarClock className="w-3 h-3" /> {row.status === "approved" ? "Approved · release expected" : "Releases"} {formatReleaseDate(releaseAt)} · {relativeReleaseLabel(releaseAt)}
                     </span>
                   )}
-                  {row.status === "approved" && row.processedAt && (
-                    <span className="text-green">Released {formatReleaseDate(row.processedAt)}</span>
+                  {sentAt != null && (
+                    <span className="text-green">Released {formatReleaseDate(sentAt)}{row.releaseRef ? ` · Ref ${row.releaseRef}` : ""}</span>
                   )}
                   {row.note && <span className={row.status === "rejected" ? "text-red" : "text-text-dim"}>· {row.note}</span>}
                 </p>

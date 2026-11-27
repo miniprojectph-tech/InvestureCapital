@@ -11,10 +11,15 @@ type Withdrawal = {
   userId: string;
   amount: number;
   destination?: string;
-  status: "pending" | "approved" | "rejected";
+  /** pending → approved (being processed) → released (money sent); or rejected (refunded) before release. */
+  status: "pending" | "approved" | "released" | "rejected";
   createdAt: number;
   scheduledReleaseAt?: number | null;
   note?: string;
+  releasedAt?: number;
+  releaseRef?: string;
+  /** Set by the one-time move of old "approved" (= already sent) records to "released": no notice. */
+  migratedRelease?: boolean;
 };
 
 const peso = (n: number) => `₱${(Number.isFinite(n) ? n : 0).toLocaleString("en-PH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -114,9 +119,10 @@ export const requestWithdrawal = onCall(async (request) => {
  * Bell notifications for the withdrawal lifecycle. Members can't write their
  * own notifications (rules), so this runs server-side on every change to a
  * withdrawals doc:
- *   created            → "request received" with the scheduled release date
- *   pending → approved → "released"
- *   pending → rejected → "rejected" (wallet refunded by the admin action)
+ *   created             → "request received" with the scheduled release date
+ *   pending → approved  → "approved, being processed" with the expected release date
+ *   approved → released → "released" with the reference number (and the event bonus spin)
+ *   → rejected          → "rejected" (wallet refunded by the admin action)
  */
 export const onWithdrawalWritten = onDocumentWritten("withdrawals/{id}", async (event) => {
   const before = event.data?.before.exists ? (event.data.before.data() as Withdrawal) : null;
@@ -150,7 +156,7 @@ export const onWithdrawalWritten = onDocumentWritten("withdrawals/{id}", async (
   if (before.status === after.status) {
     // An admin moved a pending withdrawal's release date.
     const was = before.scheduledReleaseAt ?? null, is = after.scheduledReleaseAt ?? null;
-    if (after.status === "pending" && is != null && is !== was) {
+    if ((after.status === "pending" || after.status === "approved") && is != null && is !== was) {
       await write({
         type: "withdrawal",
         title: `Withdrawal release date moved — ${peso(after.amount)}`,
@@ -161,11 +167,22 @@ export const onWithdrawalWritten = onDocumentWritten("withdrawals/{id}", async (
     return;
   }
   if (after.status === "approved") {
+    const at = after.scheduledReleaseAt ?? null;
+    await write({
+      type: "withdrawal",
+      title: `Withdrawal approved — ${peso(after.amount)}`,
+      body: at != null && at + 86_400_000 > now
+        ? `Being processed. Release expected ${formatReleaseDate(at, { withYear: true })}${after.destination ? ` to ${after.destination}` : ""}.`
+        : `Being processed. It will be released shortly${after.destination ? ` to ${after.destination}` : ""}.`,
+      amount: after.amount,
+    });
+  } else if (after.status === "released") {
+    if (after.migratedRelease) return; // old record re-labelled, already announced when it was approved
     grantBonusSpins(after.userId, "withdrawal").catch(() => {});
     await write({
       type: "withdrawal",
       title: `Withdrawal released — ${peso(after.amount)}`,
-      body: `Sent${after.destination ? ` to ${after.destination}` : ""}.${after.note ? ` ${after.note}` : ""}`,
+      body: `Sent${after.destination ? ` to ${after.destination}` : ""}.${after.releaseRef ? ` Reference ${after.releaseRef}.` : ""}`,
       amount: after.amount,
     });
   } else if (after.status === "rejected") {
@@ -180,10 +197,11 @@ export const onWithdrawalWritten = onDocumentWritten("withdrawals/{id}", async (
 });
 
 /**
- * Admin approves or rejects a pending withdrawal. The time is the SERVER's
- * clock (an admin device with a wrong date once stamped approvals 36 hours
- * early), and the whole decision is one transaction: only a pending request
- * can be decided, so a double-click can't refund the wallet twice.
+ * Admin approves (pending → approved, still to be sent) or rejects (pending or
+ * approved → rejected, wallet refunded). The time is the SERVER's clock (an
+ * admin device with a wrong date once stamped approvals 36 hours early), and
+ * each decision is one transaction, so a double-click can't refund twice.
+ * A released withdrawal can't be rejected: the money has gone.
  */
 export const adminDecideWithdrawal = onCall(async (request) => {
   const adminUid = request.auth?.uid;
@@ -202,7 +220,8 @@ export const adminDecideWithdrawal = onCall(async (request) => {
     const snap = await tx.get(wRef);
     if (!snap.exists) throw new HttpsError("not-found", "That withdrawal no longer exists.");
     const w = snap.data() as Withdrawal & { status?: string };
-    if (w.status !== "pending") throw new HttpsError("failed-precondition", `This withdrawal was already ${w.status === "approved" ? "released" : w.status}.`);
+    const can = decision === "approve" ? w.status === "pending" : w.status === "pending" || w.status === "approved";
+    if (!can) throw new HttpsError("failed-precondition", `This withdrawal is already ${w.status === "approved" ? "approved" : w.status}.`);
     const now = Date.now();
     const userRef = db.collection("users").doc(w.userId);
     const u = await tx.get(userRef);
@@ -213,9 +232,67 @@ export const adminDecideWithdrawal = onCall(async (request) => {
     if (decision === "reject") {
       if (u.exists) tx.update(userRef, { "balances.wallet": FieldValue.increment(Number(w.amount) || 0) });
     }
-    tx.update(wRef, { status: decision === "approve" ? "approved" : "rejected", processedAt: now, processedBy: adminUid, ...(note ? { note } : {}) });
+    tx.update(wRef, {
+      status: decision === "approve" ? "approved" : "rejected",
+      processedAt: now,
+      processedBy: adminUid,
+      ...(decision === "approve" ? { approvedAt: now, approvedBy: adminUid } : {}),
+      ...(note ? { note } : {}),
+    });
     return { ok: true, status: decision === "approve" ? "approved" : "rejected", processedAt: now };
   });
+});
+
+/**
+ * Admin marks approved withdrawals RELEASED once the money has actually been
+ * sent: one or many at a time (payout day), each with an optional transfer
+ * reference and an optional screenshot (Storage withdrawal-proofs/, admins
+ * only). Each one is its own transaction; anything not "approved" any more, or
+ * whose member was banned meanwhile, is skipped and reported back.
+ */
+export const adminReleaseWithdrawals = onCall(async (request) => {
+  const adminUid = request.auth?.uid;
+  if (!adminUid) throw new HttpsError("unauthenticated", "Sign in required.");
+  const caller = await db.collection("users").doc(adminUid).get();
+  if (caller.data()?.isAdmin !== true) throw new HttpsError("permission-denied", "Admin role required.");
+  const raw = (request.data as { items?: unknown } | undefined)?.items;
+  if (!Array.isArray(raw) || raw.length === 0) throw new HttpsError("invalid-argument", "Pick at least one withdrawal.");
+  if (raw.length > 100) throw new HttpsError("invalid-argument", "Release at most 100 at a time.");
+  const items = raw.map((x) => {
+    const o = (x ?? {}) as { id?: unknown; ref?: unknown; proofPath?: unknown };
+    const id = typeof o.id === "string" ? o.id : "";
+    if (!/^[A-Za-z0-9]{6,40}$/.test(id)) throw new HttpsError("invalid-argument", "Pick a withdrawal.");
+    const ref = typeof o.ref === "string" ? o.ref.replace(/\s+/g, " ").trim().slice(0, 60) : "";
+    const proofPath = typeof o.proofPath === "string" && o.proofPath.startsWith(`withdrawal-proofs/${id}/`) ? o.proofPath.slice(0, 200) : "";
+    return { id, ref, proofPath };
+  });
+
+  const released: string[] = [];
+  const skipped: { id: string; reason: string }[] = [];
+  for (const it of items) {
+    try {
+      await db.runTransaction(async (tx) => {
+        const wRef = db.collection("withdrawals").doc(it.id);
+        const snap = await tx.get(wRef);
+        if (!snap.exists) throw new Error("no longer exists");
+        const w = snap.data() as Withdrawal;
+        if (w.status !== "approved") throw new Error(w.status === "pending" ? "not approved yet" : `already ${w.status}`);
+        const u = await tx.get(db.collection("users").doc(w.userId));
+        if (u.exists && (u.data() as { banned?: unknown }).banned) throw new Error("member is banned");
+        tx.update(wRef, {
+          status: "released",
+          releasedAt: Date.now(),
+          releasedBy: adminUid,
+          ...(it.ref ? { releaseRef: it.ref } : {}),
+          ...(it.proofPath ? { releaseProofPath: it.proofPath } : {}),
+        });
+      });
+      released.push(it.id);
+    } catch (e) {
+      skipped.push({ id: it.id, reason: e instanceof Error ? e.message : "failed" });
+    }
+  }
+  return { ok: true, released, skipped };
 });
 
 /**

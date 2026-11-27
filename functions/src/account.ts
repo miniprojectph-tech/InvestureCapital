@@ -54,7 +54,8 @@ export const adminDeleteMember = onCall({ timeoutSeconds: 120 }, async (request)
   const userRef = db.collection("users").doc(uid);
   const [userSnap, pendingW, pendingP] = await Promise.all([
     userRef.get(),
-    db.collection("withdrawals").where("userId", "==", uid).where("status", "==", "pending").get(),
+    // approved = still to be sent: the member is owed it as much as a pending one
+    db.collection("withdrawals").where("userId", "==", uid).where("status", "in", ["pending", "approved"]).get(),
     db.collection("plan_requests").where("userId", "==", uid).where("status", "==", "pending").get(),
   ]);
   if (!userSnap.exists) throw new HttpsError("not-found", "That member no longer exists.");

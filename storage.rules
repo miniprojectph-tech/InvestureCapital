@@ -71,6 +71,13 @@ service firebase.storage {
         && request.resource.size < 2 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
     }
+    // Admin-only screenshots of a withdrawal transfer (Admin › Withdrawals › Mark released).
+    match /withdrawal-proofs/{wId}/{file} {
+      allow read, delete: if isAdmin();
+      allow write: if isAdmin()
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/(png|jpeg|webp)');
+    }
     match /receipts/{userId}/{file} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
       allow write: if isSignedIn() && request.auth.uid == userId

@@ -13,10 +13,17 @@ import {
   type Firestore,
 } from "firebase/firestore";
 import { httpsCallable } from "firebase/functions";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getFirebase } from "./firebase";
 import { useAuth } from "./auth";
 
-export type WithdrawalStatus = "pending" | "approved" | "rejected";
+/**
+ * pending  — asked, waiting for review
+ * approved — qualified, being processed (money not sent yet; can still be rejected)
+ * released — the admin sent the money (optional reference number / screenshot)
+ * rejected — refused before release; the wallet was refunded
+ */
+export type WithdrawalStatus = "pending" | "approved" | "released" | "rejected";
 export type WithdrawalKind = "short-term" | "long-term";
 
 export type WithdrawalRequest = {
@@ -35,10 +42,21 @@ export type WithdrawalRequest = {
   createdAtOriginal?: number;
   /** Manila midnight of the day this payout is due, per the release schedule at request time. */
   scheduledReleaseAt?: number | null;
+  /** When it was approved or rejected (records from before the Released step: when it was sent). */
   processedAt?: number;
   processedBy?: string;
   note?: string;
+  approvedAt?: number;
+  /** When the admin marked it released (sent). */
+  releasedAt?: number;
+  /** Transfer reference the admin typed when releasing; the member sees it. */
+  releaseRef?: string;
+  /** Storage path of the transfer screenshot (admins only). */
+  releaseProofPath?: string;
 };
+
+/** When the money went out: the Released stamp, or the old approval time on records from before that step. */
+export const releasedAtOf = (w: Pick<WithdrawalRequest, "releasedAt" | "processedAt">) => w.releasedAt ?? w.processedAt;
 
 export function withdrawalsCollection(db: Firestore) {
   return collection(db, "withdrawals");
@@ -74,6 +92,36 @@ export async function approveWithdrawal(_db: Firestore, id: string, _adminUid: s
   await decide(id, "approve", note);
 }
 
+/**
+ * Admin: mark approved withdrawals released (the money was sent), with an
+ * optional reference and screenshot each. Anything no longer approved is skipped.
+ */
+export async function releaseWithdrawals(items: { id: string; ref?: string; proofPath?: string }[]): Promise<{ released: string[]; skipped: { id: string; reason: string }[] }> {
+  const { functions } = getFirebase();
+  if (!functions) throw new Error("Not connected");
+  const r = await httpsCallable<{ items: typeof items }, { ok: boolean; released: string[]; skipped: { id: string; reason: string }[] }>(functions, "adminReleaseWithdrawals")({ items });
+  return r.data;
+}
+
+/** Admin: upload a transfer screenshot for a withdrawal; returns its Storage path. */
+export async function uploadReleaseProof(withdrawalId: string, file: File): Promise<string> {
+  const { storage } = getFirebase();
+  if (!storage) throw new Error("Not connected");
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) throw new Error("Use a PNG, JPG or WebP picture.");
+  if (file.size >= 10 * 1024 * 1024) throw new Error("The picture must be under 10 MB.");
+  const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : "jpg";
+  const path = `withdrawal-proofs/${withdrawalId}/${Date.now()}.${ext}`;
+  await uploadBytes(storageRef(storage, path), file, { contentType: file.type });
+  return path;
+}
+
+/** Admin: a viewable link for a stored transfer screenshot. */
+export async function releaseProofUrl(path: string): Promise<string> {
+  const { storage } = getFirebase();
+  if (!storage) throw new Error("Not connected");
+  return getDownloadURL(storageRef(storage, path));
+}
+
 /** Admin rejects: the server marks it rejected AND refunds the member's wallet. */
 export async function rejectWithdrawal(_db: Firestore, id: string, _adminUid: string, note?: string): Promise<void> {
   await decide(id, "reject", note);
@@ -100,15 +148,15 @@ export const toManilaInput = (ms: number, withTime = false) => {
 async function audit(db: Firestore, entry: Record<string, unknown>) {
   await addDoc(collection(db, "admin_audit"), { ...entry, at: Date.now() });
 }
-/** Admin: move a pending withdrawal's release date (the member is told by the server trigger). */
+/** Admin: move a pending or approved withdrawal's release date (the member is told by the server trigger). */
 export async function setWithdrawalReleaseDate(db: Firestore, w: WithdrawalRequest, adminUid: string, releaseAt: number): Promise<void> {
   await updateDoc(doc(db, "withdrawals", w.id), { scheduledReleaseAt: releaseAt, releaseDateChangedAt: Date.now(), releaseDateChangedBy: adminUid });
   await audit(db, { type: "withdrawal_release_date", uid: w.userId, userName: w.userName ?? "", withdrawalId: w.id, title: `Release date changed for ${w.userName ?? "a member"}'s ₱${w.amount.toLocaleString()} withdrawal`, before: w.scheduledReleaseAt ?? null, after: releaseAt, by: adminUid });
 }
-/** Admin: correct the "Released …" stamp of an approved withdrawal. */
-export async function setWithdrawalProcessedAt(db: Firestore, w: WithdrawalRequest, adminUid: string, processedAt: number): Promise<void> {
-  await updateDoc(doc(db, "withdrawals", w.id), { processedAt, processedAtEditedBy: adminUid });
-  await audit(db, { type: "withdrawal_released_date", uid: w.userId, userName: w.userName ?? "", withdrawalId: w.id, title: `Released date corrected for ${w.userName ?? "a member"}'s ₱${w.amount.toLocaleString()} withdrawal`, before: w.processedAt ?? null, after: processedAt, by: adminUid });
+/** Admin: correct the "Released …" stamp of a released withdrawal. */
+export async function setWithdrawalReleasedAt(db: Firestore, w: WithdrawalRequest, adminUid: string, releasedAt: number): Promise<void> {
+  await updateDoc(doc(db, "withdrawals", w.id), { releasedAt, releasedAtEditedBy: adminUid });
+  await audit(db, { type: "withdrawal_released_date", uid: w.userId, userName: w.userName ?? "", withdrawalId: w.id, title: `Released date corrected for ${w.userName ?? "a member"}'s ₱${w.amount.toLocaleString()} withdrawal`, before: releasedAtOf(w) ?? null, after: releasedAt, by: adminUid });
 }
 
 type Scope = "me" | "all";

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, X, Clock, AlertCircle, Loader2, CalendarClock, CalendarCog, Pencil, Search, Trash2, AlertTriangle } from "lucide-react";
+import { Check, X, Clock, AlertCircle, Loader2, CalendarClock, CalendarCog, Pencil, Search, Trash2, AlertTriangle, Send, ImageIcon } from "lucide-react";
 import { PayoutDetails } from "@/components/admin/PayoutDetails";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
@@ -18,8 +18,12 @@ import {
   approveWithdrawal,
   rejectWithdrawal,
   setWithdrawalReleaseDate,
-  setWithdrawalProcessedAt,
+  setWithdrawalReleasedAt,
   setWithdrawalRequestedAt,
+  releaseWithdrawals,
+  uploadReleaseProof,
+  releaseProofUrl,
+  releasedAtOf,
   deleteRejectedWithdrawal,
   manilaDayStart,
   manilaDateTime,
@@ -30,10 +34,14 @@ import {
 
 const statusMeta = {
   pending: { label: "Pending", icon: Clock, color: "text-vault", bg: "bg-vault/15" },
-  approved: { label: "Approved", icon: Check, color: "text-green", bg: "bg-green/15" },
+  approved: { label: "Approved, to send", icon: Send, color: "text-blue", bg: "bg-blue/15" },
+  released: { label: "Released", icon: Check, color: "text-green", bg: "bg-green/15" },
   rejected: { label: "Rejected", icon: X, color: "text-red", bg: "bg-red/15" },
 };
-const STATUS_TABS: WithdrawalStatus[] = ["pending", "approved", "rejected"];
+const STATUS_TABS: WithdrawalStatus[] = ["pending", "approved", "released", "rejected"];
+/** Pending and approved wait for a release day; released and rejected are done. */
+const inQueue = (s: WithdrawalStatus) => s === "pending" || s === "approved";
+const fmtTime = (ms: number) => new Date(ms).toLocaleTimeString("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit" });
 
 export default function AdminWithdrawalsPage() {
   const { user } = useAuth();
@@ -62,13 +70,13 @@ export default function AdminWithdrawalsPage() {
       finally { setBusyId(null); }
       return;
     }
-    const ms = r.status === "pending" ? manilaDayStart(editing.value) : manilaDateTime(editing.value);
+    const ms = inQueue(r.status) ? manilaDayStart(editing.value) : manilaDateTime(editing.value);
     if (ms == null) return setError("Pick a date first.");
-    if (r.status === "approved" && ms > Date.now() + 60_000) return setError("A released date can't be in the future.");
+    if (r.status === "released" && ms > Date.now() + 60_000) return setError("A released date can't be in the future.");
     setBusyId(r.id); setError(null); setNotice(null);
     try {
-      if (r.status === "pending") { await setWithdrawalReleaseDate(db, r, user.uid, ms); setNotice(`${r.userName}'s release date is now ${formatReleaseDate(ms, { withYear: true })}. They've been told.`); }
-      else { await setWithdrawalProcessedAt(db, r, user.uid, ms); setNotice(`${r.userName}'s released date now reads ${new Date(ms).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}.`); }
+      if (inQueue(r.status)) { await setWithdrawalReleaseDate(db, r, user.uid, ms); setNotice(`${r.userName}'s release date is now ${formatReleaseDate(ms, { withYear: true })}. They've been told.`); }
+      else { await setWithdrawalReleasedAt(db, r, user.uid, ms); setNotice(`${r.userName}'s released date now reads ${new Date(ms).toLocaleString("en-PH", { timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short" })}.`); }
       setEditing(null);
     } catch (e) { setError(e instanceof Error ? e.message : "Could not change the date"); }
     finally { setBusyId(null); }
@@ -78,6 +86,7 @@ export default function AdminWithdrawalsPage() {
     () => ({
       pending: rows.filter((r) => r.status === "pending").length,
       approved: rows.filter((r) => r.status === "approved").length,
+      released: rows.filter((r) => r.status === "released").length,
       rejected: rows.filter((r) => r.status === "rejected").length,
     }),
     [rows]
@@ -101,7 +110,7 @@ export default function AdminWithdrawalsPage() {
   };
   const found = needle ? rows.filter(matches) : rows;
 
-  // Pending is split by release day: Overdue, then each upcoming day, then "No release day" (schedule off).
+  // Pending and Approved are split by release day: Overdue, then each upcoming day, then "No release day" (schedule off).
   const manilaDayOf = (ms: number) => { const d = new Date(ms + 8 * 3_600_000); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) - 8 * 3_600_000; };
   const dayKeyOf = (r: WithdrawalRequest): string => {
     const at = releaseOf(r);
@@ -109,8 +118,9 @@ export default function AdminWithdrawalsPage() {
     const d = manilaDayOf(at);
     return d < todayStart ? "overdue" : String(d);
   };
-  const pendingAll = rows.filter((r) => r.status === "pending");
-  const pendingShown = found.filter((r) => r.status === "pending");
+  const queueTab = inQueue(tab);
+  const pendingAll = rows.filter((r) => r.status === tab && queueTab);
+  const pendingShown = found.filter((r) => r.status === tab && queueTab);
   const dayKeys = Array.from(new Set(pendingAll.map(dayKeyOf))).sort((a, b) => {
     const rank = (k: string) => (k === "overdue" ? -Infinity : k === "none" ? Infinity : Number(k));
     return rank(a) - rank(b);
@@ -127,16 +137,24 @@ export default function AdminWithdrawalsPage() {
   const dayLabel = (k: string) => (k === "overdue" ? "Overdue" : k === "none" ? "No release day" : `${Number(k) === todayStart ? "Today · " : ""}${formatReleaseDate(Number(k))}`);
   const isFutureDay = (r: WithdrawalRequest) => { const k = dayKeyOf(r); return k !== "overdue" && k !== "none" && Number(k) > todayStart; };
 
-  const filtered = (tab === "pending" ? pendingShown.filter((r) => dayKeyOf(r) === activeDay) : found.filter((r) => r.status === tab))
-    .sort((a, b) => (tab === "pending" ? (releaseOf(a) ?? a.createdAt) - (releaseOf(b) ?? b.createdAt) || a.createdAt - b.createdAt : 0));
-  const dueNow = rows.filter((r) => r.status === "pending" && (releaseOf(r) ?? 0) <= todayStart);
+  const filtered = (queueTab ? pendingShown.filter((r) => dayKeyOf(r) === activeDay) : found.filter((r) => r.status === tab))
+    .sort((a, b) => (queueTab ? (releaseOf(a) ?? a.createdAt) - (releaseOf(b) ?? b.createdAt) || a.createdAt - b.createdAt : tab === "released" ? (releasedAtOf(b) ?? 0) - (releasedAtOf(a) ?? 0) : 0));
+  const dueNow = rows.filter((r) => inQueue(r.status) && (releaseOf(r) ?? 0) <= todayStart);
   const dueTotal = dueNow.reduce((s, r) => s + r.amount, 0);
+  const dueToSend = dueNow.filter((r) => r.status === "approved").length;
 
-  // Approving a request that belongs to a later release day asks first
-  const [early, setEarly] = useState<WithdrawalRequest | null>(null);
-  function askApprove(r: WithdrawalRequest) {
-    if (isFutureDay(r)) { setEarly(r); return; }
-    approve(r.id);
+  // Approved, to send: tick the ones you have sent, then mark them released together.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const pickedRows = rows.filter((r) => r.status === "approved" && picked.has(r.id));
+  const pickedTotal = pickedRows.reduce((s, r) => s + r.amount, 0);
+  const togglePick = (id: string) => setPicked((p) => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const allShownPicked = tab === "approved" && filtered.length > 0 && filtered.every((r) => picked.has(r.id));
+  const pickShown = () => setPicked((p) => { const n = new Set(p); for (const r of filtered) { if (allShownPicked) n.delete(r.id); else n.add(r.id); } return n; });
+  const [releasing, setReleasing] = useState<WithdrawalRequest[] | null>(null);
+
+  async function openProof(path: string) {
+    try { window.open(await releaseProofUrl(path), "_blank", "noopener"); }
+    catch (e) { setError(e instanceof Error ? e.message : "Could not open the screenshot"); }
   }
 
   async function approve(id: string) {
@@ -170,7 +188,8 @@ export default function AdminWithdrawalsPage() {
   async function reject(id: string) {
     const { db } = getFirebase();
     if (!db || !user?.isAdmin) return;
-    const note = prompt("Reason for rejection (optional):") ?? undefined;
+    const note = prompt("Reason for rejection (optional). The amount goes back to their wallet:") ?? undefined;
+    if (note === undefined && !confirm("Reject this withdrawal and return the money to their wallet?")) return;
     setBusyId(id);
     setError(null);
     try {
@@ -186,7 +205,7 @@ export default function AdminWithdrawalsPage() {
     <div>
       <TopHeader
         title="Withdrawal queue"
-        subtitle={`${counts.pending} pending · ${counts.approved} approved · ${counts.rejected} rejected · live from Firestore`}
+        subtitle={`${counts.pending} pending · ${counts.approved} to send · ${counts.released} released · ${counts.rejected} rejected · live from Firestore`}
       />
 
       {error && (
@@ -203,7 +222,7 @@ export default function AdminWithdrawalsPage() {
       )}
 
       <AdminTabs
-        tabs={STATUS_TABS.map((k) => ({ id: k, label: statusMeta[k].label, icon: statusMeta[k].icon, count: counts[k], attention: k === "pending" && dueNow.length > 0 }))}
+        tabs={STATUS_TABS.map((k) => ({ id: k, label: statusMeta[k].label, icon: statusMeta[k].icon, count: counts[k], attention: (k === "pending" && counts.pending > 0) || (k === "approved" && dueToSend > 0) }))}
         value={tab}
         onChange={setTab}
       />
@@ -214,7 +233,7 @@ export default function AdminWithdrawalsPage() {
         <div className="flex-1 min-w-[200px]">
           <p className="text-[12px] m-0 text-text">
             {dueNow.length
-              ? <><span className="font-medium text-gold">{dueNow.length} withdrawal{dueNow.length === 1 ? "" : "s"} due for release today</span> · {formatPHP(dueTotal)}</>
+              ? <><span className="font-medium text-gold">{dueNow.length} withdrawal{dueNow.length === 1 ? "" : "s"} due for release today</span> · {formatPHP(dueTotal)}{dueNow.length > dueToSend ? ` · ${dueNow.length - dueToSend} still to approve` : ""}</>
               : "Nothing due for release today."}
           </p>
           <p className="text-[10px] text-text-subtle m-0 mt-0.5">{describeSchedule(schedule)}</p>
@@ -226,7 +245,11 @@ export default function AdminWithdrawalsPage() {
         <CardHeader
           title={`${statusMeta[tab].label} withdrawals`}
           right={
-            tab === "pending" && counts.pending > 0 ? (
+            tab === "approved" && counts.approved > 0 ? (
+              <span className="text-[10px] text-blue flex items-center gap-1">
+                <Send className="w-3 h-3" /> Send, then mark released
+              </span>
+            ) : tab === "pending" && counts.pending > 0 ? (
               <span className="text-[10px] text-vault flex items-center gap-1">
                 <AlertCircle className="w-3 h-3" /> Action needed
               </span>
@@ -258,7 +281,7 @@ export default function AdminWithdrawalsPage() {
           )}
         </div>
 
-        {tab === "pending" && dayKeys.length > 0 && (
+        {queueTab && dayKeys.length > 0 && (
           <>
             <div className="flex gap-2 overflow-x-auto pb-1 mb-2 [scrollbar-width:thin]" role="tablist" aria-label="Release day">
               {dayKeys.map((k) => {
@@ -290,9 +313,21 @@ export default function AdminWithdrawalsPage() {
             {activeDay && (
               <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
                 <p className={cn("text-[13px] font-medium m-0", activeDay === "overdue" ? "text-red" : "text-text")}>
-                  {activeDay === "overdue" ? "Past their release day, not yet released" : activeDay === "none" ? "No release day set" : `Release ${Number(activeDay) === todayStart ? "today · " : "on "}${formatReleaseDate(Number(activeDay), { withYear: true })}`}
+                  {activeDay === "overdue" ? (tab === "approved" ? "Approved, past their release day, not sent yet" : "Past their release day, not yet approved") : activeDay === "none" ? "No release day set" : `Release ${Number(activeDay) === todayStart ? "today · " : "on "}${formatReleaseDate(Number(activeDay), { withYear: true })}`}
                 </p>
-                <p className="text-[11px] text-text-muted m-0">{dayStats(activeDay).count} request{dayStats(activeDay).count === 1 ? "" : "s"} · {formatPHP(dayStats(activeDay).total)} to send</p>
+                <p className="text-[11px] text-text-muted m-0">{dayStats(activeDay).count} request{dayStats(activeDay).count === 1 ? "" : "s"} · {formatPHP(dayStats(activeDay).total)} {tab === "approved" ? "to send" : "to review"}</p>
+              </div>
+            )}
+            {tab === "approved" && filtered.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-1 px-3 py-2 rounded-lg bg-canvas border border-border">
+                <button type="button" onClick={pickShown} className="text-[11px] text-text-muted hover:text-text flex items-center gap-1.5">
+                  <span className={cn("w-3.5 h-3.5 rounded border-2 flex items-center justify-center", allShownPicked ? "border-green bg-green" : "border-border-strong")}>{allShownPicked && <Check className="w-2.5 h-2.5 text-canvas" />}</span>
+                  {allShownPicked ? "Untick all on this day" : "Tick all on this day"}
+                </button>
+                <span className="text-[11px] text-text-muted">{pickedRows.length} ticked · {formatPHP(pickedTotal)}</span>
+                <button type="button" disabled={pickedRows.length === 0} onClick={() => { setError(null); setReleasing(pickedRows); }} className="text-[11px] px-3 py-1.5 rounded-md bg-green/15 text-green font-medium flex items-center gap-1.5 hover:bg-green/25 disabled:opacity-50">
+                  <Check className="w-3 h-3" /> Mark {pickedRows.length || ""} released
+                </button>
               </div>
             )}
           </>
@@ -312,8 +347,10 @@ export default function AdminWithdrawalsPage() {
 
         {filtered.map((r, i) => {
           const isBusy = busyId === r.id;
-          const releaseAt = r.status === "pending" ? releaseOf(r) : null;
+          const releaseAt = inQueue(r.status) ? releaseOf(r) : null;
           const due = releaseAt != null && releaseAt <= todayStart;
+          const lateToSend = r.status === "approved" && releaseAt != null && releaseAt < todayStart;
+          const sentAt = r.status === "released" ? releasedAtOf(r) : undefined;
           const initials =
             (r.userName?.[0] ?? "?").toUpperCase() +
             (r.userName?.split(" ")?.[1]?.[0] ?? "").toUpperCase();
@@ -322,9 +359,15 @@ export default function AdminWithdrawalsPage() {
               key={r.id}
               className={cn(
                 "flex flex-wrap items-center gap-3 py-3",
-                i < filtered.length - 1 && "border-b border-border"
+                i < filtered.length - 1 && "border-b border-border",
+                lateToSend && "bg-[#F5A524]/[0.06] -mx-2 px-2 rounded-lg",
               )}
             >
+              {r.status === "approved" && (
+                <button type="button" onClick={() => togglePick(r.id)} aria-pressed={picked.has(r.id)} aria-label={`Tick ${r.userName}’s withdrawal`} className={cn("w-4 h-4 rounded border-2 shrink-0 flex items-center justify-center", picked.has(r.id) ? "border-green bg-green" : "border-border-strong")}>
+                  {picked.has(r.id) && <Check className="w-3 h-3 text-canvas" />}
+                </button>
+              )}
               <div className="w-9 h-9 rounded-full bg-card-elev text-[10px] font-medium flex items-center justify-center shrink-0">
                 {initials}
               </div>
@@ -353,31 +396,53 @@ export default function AdminWithdrawalsPage() {
                   )}
                 </p>
                 {releaseAt != null && (
-                  <p className={cn("text-[9px] m-0 mt-0.5 font-medium", due ? "text-gold" : "text-text-muted")}>
-                    {due ? "Due" : "Releases"} {formatReleaseDate(releaseAt)} · {relativeReleaseLabel(releaseAt)}
+                  <p className={cn("text-[9px] m-0 mt-0.5 font-medium", lateToSend ? "text-[#F5A524]" : due ? "text-gold" : "text-text-muted")}>
+                    {lateToSend ? "Overdue · was due" : due ? "Due" : "Releases"} {formatReleaseDate(releaseAt)} · {relativeReleaseLabel(releaseAt)}
                   </p>
                 )}
-                {r.status === "approved" && r.processedAt && (
+                {r.status === "approved" && r.approvedAt && (
+                  <p className="text-[9px] m-0 mt-0.5 text-blue">Approved {formatReleaseDate(r.approvedAt)} · {fmtTime(r.approvedAt)}</p>
+                )}
+                {sentAt != null && (
                   <p className="text-[9px] m-0 mt-0.5 font-medium text-green">
-                    Released {formatReleaseDate(r.processedAt)} · {new Date(r.processedAt).toLocaleTimeString("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit" })}
+                    Released {formatReleaseDate(sentAt)} · {fmtTime(sentAt)}{r.releaseRef ? ` · Ref ${r.releaseRef}` : ""}
                   </p>
+                )}
+                {r.releaseProofPath && (
+                  <button type="button" onClick={() => openProof(r.releaseProofPath!)} className="text-[9px] mt-0.5 text-gold hover:underline inline-flex items-center gap-1"><ImageIcon className="w-2.5 h-2.5" /> Transfer screenshot</button>
                 )}
               </div>
               {tab === "pending" ? (
                 <div className="flex gap-1.5 ml-auto sm:ml-0">
                   <button
-                    onClick={() => askApprove(r)}
+                    onClick={() => approve(r.id)}
                     disabled={isBusy}
                     className="text-[11px] px-3 py-1.5 bg-green/15 text-green rounded-md flex items-center gap-1.5 hover:bg-green/25 transition disabled:opacity-60"
                   >
                     {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-                    Approve
+                    Approve{releaseAt != null ? ` · release ${formatReleaseDate(releaseAt).split(",")[0]}` : ""}
                   </button>
                   <button
                     onClick={() => reject(r.id)}
                     disabled={isBusy}
                     className="text-[11px] px-3 py-1.5 bg-card-elev border border-border-strong text-text-muted rounded-md hover:text-red hover:border-red/30 transition flex items-center gap-1.5 disabled:opacity-60"
                   >
+                    <X className="w-3 h-3" /> Reject
+                  </button>
+                  <button
+                    onClick={() => { setError(null); setEditing(editing?.id === r.id && editing.field !== "requested" ? null : { id: r.id, field: "release", value: releaseAt != null ? toManilaInput(releaseAt) : toManilaInput(Date.now()) }); }}
+                    disabled={isBusy}
+                    className={cn("text-[11px] px-3 py-1.5 rounded-md border transition flex items-center gap-1.5 disabled:opacity-60", editing?.id === r.id && editing.field !== "requested" ? "bg-gold/15 border-gold/40 text-gold" : "bg-card-elev border-gold/30 text-gold hover:bg-gold/10")}
+                  >
+                    <CalendarCog className="w-3 h-3" /> Change date
+                  </button>
+                </div>
+              ) : tab === "approved" ? (
+                <div className="flex gap-1.5 ml-auto sm:ml-0 flex-wrap">
+                  <button onClick={() => { setError(null); setReleasing([r]); }} disabled={isBusy} className="text-[11px] px-3 py-1.5 bg-green/15 text-green rounded-md flex items-center gap-1.5 hover:bg-green/25 transition disabled:opacity-60">
+                    {isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Mark released
+                  </button>
+                  <button onClick={() => reject(r.id)} disabled={isBusy} className="text-[11px] px-3 py-1.5 bg-card-elev border border-border-strong text-text-muted rounded-md hover:text-red hover:border-red/30 transition flex items-center gap-1.5 disabled:opacity-60">
                     <X className="w-3 h-3" /> Reject
                   </button>
                   <button
@@ -399,9 +464,9 @@ export default function AdminWithdrawalsPage() {
                   >
                     {statusMeta[r.status].label}
                   </span>
-                  {r.status === "approved" && (
+                  {r.status === "released" && (
                     <button
-                      onClick={() => { setError(null); setEditing(editing?.id === r.id && editing.field !== "requested" ? null : { id: r.id, field: "release", value: toManilaInput(r.processedAt ?? Date.now(), true) }); }}
+                      onClick={() => { setError(null); setEditing(editing?.id === r.id && editing.field !== "requested" ? null : { id: r.id, field: "release", value: toManilaInput(releasedAtOf(r) ?? Date.now(), true) }); }}
                       disabled={isBusy}
                       className={cn("text-[10px] px-2 py-1 rounded-md border transition flex items-center gap-1 disabled:opacity-60", editing?.id === r.id && editing.field !== "requested" ? "bg-gold/15 border-gold/40 text-gold" : "bg-card-elev border-border-strong text-text-muted hover:text-text")}
                     >
@@ -439,17 +504,17 @@ export default function AdminWithdrawalsPage() {
               )}
               {editing?.id === r.id && editing.field !== "requested" && (
                 <div className="basis-full flex flex-wrap items-center gap-2 bg-canvas border border-gold/30 rounded-lg px-3 py-2">
-                  <span className="text-[11px] text-text-muted">{r.status === "pending" ? "New release date" : "Released on"}</span>
+                  <span className="text-[11px] text-text-muted">{inQueue(r.status) ? "New release date" : "Released on"}</span>
                   <input
-                    type={r.status === "pending" ? "date" : "datetime-local"}
+                    type={inQueue(r.status) ? "date" : "datetime-local"}
                     value={editing.value}
                     onChange={(e) => setEditing({ ...editing, value: e.target.value })}
                     className="bg-card border border-border rounded-md px-2 py-1 text-[12px] text-text font-mono outline-none focus:border-gold/40"
                   />
-                  {(() => { const ms = r.status === "pending" ? manilaDayStart(editing.value) : manilaDateTime(editing.value); return ms != null ? <span className="text-[11px] text-text-subtle">{formatReleaseDate(ms, { withYear: true })}{r.status === "pending" ? ` · ${relativeReleaseLabel(ms)}` : ""}</span> : null; })()}
+                  {(() => { const ms = inQueue(r.status) ? manilaDayStart(editing.value) : manilaDateTime(editing.value); return ms != null ? <span className="text-[11px] text-text-subtle">{formatReleaseDate(ms, { withYear: true })}{inQueue(r.status) ? ` · ${relativeReleaseLabel(ms)}` : ""}</span> : null; })()}
                   <button onClick={() => saveDate(r)} disabled={isBusy} className="text-[11px] px-3 py-1 rounded-md bg-gold text-gold-dark font-medium disabled:opacity-60 flex items-center gap-1">{isBusy ? <Loader2 className="w-3 h-3 animate-spin" /> : null} Save</button>
                   <button onClick={() => setEditing(null)} className="text-[11px] text-text-muted hover:text-text">Cancel</button>
-                  <span className="basis-full text-[9px] text-text-subtle">{r.status === "pending" ? "Manila time. The member gets a notification with the new date." : "Manila time. Changes the “Released …” date the member sees; no notification."}</span>
+                  <span className="basis-full text-[9px] text-text-subtle">{inQueue(r.status) ? "Manila time. The member gets a notification with the new date." : "Manila time. Changes the “Released …” date the member sees; no notification."}</span>
                 </div>
               )}
             </div>
@@ -457,19 +522,13 @@ export default function AdminWithdrawalsPage() {
         })}
       </Card>
 
-      <Modal open={!!early} onClose={() => !busyId && setEarly(null)} title="Release early?">
-        {early && (
-          <div className="flex flex-col gap-3">
-            <p className="text-[12px] m-0 leading-relaxed">
-              {early.userName}’s {formatPHP(early.amount)} is due <span className="text-gold">{formatReleaseDate(releaseOf(early) ?? early.createdAt, { withYear: true })}</span>. Today is {formatReleaseDate(todayStart, { withYear: true })}. Approve it now anyway?
-            </p>
-            <div className="flex gap-2">
-              <button type="button" onClick={() => setEarly(null)} className="flex-1 py-2.5 border border-border-strong rounded-lg text-[12px] text-text-muted">Keep for {formatReleaseDate(releaseOf(early) ?? early.createdAt).split(",")[0]}</button>
-              <button type="button" onClick={() => { const id = early.id; setEarly(null); approve(id); }} className="flex-1 py-2.5 rounded-lg bg-green/20 text-green text-[12px] font-medium">Release early</button>
-            </div>
-          </div>
-        )}
-      </Modal>
+      <ReleaseModal
+        items={releasing}
+        isFuture={isFutureDay}
+        releaseOf={releaseOf}
+        onClose={() => setReleasing(null)}
+        onDone={(text, ids) => { setReleasing(null); setNotice(text); setPicked((p) => { const n = new Set(p); ids.forEach((id) => n.delete(id)); return n; }); }}
+      />
 
       <Modal open={!!confirmDel} onClose={() => !busyId && setConfirmDel(null)} title="Delete this rejected withdrawal?">
         {confirmDel && (
@@ -484,5 +543,85 @@ export default function AdminWithdrawalsPage() {
         )}
       </Modal>
     </div>
+  );
+}
+
+/**
+ * Mark released: you have sent the money. One row per withdrawal with an
+ * optional transfer reference (the member sees it) and an optional screenshot
+ * (admins only). Requests due on a later day are pointed out first.
+ */
+function ReleaseModal({ items, isFuture, releaseOf, onClose, onDone }: {
+  items: WithdrawalRequest[] | null;
+  isFuture: (r: WithdrawalRequest) => boolean;
+  releaseOf: (r: WithdrawalRequest) => number | null | undefined;
+  onClose: () => void;
+  onDone: (text: string, ids: string[]) => void;
+}) {
+  const [refs, setRefs] = useState<Record<string, string>>({});
+  const [files, setFiles] = useState<Record<string, File | null>>({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const list = items ?? [];
+  const total = list.reduce((s, r) => s + r.amount, 0);
+  const early = list.filter(isFuture);
+
+  async function submit() {
+    setBusy(true); setError(null);
+    try {
+      const payload: { id: string; ref?: string; proofPath?: string }[] = [];
+      for (const r of list) {
+        const f = files[r.id];
+        const proofPath = f ? await uploadReleaseProof(r.id, f) : undefined;
+        const ref = refs[r.id]?.trim();
+        payload.push({ id: r.id, ...(ref ? { ref } : {}), ...(proofPath ? { proofPath } : {}) });
+      }
+      const res = await releaseWithdrawals(payload);
+      const name = (id: string) => list.find((r) => r.id === id)?.userName ?? "a member";
+      const skipped = res.skipped.map((x) => `${name(x.id)} (${x.reason})`).join(", ");
+      onDone(`${res.released.length} withdrawal${res.released.length === 1 ? "" : "s"} marked released. ${res.released.length === 1 ? "The member was" : "Each member was"} told${res.skipped.length ? `. Not released: ${skipped}` : ""}.`, res.released);
+      setRefs({}); setFiles({});
+    } catch (e) {
+      setError(e instanceof Error ? e.message.replace(/^.*?:\s*/, "") : "Could not mark them released.");
+    } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal open={list.length > 0} onClose={() => !busy && onClose()} title={list.length === 1 ? "Mark released" : `Mark ${list.length} released`} maxWidth="max-w-lg">
+      <div className="flex flex-col gap-3">
+        <p className="text-[12px] m-0">Only do this once the money has been sent. {list.length === 1 ? "The member is" : "Each member is"} told it was released{list.length > 1 ? ` · ${formatPHP(total)} in all` : ""}.</p>
+        {early.length > 0 && (
+          <p className="text-[11px] m-0 flex items-start gap-1.5 text-[#F5A524]">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            {early.length === list.length && list.length === 1 ? "This one is" : `${early.length} of these are`} due on a later day ({[...new Set(early.map((r) => formatReleaseDate(releaseOf(r) ?? r.createdAt)))].join(", ")}). Releasing now sends {early.length === 1 ? "it" : "them"} early.
+          </p>
+        )}
+        <div className="flex flex-col gap-1.5 max-h-[50vh] overflow-y-auto">
+          {list.map((r) => (
+            <div key={r.id} className="bg-canvas border border-border rounded-lg px-3 py-2 flex flex-col gap-1.5">
+              <div className="flex items-center justify-between gap-2 text-[12px]">
+                <span className="truncate">{r.userName} <span className="text-text-subtle text-[10px]">· {r.payout?.provider ?? r.destination}</span></span>
+                <span className="font-mono shrink-0">{formatPHP(r.amount)}</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input value={refs[r.id] ?? ""} maxLength={60} onChange={(e) => setRefs({ ...refs, [r.id]: e.target.value })} placeholder="Reference no. (optional)" aria-label={`Reference number for ${r.userName}`} className="flex-1 min-w-[150px] bg-card border border-border rounded-md px-2 py-1.5 text-[11px] font-mono text-text outline-none focus:border-green/50" />
+                <label className="text-[10px] text-text-muted hover:text-text cursor-pointer inline-flex items-center gap-1 shrink-0">
+                  <ImageIcon className="w-3 h-3" /> {files[r.id] ? files[r.id]!.name.slice(0, 18) : "Screenshot (optional)"}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => setFiles({ ...files, [r.id]: e.target.files?.[0] ?? null })} />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="text-[10px] text-text-subtle m-0">The member sees the reference number. Screenshots are for admins only.</p>
+        {error && <p className="text-[11px] text-red m-0">{error}</p>}
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} disabled={busy} className="flex-1 py-2.5 border border-border-strong rounded-lg text-[12px] text-text-muted">Not yet</button>
+          <button type="button" onClick={submit} disabled={busy} className="flex-1 py-2.5 rounded-lg bg-green/20 text-green text-[12px] font-medium disabled:opacity-60 flex items-center justify-center gap-1.5">
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />} Mark {list.length === 1 ? "" : `${list.length} `}released
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }

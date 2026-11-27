@@ -56,7 +56,7 @@ export {
 export { getReferralStats } from "./referral-stats";
 // Admin: add to / remove from a member's wallet with a typed tag (audited, member sees it).
 export { adminAdjustWallet } from "./wallet-adjust";
-export { onWithdrawalWritten, requestWithdrawal, adminDecideWithdrawal, adminDeleteWithdrawal } from "./withdrawals";
+export { onWithdrawalWritten, requestWithdrawal, adminDecideWithdrawal, adminReleaseWithdrawals, adminDeleteWithdrawal } from "./withdrawals";
 export { adminSaveEvent, adminSetEventStatus, adminAddEventSlots, claimEventSlots, onPlanRequestWritten, spinWheel, onUserCreatedForEvents } from "./events";
 
 // Community Tongits (Phase 1): room + economy callables + stale-room reaper.
