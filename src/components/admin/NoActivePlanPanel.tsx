@@ -14,9 +14,11 @@ import type { InvestorRow } from "@/lib/adminQueries";
  * Built from the accounts the Investors page already loaded; the only extra
  * read is the (small) list of placement requests still waiting for approval.
  * Admins, banned accounts and accounts tagged "dummy" are left out.
+ * "Old system" marks accounts that still carry plans or Vault money from the
+ * old system (before the Sep 15, 2026 switch); they are not "Never started".
  */
 
-type Group = "all" | "never" | "done";
+type Group = "all" | "never" | "done" | "old";
 type SortKey = "wallet" | "joinedNew" | "joinedOld" | "finishedNew" | "finishedOld";
 type QuickFilter = "j7" | "j30" | "f30" | "wallet";
 
@@ -36,6 +38,8 @@ const QUICK: { id: QuickFilter; label: string }[] = [
 ];
 
 const fmt = (ms: number) => new Date(ms).toLocaleDateString("en-PH", { month: "short", day: "numeric", year: "numeric", timeZone: "Asia/Manila" });
+/** Still carries old-system plans or Vault money (before the Sep 15, 2026 switch). */
+export const isOldSystem = (r: InvestorRow) => (r.legacyPlans ?? 0) > 0 || (r.legacyVault ?? 0) > 0;
 const ago = (ms: number, now: number) => { const d = Math.max(0, Math.floor((now - ms) / DAY)); return d === 0 ? "today" : d === 1 ? "1 day ago" : `${d} days ago`; };
 
 /** Who belongs on the list, and why the others were left out. */
@@ -74,6 +78,18 @@ function csv(rows: Record<string, string | number>[], headers: string[], filenam
   URL.revokeObjectURL(url);
 }
 
+/** "Old system" tag: plans or Vault money from before the Sep 15, 2026 switch. */
+function OldSystemTag({ r, compact }: { r: InvestorRow; compact?: boolean }) {
+  const plans = r.legacyPlans ?? 0;
+  const text = compact ? "Old system" : `Old system${plans ? ` · ${plans} plan${plans === 1 ? "" : "s"} before Sep 15` : ""}`;
+  return (
+    <span className={compact ? "ml-1" : ""} title="Plans or Vault money from the old system, before the Sep 15, 2026 switch">
+      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#2b1f3d] text-[#c9b6f0]">{text}</span>
+      {!compact && r.legacyVault ? <span className="block mt-0.5 text-[10px] text-text-subtle">Old Vault {formatPHP(r.legacyVault)}</span> : null}
+    </span>
+  );
+}
+
 export function NoActivePlanPanel({ rows, allRows, banned, isDummy }: {
   /** Investors after the page's search and tag filter. */
   rows: InvestorRow[];
@@ -90,11 +106,12 @@ export function NoActivePlanPanel({ rows, allRows, banned, isDummy }: {
   const nameOf = useMemo(() => new Map(allRows.map((r) => [r.uid, r.name])), [allRows]);
 
   const { list, hidden } = useMemo(() => noActivePlanRows(rows, { banned, isDummy }), [rows, banned, isDummy]);
-  const never = list.filter((r) => r.completedPlansCount === 0);
+  const never = list.filter((r) => r.completedPlansCount === 0 && !isOldSystem(r));
   const done = list.filter((r) => r.completedPlansCount > 0);
+  const old = list.filter(isOldSystem);
 
   const shown = useMemo(() => {
-    const base = group === "never" ? never : group === "done" ? done : list;
+    const base = group === "never" ? never : group === "done" ? done : group === "old" ? old : list;
     const out = base.filter((r) => {
       if (quick.has("j7") && now - r.joinedAt > 7 * DAY) return false;
       if (quick.has("j30") && now - r.joinedAt > 30 * DAY) return false;
@@ -113,7 +130,7 @@ export function NoActivePlanPanel({ rows, allRows, banned, isDummy }: {
         case "joinedNew": default: return b.joinedAt - a.joinedAt;
       }
     });
-  }, [group, never, done, list, quick, sort, now]);
+  }, [group, never, done, old, list, quick, sort, now]);
 
   const walletSum = shown.reduce((s, r) => s + r.wallet, 0);
   const pendingCount = never.filter((r) => pending.has(r.uid)).length;
@@ -123,11 +140,13 @@ export function NoActivePlanPanel({ rows, allRows, banned, isDummy }: {
     const date = new Date().toISOString().slice(0, 10);
     csv(shown.map((r) => ({
       Name: r.name, Email: r.email, "Payout number": r.payoutNumber ?? "", Joined: r.joinedAt ? fmt(r.joinedAt) : "",
-      Status: r.completedPlansCount ? "Finished" : "Never started", "Request pending": pending.has(r.uid) ? "Yes" : "",
+      Status: r.completedPlansCount ? "Finished" : isOldSystem(r) ? "Old system" : "Never started", "Request pending": pending.has(r.uid) ? "Yes" : "",
+      "Old system": isOldSystem(r) ? `Yes${r.legacyPlans ? ` · ${r.legacyPlans} old plan${r.legacyPlans === 1 ? "" : "s"}` : ""}` : "",
+      "Old Vault": r.legacyVault ? Math.round(r.legacyVault * 100) / 100 : "",
       "Last finished": r.lastFinishedAt ? fmt(r.lastFinishedAt) : "", "Plans finished": r.completedPlansCount,
       "Total placed": r.totalPlaced ?? 0, "Total earned": Math.round(r.totalEarned * 100) / 100, Wallet: Math.round(r.wallet * 100) / 100,
       "Referred by": r.referredByUserId ? nameOf.get(r.referredByUserId) ?? "" : "",
-    })), ["Name", "Email", "Payout number", "Joined", "Status", "Request pending", "Last finished", "Plans finished", "Total placed", "Total earned", "Wallet", "Referred by"], `no-active-plan-${date}`);
+    })), ["Name", "Email", "Payout number", "Joined", "Status", "Old system", "Old Vault", "Request pending", "Last finished", "Plans finished", "Total placed", "Total earned", "Wallet", "Referred by"], `no-active-plan-${date}`);
   };
 
   const chip = (id: Group, label: string, n: number) => (
@@ -143,15 +162,17 @@ export function NoActivePlanPanel({ rows, allRows, banned, isDummy }: {
         {chip("all", "All with no active plan", list.length)}
         {chip("never", "Never started", never.length)}
         {chip("done", "Finished, no active plan", done.length)}
+        {chip("old", "Old system", old.length)}
         <button type="button" onClick={exportList} className="ml-auto text-[11px] px-3 py-1.5 bg-gold text-gold-dark rounded-full font-medium flex items-center gap-1.5 hover:brightness-110">
           <Download className="w-3 h-3" /> Export this list
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 mb-3">
         {[
           { label: "Never started", value: never.length.toLocaleString() },
           { label: "Finished, no active plan", value: done.length.toLocaleString() },
+          { label: "Old system (before Sep 15)", value: old.length.toLocaleString() },
           { label: "Money in their wallets (shown)", value: formatPHP(walletSum) },
           { label: "Placement request pending", value: pendingCount.toLocaleString() },
         ].map((t) => (
@@ -201,7 +222,9 @@ export function NoActivePlanPanel({ rows, allRows, banned, isDummy }: {
                 <td className="py-2 px-2 font-mono text-text-muted whitespace-nowrap">{r.payoutNumber ?? "–"}{r.payoutNumber && r.payoutType && r.payoutType !== "gcash" ? <span className="ml-1 text-[10px] text-text-subtle">({r.payoutType === "gotyme" ? "GoTyme" : "Bank"})</span> : null}</td>
                 <td className="py-2 px-2 whitespace-nowrap">{r.joinedAt ? <>{fmt(r.joinedAt)} <span className="text-text-subtle">· {ago(r.joinedAt, now)}</span></> : "–"}</td>
                 <td className="py-2 px-2 whitespace-nowrap">
-                  {r.completedPlansCount === 0 ? (
+                  {r.completedPlansCount === 0 && isOldSystem(r) ? (
+                    <OldSystemTag r={r} />
+                  ) : r.completedPlansCount === 0 ? (
                     <>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-card-elev text-text">Never started</span>
                       {pending.has(r.uid) && <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-[#F5C66B]/15 text-[#F5C66B]">Request pending</span>}
@@ -210,6 +233,7 @@ export function NoActivePlanPanel({ rows, allRows, banned, isDummy }: {
                     <>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-green/15 text-green">Finished {r.lastFinishedAt ? fmt(r.lastFinishedAt) : ""}</span>
                       {r.lastFinishedAt ? <span className="ml-1 text-text-subtle">{ago(r.lastFinishedAt, now)}</span> : null}
+                      {isOldSystem(r) && <OldSystemTag r={r} compact />}
                     </>
                   )}
                 </td>

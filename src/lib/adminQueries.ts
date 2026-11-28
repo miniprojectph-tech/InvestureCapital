@@ -43,6 +43,10 @@ export type InvestorRow = {
   totalPlaced?: number;
   /** Scheduled end of the most recently finished plan. */
   lastFinishedAt?: number;
+  /** Plans from the old system (before the Sep 15, 2026 switch) still on the record. */
+  legacyPlans?: number;
+  /** Money still in the retired Future Growth Vault. */
+  legacyVault?: number;
 };
 
 export type AdminAggregate = {
@@ -101,6 +105,8 @@ export async function listInvestors(db: Firestore): Promise<InvestorRow[]> {
       payoutType: data.payoutMethod?.type || undefined,
       totalPlaced: placements.reduce((s, p) => s + (p.capital ?? 0), 0) + completed.reduce((s, p) => s + (p.capital ?? 0), 0),
       lastFinishedAt: completed.length ? Math.max(...completed.map((p) => (p as CompletedPlacement).completedAt ?? 0)) || undefined : undefined,
+      legacyPlans: (data.activePlans?.length ?? 0) + (data.completedPlans?.length ?? 0) || undefined,
+      legacyVault: (data.balances?.vault ?? 0) > 0 ? data.balances.vault : undefined,
     };
   });
 }
