@@ -39,8 +39,8 @@ type Props = {
   staff: Sender;
   /** False while moderator access is still syncing — composer is disabled. */
   canSend: boolean;
-  /** Optional slot rendered beside the thread title (e.g. a link to Investors). */
-  threadAside?: React.ReactNode;
+  /** Optional slot beside the thread title; a function gets the open member's uid (e.g. a link to their account). */
+  threadAside?: React.ReactNode | ((uid: string) => React.ReactNode);
 };
 
 type Member = { uid: string; name: string; email: string };
@@ -288,11 +288,14 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                     <span className="truncate">{current.name}</span>
                     {!isNewThread && current.lastFrom === "admin" && !isWelcomeOnly(current) && <SeenMark lastAt={current.lastAt} readAt={current.userReadAt} now={clock} className="text-[10px] font-normal shrink-0" />}
                   </p>
-                  {statuses[current.uid] ? (
-                    <p className={cn("text-[10px] m-0 truncate", statusTone(statuses[current.uid]))}>{statusText(statuses[current.uid], clock, true)}</p>
-                  ) : current.email ? (
-                    <p className="text-[10px] text-text-subtle m-0 truncate">{current.email}</p>
-                  ) : null}
+                  {/* status and email share one line, so the email stays visible while they're online (staff only; members can't read the inbox) */}
+                  {(statuses[current.uid] || current.email) && (
+                    <p className="text-[10px] m-0 truncate">
+                      {statuses[current.uid] && <span className={statusTone(statuses[current.uid])}>{statusText(statuses[current.uid], clock, true)}</span>}
+                      {statuses[current.uid] && current.email && <span className="text-text-subtle"> · </span>}
+                      {current.email && <span className="text-text-subtle select-all" title={current.email}>{current.email}</span>}
+                    </p>
+                  )}
                 </div>
                 {current.lastFrom !== "admin" && (
                   <button
@@ -303,7 +306,7 @@ export function InboxPanel({ staff, canSend, threadAside }: Props) {
                     <MailWarning className="w-3 h-3" /> Mark unread
                   </button>
                 )}
-                {threadAside}
+                {typeof threadAside === "function" ? threadAside(current.uid) : threadAside}
               </div>
             }
             messages={messages}

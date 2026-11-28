@@ -461,11 +461,11 @@ export default function AdminCommunityPage() {
         <InboxPanel
           staff={staff}
           canSend={adminReady}
-          threadAside={
-            <Link href="/admin/investors" className="text-[10px] text-text-subtle hover:text-text flex items-center gap-1">
-              Investors <ExternalLink className="w-3 h-3" />
+          threadAside={(uid: string) => (
+            <Link href={`/admin/member/${uid}`} className="text-[10px] text-text-subtle hover:text-text flex items-center gap-1 shrink-0" title="Open this member's account">
+              Open account <ExternalLink className="w-3 h-3" />
             </Link>
-          }
+          )}
         />
       )}
 
