@@ -36,6 +36,13 @@ export type InvestorRow = {
   isAdmin: boolean;
   /** The upline (sponsor) uid, if any. */
   referredByUserId?: string;
+  /** Payout account number (the GCash number for GCash). */
+  payoutNumber?: string;
+  payoutType?: string;
+  /** Capital ever placed (active + finished plans). */
+  totalPlaced?: number;
+  /** Scheduled end of the most recently finished plan. */
+  lastFinishedAt?: number;
 };
 
 export type AdminAggregate = {
@@ -90,6 +97,10 @@ export async function listInvestors(db: Firestore): Promise<InvestorRow[]> {
       joinedAt: data.profile?.joinedAt ?? 0,
       isAdmin: data.isAdmin === true,
       referredByUserId: typeof data.referredByUserId === "string" ? data.referredByUserId : undefined,
+      payoutNumber: data.payoutMethod?.accountNumber || undefined,
+      payoutType: data.payoutMethod?.type || undefined,
+      totalPlaced: placements.reduce((s, p) => s + (p.capital ?? 0), 0) + completed.reduce((s, p) => s + (p.capital ?? 0), 0),
+      lastFinishedAt: completed.length ? Math.max(...completed.map((p) => (p as CompletedPlacement).completedAt ?? 0)) || undefined : undefined,
     };
   });
 }

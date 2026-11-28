@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye, Users, Pencil, Gift, Wallet, Layers, Gamepad2, UserPlus, Tag, X, Ban, ShieldAlert, type LucideIcon } from "lucide-react";
+import { Loader2, Search, Download, Save, RotateCcw, CheckCircle2, AlertCircle, Trash2, KeyRound, Eye, Users, Pencil, Gift, Wallet, Layers, Gamepad2, UserPlus, UserMinus, Tag, X, Ban, ShieldAlert, type LucideIcon } from "lucide-react";
 import { TopHeader } from "@/components/TopHeader";
 import { AdminTabs, useHashTab } from "@/components/admin/AdminTabs";
 import { ResponsiveTable } from "@/components/ResponsiveTable";
 import { Card, CardHeader } from "@/components/Card";
 import { InvestorPlansPanel } from "@/components/admin/InvestorPlansPanel";
+import { NoActivePlanPanel, noActivePlanRows } from "@/components/admin/NoActivePlanPanel";
 import { MembersExportButton } from "@/components/admin/MembersExportButton";
 import { DeleteMemberModal } from "@/components/admin/DeleteMemberModal";
 import { ResetPasswordModal } from "@/components/admin/ResetPasswordModal";
@@ -35,7 +36,7 @@ import {
   type AdminGameRow,
 } from "@/lib/game";
 
-type ChipKey = "vault" | "wallet" | "plans" | "joined" | "games" | "tags";
+type ChipKey = "vault" | "wallet" | "plans" | "joined" | "games" | "tags" | "inactive";
 type EditFields = { energy: string; streak: string; weeklyScore: string };
 
 function fmtDate(ms: number) {
@@ -95,9 +96,10 @@ const TAB_LABELS: Record<ChipKey, string> = {
   joined: "Joined",
   games: "Games",
   tags: "Tags",
+  inactive: "No active plan",
 };
-const TAB_ORDER: ChipKey[] = ["joined", "vault", "wallet", "plans", "games", "tags"];
-const TAB_ICONS: Record<ChipKey, LucideIcon> = { joined: Users, vault: Gift, wallet: Wallet, plans: Layers, games: Gamepad2, tags: Tag };
+const TAB_ORDER: ChipKey[] = ["joined", "vault", "wallet", "plans", "games", "tags", "inactive"];
+const TAB_ICONS: Record<ChipKey, LucideIcon> = { joined: Users, vault: Gift, wallet: Wallet, plans: Layers, games: Gamepad2, tags: Tag, inactive: UserMinus };
 
 export default function AdminInvestorsPage() {
   const { user, demoMode } = useAuth();
@@ -130,6 +132,10 @@ export default function AdminInvestorsPage() {
     return tagFilter === "none" ? ids.length === 0 : ids.includes(tagFilter);
   }, [tagFilter, accountTags.links, accountTags.byId, banOf, flagOf]);
   const tagNames = (uid: string) => accountTags.tagsOf(uid).map((t) => t.name).join("; ");
+  // No active plan tab: banned and "dummy"-tagged accounts are left out
+  const bannedUids = useMemo(() => new Set(bans.map((b) => b.uid)), [bans]);
+  const isDummy = useCallback((uid: string) => accountTags.tagsOf(uid).some((t) => /dummy/i.test(t.name)), [accountTags]);
+  const inactiveCount = useMemo(() => noActivePlanRows(rows, { banned: bannedUids, isDummy }).list.length, [rows, bannedUids, isDummy]);
 
   const { config } = useGameConfig();
   const { settings: gamesSettings } = useGamesSettings();
@@ -375,6 +381,7 @@ export default function AdminInvestorsPage() {
     joined: `${rows.length} accounts · newest first`,
     games: `${rows.length} accounts · game credits & points`,
     tags: `${accountTags.tags.length} tag${accountTags.tags.length === 1 ? "" : "s"} · only admins see them`,
+    inactive: `${inactiveCount.toLocaleString()} members joined but have no plan running · never started or all plans finished`,
   };
   const activeTag = tagFilter && tagFilter !== "none" && tagFilter !== "banned" && tagFilter !== "flagged" ? accountTags.byId.get(tagFilter) : undefined;
   async function unban(uid: string, name: string) {
@@ -397,7 +404,7 @@ export default function AdminInvestorsPage() {
       <TopHeader title="Investors" subtitle={subtitle[sortKey]} />
 
       <AdminTabs
-        tabs={TAB_ORDER.map((k) => ({ id: k, label: TAB_LABELS[k], icon: TAB_ICONS[k], count: k === "joined" ? rows.length : undefined }))}
+        tabs={TAB_ORDER.map((k) => ({ id: k, label: TAB_LABELS[k], icon: TAB_ICONS[k], count: k === "joined" ? rows.length : k === "inactive" ? inactiveCount : undefined }))}
         value={sortKey}
         onChange={setSortKey}
         right={
@@ -427,13 +434,13 @@ export default function AdminInvestorsPage() {
               </select>
             )}
             <MembersExportButton tags={accountTags.tags} />
-            <button
+            {sortKey !== "inactive" && <button
               onClick={exportCsv}
               title="Exports the rows of the tab you are looking at"
               className="text-[11px] px-3 py-1.5 bg-card border border-border rounded-full text-text-muted hover:text-text flex items-center gap-1.5"
             >
               <Download className="w-3 h-3" /> This tab (CSV)
-            </button>
+            </button>}
           </>
         }
       />
@@ -694,6 +701,9 @@ export default function AdminInvestorsPage() {
 
       {/* ── Plans tab — placements, test clock and per-placement tools ── */}
       {sortKey === "plans" && <InvestorPlansPanel investors={filtered} onChanged={reloadInvestors} />}
+
+      {/* ── No active plan: never started, or every plan finished ── */}
+      {sortKey === "inactive" && <NoActivePlanPanel rows={filtered} allRows={rows} banned={bannedUids} isDummy={isDummy} />}
 
       {/* ── Joined tab ── */}
       {sortKey === "joined" && accountMsg && (
